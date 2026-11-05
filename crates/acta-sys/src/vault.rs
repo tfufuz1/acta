@@ -1,0 +1,111 @@
+// FILE-CONTEXT
+// STAND: 2026-09-27T22:45:00Z (SESSION: 786dca08)
+// ZWECK: RAII manager for RAM memory-locked sensitive buffer regions (Ring 0)
+// INVARIANTEN: Automatically releases locked memory regions via mem_unlock on Drop or unlock_all
+// NICHT-OFFENSICHTLICH: Best-effort locking; failures logged via tracing without panicking
+// SIEHE AUCH: AGENTS.md, docs/audits/acta-sys_AUDIT_2026-09-27.md
+
+//! RAM memory-locking region manager for sensitive vault buffers.
+
+use crate::{mem_lock, mem_unlock};
+
+/// Encapsulates locked memory regions (addresses and lengths) for sensitive vault buffers.
+/// Automatically releases (unlocks) locked regions when [`unlock_all`](Self::unlock_all) or [`Drop::drop`] is called.
+#[derive(Debug, Default)]
+pub struct LockedRegions {
+    regions: Vec<(usize, usize)>,
+}
+
+impl LockedRegions {
+    /// Creates a new empty tracker for locked memory regions.
+    pub fn new() -> Self {
+        Self {
+            regions: Vec::new(),
+        }
+    }
+
+    /// Attempts to lock a byte slice in RAM (best-effort) if `attempt_mlock` is `true`.
+    ///
+    /// Returns `true` if the slice is successfully memory-locked (or if `slice` is empty).
+    /// Returns `false` if `attempt_mlock` is `false` (for non-empty slices) or if `mem_lock` failed.
+    ///
+    /// If locking succeeds, the region is tracked and will be unlocked when [`unlock_all`](Self::unlock_all)
+    /// or [`Drop::drop`] is called.
+    pub fn lock_slice(&mut self, slice: &[u8], attempt_mlock: bool) -> bool {
+        if slice.is_empty() {
+            return true;
+        }
+        if !attempt_mlock {
+            return false;
+        }
+
+        let ptr = slice.as_ptr();
+        let len = slice.len();
+
+        if mem_lock(ptr, len) {
+            self.regions.push((ptr as usize, len));
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Unlocks all tracked memory regions and clears the tracked list.
+    pub fn unlock_all(&mut self) {
+        for (addr, len) in self.regions.drain(..) {
+            mem_unlock(addr, len);
+        }
+    }
+
+    /// Returns the number of currently tracked locked regions.
+    pub fn len(&self) -> usize {
+        self.regions.len()
+    }
+
+    /// Returns `true` if no locked regions are tracked.
+    pub fn is_empty(&self) -> bool {
+        self.regions.is_empty()
+    }
+}
+
+impl Drop for LockedRegions {
+    fn drop(&mut self) {
+        self.unlock_all();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_locked_regions_lifecycle() {
+        let mut tracker = LockedRegions::new();
+        assert!(tracker.is_empty());
+
+        let data = vec![1u8, 2, 3, 4, 5];
+        let locked = tracker.lock_slice(&data, true);
+
+        #[cfg(any(unix, windows))]
+        {
+            // Note: On some CI environments without CAP_IPC_LOCK, mlock may fail and return false.
+            if locked {
+                assert_eq!(tracker.len(), 1);
+            } else {
+                assert_eq!(tracker.len(), 0);
+            }
+        }
+
+        tracker.unlock_all();
+        assert!(tracker.is_empty());
+    }
+
+    #[test]
+    fn test_locked_regions_disabled() {
+        let mut tracker = LockedRegions::new();
+        let data = vec![1u8, 2, 3, 4, 5];
+        let locked = tracker.lock_slice(&data, false);
+        assert!(!locked);
+        assert!(tracker.is_empty());
+    }
+}

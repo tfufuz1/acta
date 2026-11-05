@@ -1,0 +1,58 @@
+// FILE-CONTEXT
+// ZWECK: Acta cryptographic kernel - Layer 1 crate for AEAD block encryption, HKDF key derivation, and WAL integrity.
+// INVARIANTEN: Cryptographic primitives strictly isolated to this crate. All key operations zeroized on drop. Lock-free & I/O-free in src/.
+// NICHT-OFFENSICHTLICH: KeyManager uses AES-256-GCM-SIV with OsRng 8-byte random suffix + 4-byte prefix to prevent nonce-reuse key leakage.
+// HOTSPOTS: [1-25]
+// STAND: TS:2026-08-31T21:13:05Z (SESSION: 8427f167)
+
+#![forbid(unsafe_code)]
+
+//! Cryptography module for Acta.
+//!
+//! # Architektur
+//! Bietet Verschlüsselung und Integritätsschutz für WAL und SSTables.
+//! Nutzt AES-256-GCM-SIV für Datenverschlüsselung und HMAC-SHA256 für Integrität.
+//!
+//! # Invarianten
+//! - Pro Datei wird ein eindeutiger Schlüssel abgeleitet (Nonce-Reuse Mitigation).
+//! - Passwörter werden via HKDF in Keys expandiert.
+//! - Absolut lock-frei und frei von synchronen/asynchronen I/O-Operationen.
+
+pub mod anti_tamper;
+pub mod audit_chain;
+pub mod crypto;
+pub mod deletion_proof;
+pub mod deletion_proof_typestate;
+pub mod ed25519_proof;
+pub mod error;
+pub mod kdf;
+pub mod kv_cipher;
+pub mod kv_segment;
+pub mod kv_shredding;
+pub mod revocation_log;
+pub mod wal_completeness;
+pub mod wal_crypto;
+
+pub use audit_chain::{
+    compute_record_commitment, AuditChain, AuditChainEntry, AuditChainHeadSignature, DataClass,
+    EncryptedCommitmentSalt,
+};
+pub use crypto::KeyManager as CryptoKey;
+pub use crypto::KeyManager;
+pub use deletion_proof::{
+    DeletionLayer, DeletionProof, DeletionProofKeyPair, DeletionScope, ExcludedScope,
+    LayerCleanupProof,
+};
+pub use ed25519_proof::{DeletionProofError, SignatureVersion};
+pub use error::{CryptoError, Result};
+pub use kdf::{derive_key_argon2id, KdfHeader, KdfParams};
+pub use kv_cipher::{EncryptedKvLayer, KvCipher, KvSegmentCipher, ModelFingerprint};
+pub use kv_segment::{
+    eviction_worker::{emergency_wipe, EvictionWorker},
+    segment::KvSegment,
+    store::TenantIsolatedKvStore,
+    CURRENT_KV_KEY_DERIVATION_VERSION,
+};
+pub use kv_shredding::{derive_subkey, KeyRegistry, SubKey, DEFAULT_SHRED_KEY_GROUP_SIZE};
+pub use revocation_log::{RevocationEntry, RevocationLog, RevocationTarget};
+pub use wal_completeness::verify_wal_chain_completeness;

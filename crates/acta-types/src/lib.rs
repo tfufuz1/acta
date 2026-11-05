@@ -1,0 +1,32 @@
+#![deny(dead_code)]
+//! `Acta` Types — Canonical domain models, IDs, budgets, filters, and error types.
+//!
+//! # Architecture Role (Ring 0)
+//!
+//! This crate defines the foundational types and errors for the entire `Acta` system.
+//! In accordance with the Ring-0 architecture, this crate has NO asynchronous runtimes
+//! and NO I/O dependencies.
+
+#![forbid(unsafe_code)]
+#![warn(missing_docs)]
+#![allow(ambiguous_glob_reexports)]
+
+pub mod error;
+pub mod error_dto;
+pub mod model_fingerprint;
+pub mod retrieval_strategy;
+pub mod schema;
+pub mod tenant_scope;
+pub mod tombstone;
+pub mod types;
+
+pub use types::math;
+
+pub use error::{ActaError, Result};
+pub use error_dto::ActaErrorDto;
+pub use model_fingerprint::ModelFingerprint;
+pub use retrieval_strategy::RetrievalStrategy;
+pub use schema::{DocIdWidth, ManifestSchemaVersion};
+pub use tenant_scope::{TenantScopeViolation, TenantScoped};
+pub use tombstone::{SeqBitTombstone, TombstoneSemanticsCheck};
+pub use types::*;

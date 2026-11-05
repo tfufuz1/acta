@@ -1,0 +1,79 @@
+[lints]
+workspace = true
+
+[package]
+name = "acta-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Acta — Core storage, index, and transaction orchestrator engine"
+
+[package.metadata.acta]
+ring = "3"
+
+[dependencies]
+acta-sys = { workspace = true }
+acta-types = { workspace = true }
+acta-ports = { workspace = true }
+acta-mvcc = { workspace = true }
+bytes = { workspace = true }
+acta-crypto = { workspace = true, optional = true }
+acta-sandbox = { workspace = true, optional = true }
+acta-store = { workspace = true }
+blake3 = { workspace = true }
+acta-vector = { workspace = true }
+acta-text = { workspace = true }
+acta-checkpoint = { workspace = true }
+acta-graph = { workspace = true }
+acta-rank = { workspace = true }
+acta-adapt = { workspace = true }
+acta-kvcache = { workspace = true }
+acta-infer-candle = { workspace = true }
+ahash = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
+tokio-util = { version = "0.7.18", features = ["rt"] }
+zeroize = { version = "1", features = ["derive", "zeroize_derive"] }
+thiserror = { workspace = true }
+bincode = { workspace = true }
+hmac = "0.12"
+sha2 = "0.10"
+
+[target.'cfg(loom)'.dependencies]
+loom = "0.7"
+
+[dev-dependencies]
+acta-core = { workspace = true }
+acta-crypto = { workspace = true }
+acta-testkit = { workspace = true }
+tokio = { workspace = true, features = ["full", "test-util"] }
+tempfile = { workspace = true }
+proptest = "1.4"
+loom = "0.7"
+wat = "1"
+acta-vector = { workspace = true, features = ["experimental-diskann"] }
+
+[[test]]
+name = "kv_delete_cascade_e2e"
+path = "tests/kv_delete_cascade_e2e.rs"
+
+[features]
+default = []
+onnx = []
+reranking = []
+# Assumes acta-store has the encryption-at-rest feature (Aufgabe 7 / Spec §15.2)
+encryption-at-rest = ["dep:acta-crypto", "acta-store/encryption-at-rest"]
+bench = []
+sandbox = ["dep:acta-sandbox"]
+experimental-diskann = ["acta-vector/experimental-diskann"]
+background-maintenance = []
+graph-connectivity-health = ["acta-graph/physio-percolation"]
+edge-reinforcement-learning = ["acta-graph/edge-reinforcement-learning"]
+coherence-bonus-fusion = []
+adaptive-candidate-pool-sizing = []
+entity-extraction = []
+auto-extraction-opt-out = []
