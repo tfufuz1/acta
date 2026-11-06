@@ -537,7 +537,7 @@ def render_closing(f) -> None:
 
 * `README.md`, `ARCHITECTURE.md`, `CONSTITUTION.md`, `VETOES.md`, `AGENTS.md`
 * `capabilities.toml`, `deny.toml`, `supply-chain/`
-* `docs/spec/CONTEXTRA_FINALE_PRODUKTSPEZIFIKATION.md`
+* `docs/spec/ACTA_FINALE_PRODUKTSPEZIFIKATION.md`
 * `docs/refactor/router-db-edge-audit.md`, `docs/refactor/mcp-upward-edges-audit.md`
 
 ---
@@ -556,7 +556,7 @@ def main() -> int:
     parser.add_argument("--out-dir", default="docs", help="Zielverzeichnis für die generierte Datei (Standard: docs/).")
     parser.add_argument("--no-timestamp", action="store_true",
                          help="Schreibt zusätzlich KEINE datierte Kopie, nur die stabile Datei ohne Datum im Namen.")
-    parser.add_argument("--stable-name", default="CONTEXTRA_INTERFACE_SPECIFICATION.md",
+    parser.add_argument("--stable-name", default="ACTA_INTERFACE_SPECIFICATION.md",
                          help="Dateiname der stets aktuellen, undatierten Kopie (wird zusätzlich zur datierten Version geschrieben, außer bei --no-timestamp-only).")
     parser.add_argument("--no-timestamp-only", action="store_true",
                          help="Schreibt NUR die stabile Datei ohne Datumsstempel im Namen (kein <name>_YYYYMMDD.md).")

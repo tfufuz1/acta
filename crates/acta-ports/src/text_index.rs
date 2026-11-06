@@ -1,28 +1,9 @@
 //! Text index and segment synthesizer traits.
 
-// FILE-CONTEXT
-// STAND: 2026-09-15T00:00:00Z
-// ZWECK: TextIndex & SegmentSynthesizer Trait-Definitionen für BM25/Inverted Index.
-// INVARIANTEN: AFIT for TextIndex, BoxFuture for SegmentSynthesizer.
-
-use super::BoxFuture;
-use crate::types::{DocId, ScoredDocument, TxId};
 use crate::Result;
+use crate::{ActaError, DocId, ScoredDocument, TxId};
 use serde::{Deserialize, Serialize};
 use std::future::Future;
-
-pub use crate::embedding::TextEmbeddingEngine;
-
-/// Trait-Abstraktion für LLM-Synthesizer zur Segment-Zusammenfassung (REM-Phase).
-pub trait SegmentSynthesizer: Send + Sync {
-    /// Synthetisiert ein Segment von Texten zu einer abstrakten Zusammenfassung.
-    fn synthesize_segment<'a>(
-        &'a self,
-        segment_texts: &'a [&'a str],
-    ) -> BoxFuture<'a, Result<String>>;
-    /// Gibt die Modell-ID des Synthesizers zurück.
-    fn model_id(&self) -> &str;
-}
 
 /// Statistics for a text index.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,6 +22,12 @@ pub struct TextIndexStats {
 /// Verwendet native `async fn` (AFIT) für statischen Dispatch.
 pub trait TextIndex: Send + Sync + 'static {
     /// Searches for documents matching the query.
+    ///
+    /// # Fehler
+    /// Liefert `ActaError::Io` bei Lesefehlern.
+    ///
+    /// # Crash
+    /// Reiner Lesezugriff; keine Mutation auf Festplatte.
     fn search(
         &self,
         query: &str,
@@ -49,19 +36,19 @@ pub trait TextIndex: Send + Sync + 'static {
 
     /// Searches for documents matching the query at a specific sequence number.
     ///
-    /// # Errors
-    /// Returns [`ActaError::CapabilityUnsupported`][crate::ActaError::CapabilityUnsupported]
-    /// with capability `"snapshot_read_at"` if snapshot-isolated text search is not implemented.
-    /// Tested via `capability_coverage` test module.
+    /// # Fehler
+    /// Liefert `ActaError::CapabilityUnsupported` falls nicht implementiert oder `ActaError::Io` bei Lesefehlern.
+    ///
+    /// # Crash
+    /// Reiner historischer Snapshot-Lesezugriff; keine Mutation auf Festplatte.
     fn search_at(
         &self,
-        query: &str,
-        k: usize,
-        seq_no: u64,
+        _query: &str,
+        _k: usize,
+        _seq_no: u64,
     ) -> impl Future<Output = Result<Vec<ScoredDocument>>> + Send {
         async move {
-            let _ = (query, k, seq_no);
-            Err(crate::error::ActaError::capability_unsupported(
+            Err(ActaError::capability_unsupported(
                 "snapshot_read_at",
                 "Text search snapshot isolation (search_at) is not supported by default — tracked in ADR-024",
             ))
@@ -69,39 +56,95 @@ pub trait TextIndex: Send + Sync + 'static {
     }
 
     /// Inserts or updates a document in the index.
+    ///
+    /// # Fehler
+    /// Liefert `ActaError::Io` bei Allokations- oder Tokenisierungsfehlern.
+    ///
+    /// # Crash
+    /// Schreibt in die In-Memory-Postings; Persistierung erfolgt erst beim Commit.
     fn insert(&self, tx: TxId, id: DocId, text: &str) -> impl Future<Output = Result<()>> + Send;
 
     /// Deletes a document from the index.
+    ///
+    /// # Fehler
+    /// Liefert `ActaError::Io` bei Fehlern während der Löschung.
+    ///
+    /// # Crash
+    /// Vermerkt Löschung im Transaktionspuffer; persistent erst nach Commit.
     fn delete(&self, tx: TxId, id: DocId) -> impl Future<Output = Result<()>> + Send;
 
     /// Commits a transaction.
+    ///
+    /// # Fehler
+    /// Liefert `ActaError::Io` bei Schreib- oder fsync-Fehlern.
+    ///
+    /// # Crash
+    /// Schreibt Textsegmente persistent fest; fsync-Fehler führen zu Poisoning.
     fn commit(&self, tx: TxId) -> impl Future<Output = Result<()>> + Send;
 
     /// Rolls back a transaction.
+    ///
+    /// # Fehler
+    /// Liefert `ActaError::Io` bei internen Rollback-Fehlern.
+    ///
+    /// # Crash
+    /// Verwirft unpersistierte Posting-Listen der Transaktion im RAM; crash-sicher.
     fn rollback(&self, tx: TxId) -> impl Future<Output = Result<()>> + Send;
 
     /// Rolls back the entire index state to a specific transaction ID.
+    ///
+    /// # Fehler
+    /// Liefert Fehler falls Transaktion nicht existiert oder unzulässig ist.
+    ///
+    /// # Crash
+    /// Stellt vorherigen Indexzustand wieder her.
     fn rollback_to_tx(&self, tx_id: TxId) -> impl Future<Output = Result<()>> + Send;
 
     /// Returns the last transaction ID processed by the index.
+    ///
+    /// # Fehler
+    /// Liefert Fehler falls TxId nicht ermittelt werden kann.
+    ///
+    /// # Crash
+    /// Deterministischer RAM-/Manifest-Statusabruf ohne Seiteneffekte.
     fn last_tx_id(&self) -> impl Future<Output = Result<TxId>> + Send;
 
     /// Returns the number of documents in the index.
+    ///
+    /// # Fehler
+    /// Keine; unfehlbare Zählung.
+    ///
+    /// # Crash
+    /// Reiner Statusabruf ohne Mutation.
     fn len(&self) -> impl Future<Output = usize> + Send;
 
     /// Returns true if the index is empty.
+    ///
+    /// # Fehler
+    /// Keine; unfehlbare Prüfung.
+    ///
+    /// # Crash
+    /// Reiner Statusabruf ohne Mutation.
     fn is_empty(&self) -> impl Future<Output = bool> + Send {
         async { self.len().await == 0 }
     }
 
     /// Returns index statistics.
+    ///
+    /// # Fehler
+    /// Liefert Fehler falls Statistiken nicht ermittelt werden können.
+    ///
+    /// # Crash
+    /// Reines Abfragen von Zählern im RAM.
     fn stats(&self) -> impl Future<Output = Result<TextIndexStats>> + Send;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures_util::FutureExt;
 
+    /// SPEC: T-SEARCH-2
     #[test]
     fn test_text_index_stats_serialization() {
         let t_stats = TextIndexStats {
@@ -109,13 +152,14 @@ mod tests {
             num_tokens: 1000,
             memory_usage_bytes: 256,
         };
-        let ser = serde_json::to_string(&t_stats).unwrap();
-        let deser: TextIndexStats = serde_json::from_str(&ser).unwrap();
+        let ser = serde_json::to_string(&t_stats).expect("serialize text stats");
+        let deser: TextIndexStats = serde_json::from_str(&ser).expect("deserialize text stats");
         assert_eq!(t_stats.num_documents, deser.num_documents);
     }
 
-    #[tokio::test]
-    async fn test_text_index_search_at_capability() {
+    /// SPEC: T-SEARCH-2
+    #[test]
+    fn test_text_index_search_at_capability() {
         struct TextIndexPlaceholder;
         impl TextIndex for TextIndexPlaceholder {
             async fn search(&self, _: &str, _: usize) -> Result<Vec<ScoredDocument>> {
@@ -154,7 +198,10 @@ mod tests {
             }
         }
         let text_index = TextIndexPlaceholder;
-        let res = text_index.search_at("test", 5, 1).await;
+        let res = text_index
+            .search_at("test", 5, 1)
+            .now_or_never()
+            .expect("now or never");
         assert!(
             !matches!(
                 res,
@@ -164,8 +211,9 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_text_index_defaults() {
+    /// SPEC: T-SEARCH-2
+    #[test]
+    fn test_text_index_defaults() {
         struct MockTextIndex;
         impl TextIndex for MockTextIndex {
             async fn search(&self, _: &str, _: usize) -> Result<Vec<ScoredDocument>> {
@@ -202,9 +250,12 @@ mod tests {
         }
 
         let index = MockTextIndex;
-        let res = index.search_at("query", 10, 42).await;
+        let res = index
+            .search_at("query", 10, 42)
+            .now_or_never()
+            .expect("now or never");
         match res {
-            Err(crate::error::ActaError::CapabilityUnsupported { capability, reason }) => {
+            Err(ActaError::CapabilityUnsupported { capability, reason }) => {
                 assert_eq!(capability, "snapshot_read_at");
                 assert!(reason.contains("ADR-024"), "Unexpected reason: {reason}");
             }

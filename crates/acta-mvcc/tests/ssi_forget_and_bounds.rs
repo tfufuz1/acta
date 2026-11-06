@@ -1,7 +1,16 @@
+//! # Tests für SSI forget_from, Kapazitätsgrenzen und Phantom-Präfix-Konflikte
+//!
+//! Verifiziert das selektive Vergessen fehlgeschlagener Batches, die Einhaltung
+//! von Kapazitätsobergrenzen und Konflikte durch Bereichs-Präfixe.
+
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use acta_mvcc::ssi::{ReadSet, SequenceLogSsiValidator, SsiValidator};
+use acta_testmacros::ctx_test;
 use acta_types::{ActaError, TxId};
 
-#[test]
+// Prüft, dass forget_from alle Schreibregistrierungen eines abgebrochenen Batches ab einer Sequenznummer entfernt.
+#[ctx_test(id = "T-TXN-1")]
 fn forget_from_removes_keys_of_failed_batch() {
     let validator = SequenceLogSsiValidator::new();
     let tx1 = TxId::new(1);
@@ -28,15 +37,18 @@ fn forget_from_removes_keys_of_failed_batch() {
     assert!(validator.validate(tx1, &rs2).is_ok());
 }
 
-#[test]
+// Prüft, dass die Anzahl der getrackten Commit-Schlüssel das konfigurierte Limit nicht überschreitet.
+#[ctx_test(id = "T-TXN-1")]
 fn committed_writes_bounded() {
     let max_keys = 5;
     let validator = SequenceLogSsiValidator::new_with_bounds(max_keys);
 
     for i in 0..1_000_000 {
-        validator.record_commit_key(format!("key_{i}").as_bytes(), i as u64 + 1);
+        let seq = u64::try_from(i).expect("valid u64") + 1;
+        validator.record_commit_key(format!("key_{i}").as_bytes(), seq);
         if (i + 1) % 5 == 0 {
-            let removed = validator.prune_through((i + 1) as u64);
+            #[allow(deprecated)]
+            let removed = validator.prune_through(seq);
             assert!(removed > 0);
         }
     }
@@ -55,7 +67,8 @@ fn committed_writes_bounded() {
     assert!(matches!(res, Err(ActaError::Conflict(_))));
 }
 
-#[test]
+// Prüft, dass das Hinzufügen eines passenden Schlüssels einen Konflikt mit einem gelesenen Präfix erzeugt.
+#[ctx_test(id = "T-TXN-1")]
 fn phantom_prefix_conflict() {
     let validator = SequenceLogSsiValidator::new();
     let tx_a = TxId::new(100);

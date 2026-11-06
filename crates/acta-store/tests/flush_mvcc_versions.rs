@@ -1,8 +1,9 @@
 use bytes::Bytes;
-use acta_core::{StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::manifest::{Manifest, ManifestEntry};
 use acta_store::sstable::{BlockCache, SstableReader};
 use acta_store::{LsmConfig, LsmStorage};
+use acta_types::TxId;
 use std::sync::Arc;
 use tempfile::TempDir;
 

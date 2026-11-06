@@ -1,6 +1,11 @@
 //! Pure In-Memory `StorageEngine` implementation for `memory-only-storage`.
 //!
-//! Provides transactional KV operations with staging and zero disk/WAL/mmap I/O.
+//! WARNUNG (NICHT FUER PRODUKTIONSBETRIEB):
+//! Dieses Modul stellt einen reinen Klartext-In-Memory-Speicher bereit und
+//! darf keinesfalls in produktiven Umgebungen eingesetzt werden. Es ist
+//! ausschließlich unter `test-utils` bzw. in Testumgebungen aktivierbar.
+//!
+//! Provides transactional KV operations with staging and zero disk/WAL I/O.
 
 use bytes::Bytes;
 use parking_lot::RwLock;
@@ -357,7 +362,8 @@ mod tests {
         store.commit(tx).await.unwrap();
         store.flush().await.unwrap();
 
-        let entries = std::fs::read_dir(&path).unwrap().count();
+        // test only
+        let entries = path.read_dir().unwrap().count();
         assert_eq!(
             entries, 0,
             "Directory must remain empty as zero disk I/O occurs"

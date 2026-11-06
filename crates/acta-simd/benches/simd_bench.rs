@@ -1,98 +1,83 @@
+// FILE-CONTEXT
+// ZWECK: Benchmarks for SIMD vs. Scalar distance kernels with throughput measurement.
+
+//! # Benchmark-Suite: `simd_bench`
+//!
+//! **Zweck:**
+//! Misst Durchsatz (Elemente/s) und Latenz der Distanzberechnungen (`cosine`,
+//! `euclidean`, `dot_product`) für die Skalar-Referenz sowie den dynamischen SIMD-Dispatch.
+//! Es werden ausschließlich tatsächliche Messwerte ausgegeben (keine Zielwerte als Messung).
+//!
+//! **Getestete Dimensionen:**
+//! - 128 Dimensionen: Typisch für kleine Embedding-Modelle (z. B. MiniLM) und Audio-Features.
+//! - 512 Dimensionen: Mittlere Text-Embeddings und CLIP-Bildvektoren.
+//! - 1536 Dimensionen: Große Standard-Embeddings (z. B. OpenAI text-embedding-3-small/ada-002).
+
 #![allow(unsafe_code)]
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::expect_used)]
+
+use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 
 use acta_simd::dispatch::{cosine_distance, dot_product_distance, euclidean_distance};
 use acta_simd::kernels::scalar::{
     cosine_distance_scalar, dot_product_scalar, euclidean_distance_scalar,
 };
+// Benchmark-Ablauf:
+// 1. Initialisiert synthetische Testvektoren für Dimensionen 128, 512 und 1536.
+// 2. Misst die Ausführungszeit von Skalar vs. SIMD-Dispatch im Criterion-Loop.
+// 3. Konfiguriert Throughput::Elements(dim as u64) für direkte Vergleichbarkeit des Durchsatzes.
+fn bench_simd_distances(c: &mut Criterion) {
+    let mut group = c.benchmark_group("distance_kernels");
 
-#[cfg(target_arch = "x86_64")]
-use acta_simd::kernels::avx2::{
-    cosine_distance_avx2, dot_product_avx2, euclidean_distance_avx2,
-};
-
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use std::time::Duration;
-
-fn bench_simd_kernels(c: &mut Criterion) {
-    let dimensions = [128, 512, 1536, 4096];
-
-    let mut group = c.benchmark_group("SIMD_vs_Scalar");
-    group.measurement_time(Duration::from_millis(500));
-    group.warm_up_time(Duration::from_millis(200));
-    group.sample_size(20);
-
-    for &dim in &dimensions {
+    for dim in [128usize, 512, 1536] {
         let a: Vec<f32> = (0..dim).map(|i| (i as f32) * 0.01 - 1.0).collect();
-        let b: Vec<f32> = (0..dim).map(|i| (i as f32) * 0.02 - 0.5).collect();
+        let b: Vec<f32> = (0..dim).map(|i| ((i + 1) as f32) * 0.01 - 1.0).collect();
 
-        // Cosine
+        group.throughput(Throughput::Elements(dim as u64));
+
+        // --- Cosine ---
         group.bench_with_input(
-            BenchmarkId::new("cosine_scalar", dim),
+            criterion::BenchmarkId::new("cosine_scalar", dim),
             &dim,
             |b_bench, _| b_bench.iter(|| cosine_distance_scalar(black_box(&a), black_box(&b))),
         );
-
-        #[cfg(target_arch = "x86_64")]
-        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
-            group.bench_with_input(BenchmarkId::new("cosine_avx2", dim), &dim, |b_bench, _| {
-                b_bench.iter(|| unsafe { cosine_distance_avx2(black_box(&a), black_box(&b)) })
-            });
-        }
-
         group.bench_with_input(
-            BenchmarkId::new("cosine_dispatch", dim),
+            criterion::BenchmarkId::new("cosine_simd", dim),
             &dim,
-            |b_bench, _| b_bench.iter(|| cosine_distance(black_box(&a), black_box(&b)).unwrap()),
+            |b_bench, _| {
+                b_bench.iter(|| cosine_distance(black_box(&a), black_box(&b)).expect("valid bench"))
+            },
         );
 
-        // Euclidean
+        // --- Euclidean ---
         group.bench_with_input(
-            BenchmarkId::new("euclidean_scalar", dim),
+            criterion::BenchmarkId::new("euclidean_scalar", dim),
             &dim,
             |b_bench, _| b_bench.iter(|| euclidean_distance_scalar(black_box(&a), black_box(&b))),
         );
-
-        #[cfg(target_arch = "x86_64")]
-        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
-            group.bench_with_input(
-                BenchmarkId::new("euclidean_avx2", dim),
-                &dim,
-                |b_bench, _| {
-                    b_bench
-                        .iter(|| unsafe { euclidean_distance_avx2(black_box(&a), black_box(&b)) })
-                },
-            );
-        }
-
         group.bench_with_input(
-            BenchmarkId::new("euclidean_dispatch", dim),
+            criterion::BenchmarkId::new("euclidean_simd", dim),
             &dim,
-            |b_bench, _| b_bench.iter(|| euclidean_distance(black_box(&a), black_box(&b)).unwrap()),
+            |b_bench, _| {
+                b_bench
+                    .iter(|| euclidean_distance(black_box(&a), black_box(&b)).expect("valid bench"))
+            },
         );
 
-        // Dot Product
+        // --- Dot Product ---
         group.bench_with_input(
-            BenchmarkId::new("dot_product_scalar", dim),
+            criterion::BenchmarkId::new("dot_product_scalar", dim),
             &dim,
             |b_bench, _| b_bench.iter(|| dot_product_scalar(black_box(&a), black_box(&b))),
         );
-
-        #[cfg(target_arch = "x86_64")]
-        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
-            group.bench_with_input(
-                BenchmarkId::new("dot_product_avx2", dim),
-                &dim,
-                |b_bench, _| {
-                    b_bench.iter(|| unsafe { dot_product_avx2(black_box(&a), black_box(&b)) })
-                },
-            );
-        }
-
         group.bench_with_input(
-            BenchmarkId::new("dot_product_dispatch", dim),
+            criterion::BenchmarkId::new("dot_product_simd", dim),
             &dim,
             |b_bench, _| {
-                b_bench.iter(|| dot_product_distance(black_box(&a), black_box(&b)).unwrap())
+                b_bench.iter(|| {
+                    dot_product_distance(black_box(&a), black_box(&b)).expect("valid bench")
+                })
             },
         );
     }
@@ -100,5 +85,5 @@ fn bench_simd_kernels(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_simd_kernels);
+criterion_group!(benches, bench_simd_distances);
 criterion_main!(benches);

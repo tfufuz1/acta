@@ -1,28 +1,11 @@
-# acta-vector
+HNSW-Vektorindex mit Arena, löschbaren Slots und verschlüsseltem Snapshot.
 
-`acta-vector` stellt den HNSW- und DiskANN-Vektorindex sowie Skalar-/RaBitQ-Quantisierung bereit (Ring 0 / In Migration nach `acta-vector`).
+## Status
 
-## Zweck
+Ring 2. Ist-Zustand: vorhanden (13.624 Zeilen in 3.0.0); kompiliert nicht; 46 % des Umfangs liegen außerhalb des Soll (`diskann`, `quantize`, `quantize_rabitq`, `partial_rebuild`, `acorn`); `std::fs` und `buffer_removed` an 51 Stellen. Soll-Zustand nach [`docs/SPEC.md`](../../docs/SPEC.md), Abschnitt 5.1 und 8.
 
-Core Vector Search Engine für k-NN Abfragen, HNSW-Graphaufbau, DiskANN Disk-Backed Indexierung, SQ8 Skalarquantisierung und Mmap-Persistenz.
+## Abhängigkeiten
 
-## Ring-Zugehörigkeit & Status
+Erlaubt laut SPEC 5.3: `types`, `ports`, `simd`, `crypto`.
 
-- **Ring:** Ring 0 (Synchroner Vektorindex-Kern)
-- **Status:** 🟡 In Migration (Zielzustand: `acta-vector`)
-- **Sicherheits-Invariante:** `#![forbid(unsafe_code)]` (SIMD-Kernels wurden nach `acta-simd` ausgelagert)
-
-## Öffentliche API-Übersicht
-
-- **HNSW Index:** `HnswIndex`, `HnswConfig`, `RebuildStatus`
-- **DiskANN Index:** `DiskAnnIndex`, `DiskAnnConfig`, `DiskAnnFallbackPolicy`
-- **Quantisierung:** `ScalarQuantizer`, `RaBitQQuantizer`
-- **Persistenz:** `HnswHeader`, `MmapIndex`
-
-## Safety & SIMD Isolation
-
-Im Zuge der Zielarchitektur v2 wurden alle hardwarenahen SIMD-Assembly/Intrinsics-Codeblöcke aus `acta-vector` in das dedizierte Unsafe-Insel-Crate `acta-simd` ausgelagert. `acta-vector` selbst erzwingt `#![forbid(unsafe_code)]`.
-
-## Architektur & Verweise
-
-Details zum HNSW- und DiskANN-Index finden sich in [`ARCHITECTURE.md`](../../ARCHITECTURE.md) (folgt in Kürze) sowie `README.md` §7.4.
+Das Crate ist Teil der Architekturprüfung (`acta-arch-tests`). Abhängigkeiten werden nicht von Hand gepflegt, sondern gegen die Matrix geprüft (AR-1, AR-11).

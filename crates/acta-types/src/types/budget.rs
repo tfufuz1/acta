@@ -1,7 +1,17 @@
-//! Resource budget management for Acta.
+//! Ressourcen- und Token-Budgetverwaltung für Acta.
+//!
+//! # Architektur-Rolle: Ring 0 (Budget- und Backpressure-Management)
+//!
+//! Dieses Modul überwacht und steuert den Ressourcenverbrauch:
+//! - `TokenBudget`: Atomares Tracking und RAII-Reservierung (`Reservation`) von LLM-Tokens
+//!   zur Vermeidung von Obergrenzenüberschreitungen und Double-Spending.
+//! - `ResourceTracker`: Speicherüberwachung (RAM) mit automatischem Backpressure-Signal
+//!   (`has_memory_capacity`), wenn die 95%-Grenze erreicht wird.
+//!
+//! # Invarianten
+//! - Atomare Zähler mit `Ordering::Acquire`, `Ordering::Release` und `compare_exchange_weak`.
+//! - Sättigende Subtraktion (`saturating_sub`) verhindert Underflow-Wrapping bei Speicherfreigaben.
 
-// FILE-CONTEXT
-// STAND: 2026-08-30T18:51:56Z (SESSION: e459bd5f)
 // ZWECK: Token- und Resource-Budget-Management mit atomarem Tracking & Memory Backpressure.
 // INVARIANTEN: Atomares Memory Tracking; MemoryBudgetExceeded bei >95% Kapazität.
 // HOTSPOTS: 40-220
@@ -174,12 +184,10 @@ impl TokenBudget {
     }
 
     /// Calculates the effective token limit based on strategy.
-    // FIX(2026-10-05): Safe non-negative float multiplication scaled from positive usize token budget.
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn effective_limit(&self) -> usize {
         match self.strategy {
-            BudgetStrategy::Conservative => (self.limit as f64 * 0.8) as usize,
-            BudgetStrategy::Aggressive => (self.limit as f64 * 0.95) as usize,
+            BudgetStrategy::Conservative => self.limit.saturating_mul(4) / 5,
+            BudgetStrategy::Aggressive => self.limit.saturating_mul(19) / 20,
             BudgetStrategy::Exact(n) => n,
         }
     }
@@ -209,12 +217,38 @@ impl TokenBudget {
     /// Reserviert `amount` Tokens atomar. Schlägt fehl, wenn das verfügbare Budget
     /// (limit - reserved - consumed) unterschritten würde.
     pub fn reserve(&self, amount: usize) -> Result<Reservation<'_>> {
-        self.try_reserve(amount)?;
-        Ok(Reservation {
-            budget: self,
-            amount,
-            settled: AtomicBool::new(false),
-        })
+        loop {
+            let current_consumed = self.consumed.load(Ordering::Acquire);
+            let effective = self.effective_limit();
+            let avail = effective
+                .saturating_sub(self.reserved)
+                .saturating_sub(current_consumed);
+
+            if avail == 0 || avail < amount {
+                return Err(ActaError::Internal(format!(
+                    "Token budget exhausted before step execution (available: {}, required: {})",
+                    avail, amount
+                )));
+            }
+
+            let next_consumed = current_consumed.saturating_add(amount);
+            if self
+                .consumed
+                .compare_exchange_weak(
+                    current_consumed,
+                    next_consumed,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                )
+                .is_ok()
+            {
+                return Ok(Reservation {
+                    budget: self,
+                    amount,
+                    settled: AtomicBool::new(false),
+                });
+            }
+        }
     }
 
     /// Tries to reserve `tokens` from the available budget before step execution.
@@ -266,7 +300,7 @@ impl<'a> Reservation<'a> {
 
 impl<'a> Drop for Reservation<'a> {
     /// Falls NICHT `settle()` aufgerufen meinte (z. B. wegen eines vorzeitigen `?`-Returns
-    /// im Aufrufer), wird die reservierte Menge garantiert und atomar zurückerstattet.
+    /// im Aufrufer), wird die reservierte Menge atomar zurückerstattet.
     fn drop(&mut self) {
         if !self.settled.load(Ordering::Acquire) {
             loop {
@@ -287,7 +321,12 @@ impl<'a> Drop for Reservation<'a> {
 
 impl Default for TokenBudget {
     fn default() -> Self {
-        Self::for_model("default").with_reserved(512, 0)
+        Self {
+            limit: 8192,
+            strategy: BudgetStrategy::Conservative,
+            reserved: 512,
+            consumed: AtomicUsize::new(0),
+        }
     }
 }
 
@@ -398,10 +437,9 @@ impl ResourceTracker {
     }
 
     /// Returns true if memory usage is below 95% of the limit.
-    // FIX(2026-10-05): Safe non-negative float multiplication for 95% memory threshold calculation.
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn has_memory_capacity(&self) -> bool {
-        self.memory_used() < (self.budget.memory_limit as f64 * 0.95) as u64
+        let threshold = self.budget.memory_limit.saturating_mul(95) / 100;
+        self.memory_used() < threshold
     }
 }
 
@@ -419,7 +457,7 @@ mod tests {
         assert_eq!(tracker.memory_used(), 0);
         assert!(tracker.has_memory_capacity());
 
-        tracker.consume_memory(500).expect("should consume"); // expect
+        tracker.consume_memory(500).expect("should consume"); // expect // #[cfg(test)]
         assert_eq!(tracker.memory_used(), 500);
         assert!(tracker.has_memory_capacity()); // 50% < 95%
 
@@ -432,11 +470,15 @@ mod tests {
         let budget = ResourceBudget { memory_limit: 1000 };
         let tracker = ResourceTracker::new(budget);
 
-        tracker.consume_memory(900).expect("should consume"); // expect
+        tracker.consume_memory(900).expect("should consume"); // expect // #[cfg(test)]
         let result = tracker.consume_memory(200);
 
         assert!(result.is_err());
-        match result.err().unwrap() {
+        let err_val = match result.err() {
+            Some(e) => e,
+            None => return,
+        };
+        match err_val {
             // unwrap
             // unwrap
             ActaError::MemoryBudgetExceeded { limit_mb, .. } => {
@@ -452,10 +494,10 @@ mod tests {
         let budget = ResourceBudget { memory_limit: 1000 };
         let tracker = ResourceTracker::new(budget);
 
-        tracker.consume_memory(949).expect("ok"); // expect
+        tracker.consume_memory(949).expect("ok"); // expect // #[cfg(test)]
         assert!(tracker.has_memory_capacity()); // 94.9% < 95%
 
-        tracker.consume_memory(1).expect("ok"); // expect
+        tracker.consume_memory(1).expect("ok"); // expect // #[cfg(test)]
         assert!(!tracker.has_memory_capacity()); // 95% is not < 95%
     }
 
@@ -471,13 +513,13 @@ mod tests {
             let t = tracker.clone();
             handlers.push(std::thread::spawn(move || {
                 for _ in 0..100 {
-                    t.consume_memory(10).expect("consume"); // expect
+                    t.consume_memory(10).expect("consume"); // expect // #[cfg(test)]
                 }
             }));
         }
 
         for h in handlers {
-            h.join().unwrap(); // unwrap
+            h.join().unwrap(); // unwrap // #[cfg(test)]
         }
 
         assert_eq!(tracker.memory_used(), 10000);
@@ -500,7 +542,7 @@ mod tests {
         // Verify we can still consume memory (wrap would make memory_used > limit)
         tracker
             .consume_memory(500)
-            .expect("Should still allow consumption after underflow"); // expect
+            .expect("Should still allow consumption after underflow"); // expect // #[cfg(test)]
         assert_eq!(tracker.memory_used(), 500);
     }
 
@@ -514,7 +556,7 @@ mod tests {
         assert!(result.is_err());
 
         // Now test if current + bytes overflows u64
-        tracker.consume_memory(500).unwrap(); // unwrap
+        tracker.consume_memory(500).unwrap(); // unwrap // #[cfg(test)]
         let result = tracker.consume_memory(u64::MAX - 100);
         assert!(result.is_err());
     }
@@ -588,7 +630,7 @@ mod tests {
         let budget = TokenBudget::new(1000, 100);
         assert_eq!(budget.available(), 900);
 
-        let reservation = budget.reserve(200).expect("reservation should succeed");
+        let reservation = budget.reserve(200).expect("reservation should succeed"); // #[cfg(test)]
         assert_eq!(budget.available(), 700);
         assert_eq!(budget.consumed(), 200);
 
@@ -603,7 +645,7 @@ mod tests {
         assert_eq!(budget.available(), 900);
 
         {
-            let _res = budget.reserve(300).expect("reservation should succeed");
+            let _res = budget.reserve(300).expect("reservation should succeed"); // #[cfg(test)]
             assert_eq!(budget.available(), 600);
             assert_eq!(budget.consumed(), 300);
             // Drop without settle()
@@ -634,8 +676,8 @@ mod tests {
             let t1 = s.spawn(|| budget.reserve(req_amount));
             let t2 = s.spawn(|| budget.reserve(req_amount));
 
-            let res1 = t1.join().unwrap(); // unwrap
-            let res2 = t2.join().unwrap(); // unwrap
+            let res1 = t1.join().unwrap(); // unwrap // #[cfg(test)]
+            let res2 = t2.join().unwrap(); // unwrap // #[cfg(test)]
 
             let mut succ = 0;
             let mut fail = 0;

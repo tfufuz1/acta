@@ -1,3 +1,22 @@
+// Begründung: Integrationstest-Fixtures und Assertions dürfen Test-Unwraps, Indizierung und Test-Zeitgeber verwenden.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::disallowed_methods,
+    clippy::disallowed_types,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::unnecessary_cast,
+    clippy::type_complexity
+)]
+
+//! Testsuite `bm25_edge_cases.rs` für acta-text.
+//!
+//! # Ring-Zuordnung
+//! Ring LAB / Testbereich.
+
 // FILE-CONTEXT: Integration tests for BM25 score edge cases.
 // ZWECK: Testet score_term_with_params und score_term mit degenerierten/Grenzfall-Eingaben.
 // INVARIANTEN: BM25-Scores dürfen niemals NaN oder Infinity sein und müssen für alle Kantenfälle definiert reagieren.

@@ -1,7 +1,7 @@
-// Testpflicht AK-13 (docs/specs/CONTEXTRA_SPEC_v2.md)
+// Testpflicht AK-13 (docs/specs/ACTA_SPEC_v2.md)
 
-use acta_core::TxId;
 use acta_store::wal::{Wal, WalConfig, WalFlusherConfig, WalOp};
+use acta_types::TxId;
 use std::sync::mpsc;
 use std::sync::Arc;
 use tempfile::TempDir;

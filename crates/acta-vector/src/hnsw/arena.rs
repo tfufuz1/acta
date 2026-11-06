@@ -5,7 +5,7 @@
 //! Arena Allocator for HNSW neighbor lists and O(1) Backlink management.
 
 use ahash::AHashMap;
-use acta_core::{ActaError, Result};
+use acta_types::{ActaError, Result};
 use parking_lot::RwLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -50,7 +50,6 @@ impl BacklinkTable {
 }
 
 /// Contiguous 64-byte aligned arena allocator for HNSW node connections with free-list slot reuse.
-#[derive(Debug)]
 pub struct HnswArena {
     pub arena: RwLock<Vec<u32>>,
     pub offsets: RwLock<Vec<usize>>,
@@ -59,8 +58,9 @@ pub struct HnswArena {
     pub counts: RwLock<Vec<u8>>,
     pub free_list: RwLock<Vec<usize>>,
     pub total_allocated: AtomicU64,
+    pub vector_storage: RwLock<Vec<f32>>,
+    pub arena_guard: Option<std::sync::Arc<dyn acta_ports::ArenaGuard>>,
 }
-
 impl Default for HnswArena {
     fn default() -> Self {
         Self::new()
@@ -78,6 +78,8 @@ impl HnswArena {
             counts: RwLock::new(Vec::new()),
             free_list: RwLock::new(Vec::new()),
             total_allocated: AtomicU64::new(0),
+            vector_storage: RwLock::new(Vec::new()),
+            arena_guard: None,
         }
     }
 
@@ -291,6 +293,78 @@ impl HnswArena {
             }
         }
         false
+    }
+
+    /// Zeroizes connection memory for a node slot across all layers, clears counts,
+    /// and then marks the node's slot as free in the free_list.
+    /// Stores vector payload in a contiguous slot within the arena.
+    pub fn store_vector(&self, ram_idx: usize, dim: usize, vec: &[f32]) {
+        let mut storage = self.vector_storage.write();
+        let required = (ram_idx + 1) * dim;
+        if storage.len() < required {
+            storage.resize(required, 0.0);
+        }
+        let start = ram_idx * dim;
+        let end = start + dim;
+        storage[start..end].copy_from_slice(vec);
+    }
+
+    /// Reads vector payload from a contiguous slot within the arena.
+    pub fn get_vector_slice(&self, ram_idx: usize, dim: usize) -> Option<Vec<f32>> {
+        let storage = self.vector_storage.read();
+        let start = ram_idx * dim;
+        let end = start + dim;
+        if end <= storage.len() {
+            Some(storage[start..end].to_vec())
+        } else {
+            None
+        }
+    }
+
+    /// Zeroizes vector payload in the arena for a freed slot.
+    pub fn zeroize_vector(&self, ram_idx: usize, dim: usize) {
+        use zeroize::Zeroize;
+        let mut storage = self.vector_storage.write();
+        let start = ram_idx * dim;
+        let end = start + dim;
+        if end <= storage.len() {
+            storage[start..end].zeroize();
+        }
+    }
+
+    pub fn zeroize_and_free_node(&self, ram_idx: usize, max_layer: usize, m: usize) {
+        let offsets = self.offsets.read();
+        let count_offsets = self.count_offsets.read();
+        let mut counts = self.counts.write();
+        let mut arena = self.arena.write();
+
+        if ram_idx < offsets.len() && ram_idx < count_offsets.len() {
+            let node_offset = offsets[ram_idx];
+            let count_start = count_offsets[ram_idx];
+            let count_end = if ram_idx + 1 < count_offsets.len() {
+                count_offsets[ram_idx + 1]
+            } else {
+                counts.len()
+            };
+
+            for layer in 0..=max_layer {
+                if count_start + layer < count_end {
+                    let l_offset = Self::layer_offset(node_offset, layer, m);
+                    let layer_cap = if layer == 0 { m * 2 } else { m };
+                    if l_offset + layer_cap <= arena.len() {
+                        use zeroize::Zeroize;
+                        arena[l_offset..l_offset + layer_cap].zeroize();
+                    }
+                    counts[count_start + layer] = 0;
+                }
+            }
+        }
+        drop(offsets);
+        drop(count_offsets);
+        drop(counts);
+        drop(arena);
+
+        self.free_node(ram_idx);
     }
 
     /// Marks a node's slot as free for future slot reuse.

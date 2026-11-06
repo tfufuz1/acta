@@ -1,8 +1,17 @@
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 // FILE-CONTEXT
 // ZWECK: Differential-Testing & Recall-Regressionstests für HnswIndex::search_knn_acorn (Spec §8.5, §22.4).
 // INVARIANTEN: Zero Panic; Zero Cross-Contamination; Differential vs. NaiveReferenceIndex >= 95% Recall@k.
 
-use acta_core::{DistanceMetric, DocId, TxId, VectorIndex};
+use acta_ports::VectorIndex;
+use acta_types::{DistanceMetric, DocId, TxId};
 use acta_vector::acorn::{compute_gamma_edge_budget, FilteredIndex, NaiveReferenceIndex};
 use acta_vector::hnsw::{HnswConfig, HnswIndex};
 

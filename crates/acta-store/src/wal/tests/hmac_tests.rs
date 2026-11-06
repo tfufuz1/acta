@@ -1,10 +1,12 @@
+//! # Tests fuer WAL HMAC-Verkettung (Ring 1)
+//!
+//! Testet Schutz gegen Vertauschung und Modifikation von Frame-Hashes.
+
 use super::*;
 use crate::wal::KeyManager;
 use crate::wal::Wal;
-use acta_core::TxId;
-#[cfg(feature = "encryption-at-rest")]
-use acta_crypto::wal_crypto::WalHmac;
-#[cfg(feature = "encryption-at-rest")]
+use crate::wal::WalHmac;
+use acta_types::TxId;
 use std::sync::Arc;
 use tempfile::tempdir;
 use tokio::fs;

@@ -6,30 +6,71 @@
 // HOTSPOTS: Bm25Scorer::search, Bm25Scorer::insert
 // STAND: TS:2026-09-09T13:22:45Z (SESSION: dc71d70)
 
-//! Hybrid Search Engine & BM25 Scoring (WP-2.1)
+//! BM25-Volltextindex als verschlüsselte Segmente mit deutschem Analyzer.
 //!
-//! Evaluates Inverse Document Frequencies integrating natively into the
-//! `fusion.rs` layer in `acta-db`.
+//! # Ring und Abhängigkeiten
+//! Ring 2. Erlaubte Workspace-Abhängigkeiten: `acta-types`, `acta-ports`, `acta-crypto` (SPEC §5.2, §5.3, D-88).
+//! Konsument: `acta-engine`.
 //!
-//! ## Scoring Models & Opt-in Features
-//! - **Standard BM25**: Default scoring algorithm used for keyword and morphological search.
-//! - **BM25F (Field-Weighted BM25)**: Opt-in field-weighted scoring model available via the
-//!   `bm25f` Cargo feature. BM25F is strictly opt-in and is not part of the default execution path.
+//! # Hauptkomponenten
+//! - Invertierte Textindizes und segmentbasierter BM25-Index
+//! - Deutscher Analyzer `de/1` mit Kompositazerlegung und normalisiertem Vokabular
+//! - Block-Max WAND Pruning auf 128er-Blöcken
 
 #![forbid(unsafe_code)]
+// Begründung: Unit-Tests in src/ dürfen für Test-Assertions und Test-Fixtures Test-Helfer verwenden.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing,
+        clippy::unreachable,
+        clippy::disallowed_methods,
+        clippy::disallowed_types,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::unnecessary_cast,
+    )
+)]
 
+pub mod analyzer;
 pub mod bm25;
+pub mod buffer;
 pub mod domain;
+pub mod erasure;
 pub mod inverted;
+pub mod member;
 pub mod morphology;
+pub mod phrase;
 pub mod posting_list;
+pub mod postings;
+pub mod segment;
+pub mod stats;
 pub mod stream;
 pub mod tokenizer;
 pub mod wand;
 
+pub use analyzer::{
+    compute_term_tag, get_analyzer, Analyzer, GermanAnalyzer, UndAnalyzer, UndeterminedAnalyzer,
+};
+pub use buffer::{open_binding_envelope, seal_binding_envelope, TextBufRecord, TextBuffer};
+pub use erasure::TextErasureLayer;
+pub use member::{compute_member_hash, MembershipBlock};
+pub use phrase::match_phrase_positions;
+pub use postings::PostingBlock;
+pub use segment::{
+    DictEntry, DocEntry, SegmentHeader, SegmentReader, SegmentWriter, POSTING_BLOCK_SIZE,
+};
+pub use stats::SegmentStats;
+
 pub use bm25::{score_term_bm25f, FieldId, FieldWeight, BM25, BM25F};
 pub use domain::{DomainVocabulary, LegalDomainVocabulary, MedicalDomainVocabulary};
-pub use inverted::{BM25MorphIndex, InvertedIndex, Language};
+pub use inverted::{
+    BM25MorphIndex, InvertedIndex, Language, ParsedTextTarget, PurgeReport, PurgeStats, ScanTarget,
+    TextPurger,
+};
 pub use morphology::{normalize_umlauts, GermanCompoundSplitter, MorphologicalTokenizer};
 pub use posting_list::{Posting, PostingList, ResidentPostingIndex};
 pub use stream::{Bm25CandidateStream, DEFAULT_STREAM_BATCH_SIZE};
@@ -38,12 +79,14 @@ pub use tokenizer::{DefaultTokenizer, GermanMorphTokenizer, Tokenizer};
 use acta_ports::{TextIndex, TextIndexStats};
 use acta_types::{DocId, Result, ScoredDocument, TxId};
 
-/// Evaluates keyword weights and applies standard BM25 logic.
+// ANCHOR[acta-text:LIB-001]
+/// Berechnet Begriffsgewichte und wendet die Standard-BM25-Relevanzbewertung an.
 pub struct Bm25Scorer<S: acta_ports::StorageEngine> {
     index: InvertedIndex<S>,
 }
 
 impl<S: acta_ports::StorageEngine> Bm25Scorer<S> {
+    // ANCHOR[acta-text:LIB-002]
     pub fn new(storage: std::sync::Arc<S>, namespace: &str) -> Self {
         Self {
             index: InvertedIndex::new(storage, namespace),
@@ -52,45 +95,52 @@ impl<S: acta_ports::StorageEngine> Bm25Scorer<S> {
 }
 
 impl<S: acta_ports::StorageEngine> TextIndex for Bm25Scorer<S> {
+    // ANCHOR[acta-text:LIB-003]
     async fn search(&self, query: &str, k: usize) -> Result<Vec<ScoredDocument>> {
         self.index.search(query, k).await
     }
 
-    /// Searches the inverted index at a specific MVCC sequence number snapshot.
-    ///
-    /// Snapshot isolation is preserved by delegating to `InvertedIndex::search_at`.
+    // ANCHOR[acta-text:LIB-004]
     async fn search_at(&self, query: &str, k: usize, seq_no: u64) -> Result<Vec<ScoredDocument>> {
         self.index.search_at(query, k, seq_no).await
     }
 
+    // ANCHOR[acta-text:LIB-005]
     async fn insert(&self, tx: TxId, id: DocId, text: &str) -> Result<()> {
         self.index.insert(tx, id, text).await
     }
 
+    // ANCHOR[acta-text:LIB-006]
     async fn delete(&self, tx: TxId, id: DocId) -> Result<()> {
         self.index.delete(tx, id).await
     }
 
+    // ANCHOR[acta-text:LIB-007]
     async fn commit(&self, tx: TxId) -> Result<()> {
         self.index.commit(tx).await
     }
 
+    // ANCHOR[acta-text:LIB-008]
     async fn rollback(&self, tx: TxId) -> Result<()> {
         self.index.rollback(tx).await
     }
 
+    // ANCHOR[acta-text:LIB-009]
     async fn rollback_to_tx(&self, tx_id: TxId) -> Result<()> {
         self.index.rollback_to_tx(tx_id).await
     }
 
+    // ANCHOR[acta-text:LIB-010]
     async fn last_tx_id(&self) -> Result<TxId> {
         self.index.last_tx_id().await
     }
 
+    // ANCHOR[acta-text:LIB-011]
     async fn len(&self) -> usize {
         self.index.len().await
     }
 
+    // ANCHOR[acta-text:LIB-012]
     async fn stats(&self) -> Result<TextIndexStats> {
         self.index.stats().await
     }
@@ -101,17 +151,17 @@ mod tests {
     use super::*;
     use acta_ports::BoxFuture;
     use acta_ports::{StorageEngine, StorageStats};
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
     use std::sync::Mutex;
 
     struct MockStorage {
-        data: Mutex<HashMap<Vec<u8>, Vec<u8>>>,
+        data: Mutex<BTreeMap<Vec<u8>, Vec<u8>>>,
     }
 
     impl MockStorage {
         fn new() -> Self {
             Self {
-                data: Mutex::new(HashMap::new()),
+                data: Mutex::new(BTreeMap::new()),
             }
         }
     }
@@ -125,7 +175,7 @@ mod tests {
                     .unwrap()
                     .get(key)
                     .cloned()
-                    .map(bytes::Bytes::from)) // unwrap allowed
+                    .map(bytes::Bytes::from))
             })
         }
 
@@ -138,7 +188,7 @@ mod tests {
             Box::pin(async move {
                 self.data
                     .lock()
-                    .unwrap() // unwrap allowed
+                    .unwrap()
                     .insert(key.to_vec(), value.to_vec());
                 Ok(())
             })
@@ -146,7 +196,7 @@ mod tests {
 
         fn delete<'a>(&'a self, _tx_id: TxId, key: &'a [u8]) -> BoxFuture<'a, Result<()>> {
             Box::pin(async move {
-                self.data.lock().unwrap().remove(key); // unwrap allowed
+                self.data.lock().unwrap().remove(key);
                 Ok(())
             })
         }
@@ -215,7 +265,7 @@ mod tests {
             prefix: &'a [u8],
         ) -> BoxFuture<'a, Result<Vec<(Vec<u8>, Vec<u8>)>>> {
             Box::pin(async move {
-                let data = self.data.lock().unwrap(); // unwrap allowed
+                let data = self.data.lock().unwrap();
                 let mut res = Vec::new();
                 for (k, v) in data.iter() {
                     if k.starts_with(prefix) {
@@ -235,6 +285,7 @@ mod tests {
         }
     }
 
+    // ANCHOR[acta-text:TEST-LIB-001]
     #[tokio::test]
     async fn bm25_scorer_case_full_lifecycle() -> Result<()> {
         let storage = std::sync::Arc::new(MockStorage::new());
@@ -265,7 +316,4 @@ mod tests {
 
         Ok(())
     }
-
-    // REVIEW-PASS[1/2] Re-verified gate-stack, zero unsafe, APM-7 slicing safety, and chaos engineering scenarios. (TS: 2026-09-10T23:48:00Z) (SESSION: f3f5ff38) (PRÜFER-KONTEXT: FRESH)
-    // REVIEW-PASS[2/2] Tier-2 audit verified: gate-stack green, 0 unsafe, APM-14/16/22/23/24/36 validated, 3x concurrency runs clean. (TS: 2026-09-13T01:25:00Z) (SESSION: 89a61398) (PRÜFER-KONTEXT: FRESH)
 }

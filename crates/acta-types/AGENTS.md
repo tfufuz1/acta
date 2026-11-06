@@ -1,55 +1,47 @@
-# AGENTS.md — acta-types
-> Ring 0 · stable · Quelle: capabilities.toml · Spec: K.30, §0, §3, §4, §20, §D
+# AGENTS – acta-types
 
-## 1. Zweck
-`acta-types` stellt die zentralen, kanonischen Domänentypen, Identifikatoren (`DocId`, `TxId`, `TenantId`), Filter-ASTs, Budget- und Fehlerstrukturen für das gesamte Acta-Workspace bereit.
-Die Crate ist strikt synchron (P26), frei von I/O- oder Async-Runtimes und erzwingt `#![forbid(unsafe_code)]`.
+Abgeleitet aus [`docs/SPEC.md`](../../docs/SPEC.md) (8.1, 9.1 bis 9.3, Anhang C, F.10). Bei Widerspruch gilt die SPEC (D-98). Gemeinsame Regeln: [`AGENTS.md`](../../AGENTS.md).
 
-## 2. Modul-Karte
-| Datei / Verzeichnis | Verantwortung |
-| :--- | :--- |
-| `src/lib.rs` | Re-Exporte der zentralen Typen und Modul-Deklarationen. |
-| `src/error.rs` | `ActaError` als zentrales Fehler-Enum für alle Workspace-Crates. |
-| `src/error_dto.rs` | `ActaErrorDto` für serialisierbare Fehlerübertragung an FFI/IPC-Grenzen. |
-| `src/model_fingerprint.rs` | `ModelFingerprint` zur Eindeutigkeit von Einbettungs- und LLM-Modellgewichten. |
-| `src/retrieval_strategy.rs` | `RetrievalStrategy` zur Kennzeichnung der Retrieval-Modi (Vector, Text, Graph, Hybrid, Global). |
-| `src/schema.rs` | `ManifestSchemaVersion` und `DocIdWidth` für Schema-Kompatibilität (64-bit vs. 128-bit). |
-| `src/tenant_scope.rs` | `TenantScoped` Wrapper-Typ und `TenantScopeViolation` für Mandantenisolierung. |
-| `src/tombstone.rs` | `TombstoneSemanticsCheck` Trait und `SeqBitTombstone` zur Marker-Prüfung. |
-| `src/types/budget.rs` | `TokenBudget`, `Reservation`, `ResourceBudget` und `ResourceTracker`. |
-| `src/types/domain/ids.rs` | Kanonische Identifikatoren: `TenantId`, `CollectionId`, `DocId`, `EntityId`, `TxId`. |
-| `src/types/domain/document.rs` | `DistanceMetric`, `Embedding`, `ScoredDocument` und `RerankResult`. |
-| `src/types/domain/misc.rs` | Graphentypen (`Entity`, `Edge`), Zettelkasten-Links, Bitemporalität, TTL-Metadaten. |
-| `src/types/filter.rs` | Metadaten-Filter-AST (`FilterExpr`) und Evaluierungs-Engine. |
-| `src/types/importance.rs` | `ImportanceScore`, `DecayFunction` und `MemoryImportance`. |
-| `src/types/math.rs` | Mathematische Hilfsfunktionen (`cosine_similarity`). |
-| `src/types/saos.rs` | SAOS-Typen: `HybridQuery`, `HybridQueryBuilder`, `ContextChunk`, `ContextWindow`, `FusionWeights`. |
-| `src/types/saturating.rs` | `SaturatingU8` Saturated Math Wrapper. |
+**Zweck:** Reine Datentypen: IDs, Tags, Schlüssel, Fehler, Löschtypen. Kein I/O.
 
-## 3. Invarianten
-- **INV-TENANT-1:** `TenantId::try_new(0)` muss immer ein `Err(ActaError::InvalidInput)` liefern. Test: `cargo test -p acta-types --lib types::domain::tests::ids_tests::test_tenant_id_zero_rejected`.
-- **INV-TYPE-REGISTRY:** Neue öffentliche Typen müssen zwingend in `docs/TYPE_REGISTRY.md` eingetragen sein. Prüfung: `cargo xtask check-type-registry <TypName>`.
-- **INV-DOCID-IDENTITY:** `DocId` kapselt standardmäßig `u64`. Unter Feature `docid-128` kapselt `DocId` `u128` (ADR-082 / Schema V2).
+**Ring und Abhängigkeiten:** Ring 0. Erlaubt: keine anderen Acta-Crates (AR-5, T-ARCH-1). Kein `async`, kein I/O, keine Zeit, kein Zufall.
 
-## 4. Verboten / Anti-Patterns
-- **VERBOTEN:** Verwendung von `TenantId::new(0)` in Produktionspfaden (`TenantId::new(0)` ist deprecated, stets `TenantId::try_new` nutzen).
-- **VERBOTEN:** Ad-hoc-Fehlertypen außerhalb von `ActaError` an öffentlichen Crate-Grenzen definieren.
-- **VERBOTEN:** Async-Blockaden, I/O oder Abhängigkeiten zu `tokio` einfügen.
+## Fachprofil (Arbeitsrolle)
 
-## 5. Nebenläufigkeit, Async- und Lock-Regeln
-- Ring 0 Purity (P26): Keine Async-Runtimes (`tokio`), keine Mutexes/RwLocks im Datenpfad von `acta-types`.
-- Alle Typen sind reine Datenstrukturen (`Send + Sync`, überwiegend `Clone` / `Copy` wo anwendbar).
+Principal Engineer für Datenmodellierung und Binärformate. Hintergrund: Schlüsselkodierung wie im FoundationDB-Tuple-Layer, Typzustandsmodelle in sicherheitskritischem Rust. Dieses Profil beschreibt Arbeitsweise und Fachwissen und begründet keine eigene Anforderung.
 
-## 6. Verifikation
+- Ordnungserhaltende, eindeutig dekodierbare Schlüsselkodierung: feste Längen, Präfixfreiheit, Bereichsabfragen, absteigendes Sequenzfeld `!commit_seq`. Typische Fehlerklassen: Endianness, Längenfelder, Nullbytes.
+- Rust-Typsystem als Beweiswerkzeug: Newtypes, Typestate, private Konstruktoren, `#[non_exhaustive]`. Ungültige Zustände sind nicht konstruierbar.
+- `serde`-Grenzen (Arrays über 32 Bytes brauchen manuelle Implementierungen mit Längenprüfung), `Zeroize`/`ZeroizeOnDrop`, Debug-Ausgabe ohne Geheimnisse.
+- Kanonische Serialisierung (stabile Bytes für Signaturen und Hashes), Versionierung von Wire-Formaten.
+
+## Normative Anker
+
+- **Schlüsselraum:** `region(1) ‖ tenant_tag(16) ‖ coll_tag(16) ‖ cluster_tag(16) ‖ doc_tag(16) ‖ family(1) ‖ sub(u32) ‖ !commit_seq(u64)` = 78 Byte, big-endian (9.1, D-31). Region `LOC` und Familie `Locator` entfallen (D-70).
+- **Matcher:** nur `Range{lo,hi}` fester Tag-Länge oder `Exact`; keine String-Präfixe, keine variablen Präfixe (D-10, T-ISO-2).
+- **Tags:** `BLAKE3-keyed(K_idx, label ‖ eingaben)[0..16]`, Eingaben je Feld mit `u32`-Längenpräfix (9.3, D-21, Anhang C). Typen sind `[u8;16]`-Newtypes.
+- **Identität:** `DocRef { subject: Option<SubjectRef>, key: DocKey }`; Suchtreffer als `DocHandle { cluster_tag, doc_tag }`; `DocId(u64)` entfällt (D-08, D-70, D-40).
+- **Löschtypen:** `ErasureId`, `EraseTarget`, `LayerWitness`, `ResidualRisk`, `KeyCoverage` (8.1). `LayerWitness` ist nur aus einem `Scanner<Armed>` konstruierbar (I-19, D-72): Konstruktoren privat, Typzustandsmuster, `#[must_use]`.
+- **Grenzen:** Kapazitätskonstanten nach D-87 (Dimension ≤ 4096, Query-Terme ≤ 256, `k` ≤ 1000, `max_doc_bytes`).
+- **Format:** Jede Änderung eines Schlüssel- oder Berichtsformats ist ein Formatversions-Wechsel mit Golden-Test (D-42, T-FMT-1, Anhang F).
+- **Namen:** Kein Modul `types::types`; erlaubt sind `domain`, `error`, `erasure`, `tags` (D-90). Keine `misc`/`util`-Module.
+
+## Verboten
+
+I/O, `async`, Glob-Re-Exporte, Feature-Schalter, `DocId(u64)` und `docid-128` (D-08, D-84), `saos` und `AutoExtractionMode` (D-27, F-31), Fehlertexte mit Nutzerinhalt (I-11).
+
+## Abnahme
+
+Roundtrip- und Ordnungs-Proptests über alle Schlüsselfamilien (T-KEY-1), Golden-Bytes (T-FMT-1), `T-DOCREF-1`, `T-ISO-2`, `T-ISO-3`, `T-ARCH-1`, `T-ARCH-5`, `T-LIMIT-1`. Miri läuft auf diesem Crate (15.1, T-UNSAFE-1). Die Lib kompiliert ohne Warnungen.
+
+## Arbeitspakete
+
+WP-3.1 (Löschtypen, `DocRef`, `DocHandle`, Tags mit Längenpräfix, `KeyCoverage`, `DocId` entfernt), WP-1.1 (`AutoExtractionMode`), WP-1.5 (Namensregeln D-90). Statusquelle: `.agents/jules/tasks/BACKLOG.md`.
+
+## Prüfbefehle
 
 ```bash
-cargo test -p acta-types
-cargo xtask check-type-registry TenantId
-cargo xtask check-agents-integrity
-cargo xtask doctrine-scan --crate acta-types
-cargo xtask check-unsafe-islands
-cargo xtask check-ring0-async-purity
+cargo test -p acta-types --locked
+cargo +nightly miri test -p acta-types
+cargo test -p acta-arch-tests --locked
 ```
-
-## 7. Bekannte Lücken / SOLL
-- `TenantId::new()` existiert noch als Unchecked-Initializer für Legacy-Kompatibilität, ist jedoch als deprecated markiert.

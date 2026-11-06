@@ -1,3 +1,7 @@
+//! # Zugriffsschutz & Guards (Ring 1)
+//!
+//! Verwaltet RAII-Guards fuer Lese- und Schreibtransaktionen.
+
 use crate::memtable::MemTable;
 use std::sync::Arc;
 
@@ -8,6 +12,6 @@ pub struct CommitGuard<'a> {
 }
 
 pub struct LsmState {
-    pub(super) memtable: Arc<MemTable>,
-    pub(super) immutable_memtables: Vec<Arc<MemTable>>,
+    pub(crate) memtable: Arc<MemTable>,
+    pub(crate) immutable_memtables: Vec<Arc<MemTable>>,
 }

@@ -4,8 +4,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #![cfg(feature = "fault-injection")]
 
-use acta_core::{StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
+use acta_types::TxId;
 use tempfile::tempdir;
 
 static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());

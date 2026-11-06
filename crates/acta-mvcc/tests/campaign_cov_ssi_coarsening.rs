@@ -1,4 +1,8 @@
-// FILE-CONTEXT
+//! # Kampagnen-Test für SSI-Coarsening und Pruning-Blocker-Diagnose
+//!
+//! Prüft die gezielte Testabdeckung des Schwellenwerts (80 % Kapazität) im
+//! `SequenceLogSsiValidator` und verifiziert die Diagnose aktiver Snapshot-Blocker.
+
 // ZWECK: Campaign coverage test for SequenceLogSsiValidator coarsening and pruning blocker diagnostics.
 // INVARIANTEN: Coarsening occurs at 80% capacity limit without false negatives for write-skew detection.
 // NICHT-OFFENSICHTLICH: Uses independent oracle (R4) validating fail-closed conflict classification post-coarsening.
@@ -8,11 +12,12 @@
 use acta_mvcc::snapshot::SnapshotRegistry;
 use acta_mvcc::ssi::{ReadSet, SequenceLogSsiValidator};
 use acta_mvcc::SsiValidator;
+use acta_testmacros::ctx_test;
 use acta_types::TxId;
 use std::sync::Arc;
-use std::time::Instant;
 
-#[test]
+// Prüft das Auslösen der Vergröberung (Coarsening) bei 80 % Füllstand und die Diagnose des blockierenden Snapshots.
+#[ctx_test(id = "T-CONC-1")]
 fn test_ssi_coarsening_trigger_and_diagnose_pruning_blocker() {
     let registry = Arc::new(SnapshotRegistry::new());
     // Create an active snapshot at seq 0 to hold back pruning
@@ -24,7 +29,7 @@ fn test_ssi_coarsening_trigger_and_diagnose_pruning_blocker() {
     // Record keys up to 80% threshold (8 keys)
     for i in 0..10 {
         let key = format!("key_{i}").into_bytes();
-        validator.record_commit_key(&key, (i + 1) as u64);
+        validator.record_commit_key(&key, u64::try_from(i + 1).expect("valid u64"));
     }
 
     // 1. Verify diagnose_pruning_blocker returns active blocker info
@@ -37,7 +42,7 @@ fn test_ssi_coarsening_trigger_and_diagnose_pruning_blocker() {
     assert!(info.tracked_commit_keys > 0);
     assert!(info.min_unpruned_seq > 0);
 
-    let blocker_at = validator.diagnose_pruning_blocker_at(Instant::now());
+    let blocker_at = validator.diagnose_pruning_blocker();
     assert!(blocker_at.is_some());
 
     // 2. Oracle Check (R4): Verify write-skew conflict detection works fail-closed

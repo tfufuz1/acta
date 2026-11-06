@@ -1,8 +1,16 @@
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 // FILE-CONTEXT: v3 format, HOTSPOTS: [benches/hnsw_bench.rs]
 // Hot Path HNSW Insertion, Search, and Quantized Search Benchmarks for ADR-031 Regressions.
 
-use acta_core::traits::VectorIndex;
-use acta_core::types::{DocId, TxId};
+use acta_ports::VectorIndex;
+use acta_types::{DocId, TxId};
 use acta_vector::hnsw::{HnswConfig, HnswIndex};
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use rand::Rng;

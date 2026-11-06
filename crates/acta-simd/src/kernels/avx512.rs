@@ -1,46 +1,89 @@
 // FILE-CONTEXT
-// ZWECK: AVX-512 SIMD-Intrinsics für f32, f32_bytes und u8 VNNI Distanzberechnungen.
-// INVARIANTEN: Target-Features guaranteed by caller or feature-checks.
+// ZWECK: AVX-512 SIMD-Intrinsics für f32 und f32_bytes Distanzberechnungen.
+// INVARIANTEN: Kanonische Distanz nach SPEC D-122 (5b): 16 Teilsummen (Lane = Index mod 16),
+//             kein FMA, feste paarweise Reduktion 16 -> 8 -> 4 -> 2 -> 1. Alle Kernel sind bitgleich.
+
+//! # Modul `kernels::avx512`
+//!
+//! **Ring-Zugehörigkeit:** Ring 1 (Unsafe-Insel).
+//!
+//! **Zweck:**
+//! AVX-512 Vektordistanzberechnung auf x86_64-Prozessoren.
+//! Ein 512-Bit ZMM-Register fasst genau 16 `f32`-Werte (16 x 32-Bit = 512 Bit).
+//! Gemäß SPEC D-122 (5b) erfolgt die Berechnung ohne FMA und mit 16 Teilsummen.
 
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
-use crate::kernels::scalar::CosineSimilarityPartsU8;
+use crate::kernels::scalar::canonical_reduce_16;
 
+/// Berechnet die Kosinus-Distanz zwischen zwei f32-Vektoren mittels AVX-512.
+///
+/// # Safety: CPU-Erweiterung und Pufferlängen müssen vorab validiert sein.
 #[cfg(target_arch = "x86_64")]
-#[allow(unsafe_code)]
 #[target_feature(enable = "avx512f")]
-pub unsafe fn cosine_distance_avx512(a: &[f32], b: &[f32]) -> f32 {
-    let len = a.len();
-    let mut i = 0;
+pub(crate) unsafe fn cosine_distance_avx512(a: &[f32], b: &[f32]) -> f32 {
+    let (len, mut i) = (a.len(), 0);
 
-    let mut dot_v = unsafe { _mm512_setzero_ps() };
-    let mut norm_a_v = unsafe { _mm512_setzero_ps() };
-    let mut norm_b_v = unsafe { _mm512_setzero_ps() };
+    // SAFETY: CPU-Feature avx512f ist aktiv.
+    let (mut dot_v, mut norm_a_v, mut norm_b_v) = unsafe {
+        (
+            _mm512_setzero_ps(),
+            _mm512_setzero_ps(),
+            _mm512_setzero_ps(),
+        )
+    };
+
+    let (a_ptr, b_ptr) = (a.as_ptr(), b.as_ptr());
 
     while i + 16 <= len {
-        let va = unsafe { _mm512_loadu_ps(a.as_ptr().add(i)) };
-        let vb = unsafe { _mm512_loadu_ps(b.as_ptr().add(i)) };
+        // SAFETY: Pointer-Offsets [i, i+16) liegen innerhalb der Grenzen [0, len) und avx512f ist aktiv.
+        unsafe {
+            let (va, vb) = (_mm512_loadu_ps(a_ptr.add(i)), _mm512_loadu_ps(b_ptr.add(i)));
 
-        dot_v = unsafe { _mm512_fmadd_ps(va, vb, dot_v) };
-        norm_a_v = unsafe { _mm512_fmadd_ps(va, va, norm_a_v) };
-        norm_b_v = unsafe { _mm512_fmadd_ps(vb, vb, norm_b_v) };
+            let (prod_dot, prod_na, prod_nb) = (
+                _mm512_mul_ps(va, vb),
+                _mm512_mul_ps(va, va),
+                _mm512_mul_ps(vb, vb),
+            );
 
+            dot_v = _mm512_add_ps(dot_v, prod_dot);
+            norm_a_v = _mm512_add_ps(norm_a_v, prod_na);
+            norm_b_v = _mm512_add_ps(norm_b_v, prod_nb);
+        }
         i += 16;
     }
 
-    let mut dot = unsafe { hsum512_ps_avx(dot_v) };
-    let mut norm_a = unsafe { hsum512_ps_avx(norm_a_v) };
-    let mut norm_b = unsafe { hsum512_ps_avx(norm_b_v) };
+    let mut dot_lanes = [0.0f32; 16];
+    let mut norm_a_lanes = [0.0f32; 16];
+    let mut norm_b_lanes = [0.0f32; 16];
+
+    // SAFETY: Auslesen der 512-Bit Register in 16-Element Float-Puffer.
+    unsafe {
+        _mm512_storeu_ps(dot_lanes.as_mut_ptr(), dot_v);
+        _mm512_storeu_ps(norm_a_lanes.as_mut_ptr(), norm_a_v);
+        _mm512_storeu_ps(norm_b_lanes.as_mut_ptr(), norm_b_v);
+    }
 
     while i < len {
-        let x = unsafe { *a.get_unchecked(i) };
-        let y = unsafe { *b.get_unchecked(i) };
-        dot += x * y;
-        norm_a += x * x;
-        norm_b += y * y;
+        let lane = i % 16;
+        if let (Some(&x), Some(&y)) = (a.get(i), b.get(i)) {
+            if let Some(slot) = dot_lanes.get_mut(lane) {
+                *slot += x * y;
+            }
+            if let Some(slot) = norm_a_lanes.get_mut(lane) {
+                *slot += x * x;
+            }
+            if let Some(slot) = norm_b_lanes.get_mut(lane) {
+                *slot += y * y;
+            }
+        }
         i += 1;
     }
+
+    let dot = canonical_reduce_16(&dot_lanes);
+    let norm_a = canonical_reduce_16(&norm_a_lanes);
+    let norm_b = canonical_reduce_16(&norm_b_lanes);
 
     if norm_a == 0.0 || norm_b == 0.0 {
         return 1.0;
@@ -51,103 +94,165 @@ pub unsafe fn cosine_distance_avx512(a: &[f32], b: &[f32]) -> f32 {
     1.0 - sim
 }
 
+/// Berechnet die Euklidische Distanz zwischen zwei f32-Vektoren mittels AVX-512.
+///
+/// # Safety: CPU-Erweiterung und Pufferlängen müssen vorab validiert sein.
 #[cfg(target_arch = "x86_64")]
-#[allow(unsafe_code)]
 #[target_feature(enable = "avx512f")]
-pub unsafe fn euclidean_distance_avx512(a: &[f32], b: &[f32]) -> f32 {
-    let len = a.len();
-    let mut i = 0;
+pub(crate) unsafe fn euclidean_distance_avx512(a: &[f32], b: &[f32]) -> f32 {
+    let (len, mut i) = (a.len(), 0);
 
+    // SAFETY: CPU-Feature avx512f ist aktiv.
     let mut sum_v = unsafe { _mm512_setzero_ps() };
+    let (a_ptr, b_ptr) = (a.as_ptr(), b.as_ptr());
 
     while i + 16 <= len {
-        let va = unsafe { _mm512_loadu_ps(a.as_ptr().add(i)) };
-        let vb = unsafe { _mm512_loadu_ps(b.as_ptr().add(i)) };
-        let diff = unsafe { _mm512_sub_ps(va, vb) };
+        // SAFETY: Pointer-Offsets [i, i+16) liegen innerhalb der Grenzen [0, len) und avx512f ist aktiv.
+        unsafe {
+            let (va, vb) = (_mm512_loadu_ps(a_ptr.add(i)), _mm512_loadu_ps(b_ptr.add(i)));
+            let diff = _mm512_sub_ps(va, vb);
+            let prod = _mm512_mul_ps(diff, diff);
 
-        sum_v = unsafe { _mm512_fmadd_ps(diff, diff, sum_v) };
-
+            sum_v = _mm512_add_ps(sum_v, prod);
+        }
         i += 16;
     }
 
-    let mut sum = unsafe { hsum512_ps_avx(sum_v) };
+    let mut sum_lanes = [0.0f32; 16];
+    // SAFETY: Auslesen des 512-Bit Registers in 16-Element Float-Puffer.
+    unsafe {
+        _mm512_storeu_ps(sum_lanes.as_mut_ptr(), sum_v);
+    }
 
     while i < len {
-        let diff = unsafe { *a.get_unchecked(i) - *b.get_unchecked(i) };
-        sum += diff * diff;
+        let lane = i % 16;
+        if let (Some(&x), Some(&y)) = (a.get(i), b.get(i)) {
+            let diff = x - y;
+            if let Some(slot) = sum_lanes.get_mut(lane) {
+                *slot += diff * diff;
+            }
+        }
         i += 1;
     }
 
+    let sum = canonical_reduce_16(&sum_lanes);
     sum.sqrt()
 }
 
+/// Berechnet die Skalarprodukt-Distanz zwischen zwei f32-Vektoren mittels AVX-512.
+///
+/// # Safety: CPU-Erweiterung und Pufferlängen müssen vorab validiert sein.
 #[cfg(target_arch = "x86_64")]
-#[allow(unsafe_code)]
 #[target_feature(enable = "avx512f")]
-pub unsafe fn dot_product_avx512(a: &[f32], b: &[f32]) -> f32 {
-    let len = a.len();
-    let mut i = 0;
+pub(crate) unsafe fn dot_product_avx512(a: &[f32], b: &[f32]) -> f32 {
+    let (len, mut i) = (a.len(), 0);
 
+    // SAFETY: CPU-Feature avx512f ist aktiv.
     let mut dot_v = unsafe { _mm512_setzero_ps() };
+    let (a_ptr, b_ptr) = (a.as_ptr(), b.as_ptr());
 
     while i + 16 <= len {
-        let va = unsafe { _mm512_loadu_ps(a.as_ptr().add(i)) };
-        let vb = unsafe { _mm512_loadu_ps(b.as_ptr().add(i)) };
+        // SAFETY: Pointer-Offsets [i, i+16) liegen innerhalb der Grenzen [0, len) und avx512f ist aktiv.
+        unsafe {
+            let (va, vb) = (_mm512_loadu_ps(a_ptr.add(i)), _mm512_loadu_ps(b_ptr.add(i)));
+            let prod = _mm512_mul_ps(va, vb);
 
-        dot_v = unsafe { _mm512_fmadd_ps(va, vb, dot_v) };
-
+            dot_v = _mm512_add_ps(dot_v, prod);
+        }
         i += 16;
     }
 
-    let mut dot = unsafe { hsum512_ps_avx(dot_v) };
+    let mut dot_lanes = [0.0f32; 16];
+    // SAFETY: Auslesen des 512-Bit Registers in 16-Element Float-Puffer.
+    unsafe {
+        _mm512_storeu_ps(dot_lanes.as_mut_ptr(), dot_v);
+    }
 
     while i < len {
-        dot += unsafe { *a.get_unchecked(i) * *b.get_unchecked(i) };
+        let lane = i % 16;
+        if let (Some(&x), Some(&y)) = (a.get(i), b.get(i)) {
+            if let Some(slot) = dot_lanes.get_mut(lane) {
+                *slot += x * y;
+            }
+        }
         i += 1;
     }
 
+    let dot = canonical_reduce_16(&dot_lanes);
     -dot
 }
 
+/// Berechnet die Kosinus-Distanz zwischen f32-Slice und LE Byte-Slice mittels AVX-512.
+///
+/// # Safety: CPU-Erweiterung und Pufferlängen müssen vorab validiert sein.
 #[cfg(target_arch = "x86_64")]
-#[allow(unsafe_code)]
 #[target_feature(enable = "avx512f")]
-pub unsafe fn cosine_distance_f32_bytes_avx512(a: &[f32], b_bytes: &[u8]) -> f32 {
-    let len = a.len();
-    let mut i = 0;
+pub(crate) unsafe fn cosine_distance_f32_bytes_avx512(a: &[f32], b_bytes: &[u8]) -> f32 {
+    let (len, mut i) = (a.len(), 0);
 
-    let mut dot_v = unsafe { _mm512_setzero_ps() };
-    let mut norm_a_v = unsafe { _mm512_setzero_ps() };
-    let mut norm_b_v = unsafe { _mm512_setzero_ps() };
+    // SAFETY: CPU-Feature avx512f ist aktiv.
+    let (mut dot_v, mut norm_a_v, mut norm_b_v) = unsafe {
+        (
+            _mm512_setzero_ps(),
+            _mm512_setzero_ps(),
+            _mm512_setzero_ps(),
+        )
+    };
+
+    let (a_ptr, b_ptr) = (a.as_ptr(), b_bytes.as_ptr().cast::<f32>());
 
     while i + 16 <= len {
-        let va = unsafe { _mm512_loadu_ps(a.as_ptr().add(i)) };
-        let vb = unsafe { _mm512_loadu_ps(b_bytes.as_ptr().add(i * 4) as *const f32) };
+        // SAFETY: Pointer-Offsets liegen innerhalb valider Grenzen und avx512f ist aktiv.
+        unsafe {
+            let (va, vb) = (_mm512_loadu_ps(a_ptr.add(i)), _mm512_loadu_ps(b_ptr.add(i)));
 
-        dot_v = unsafe { _mm512_fmadd_ps(va, vb, dot_v) };
-        norm_a_v = unsafe { _mm512_fmadd_ps(va, va, norm_a_v) };
-        norm_b_v = unsafe { _mm512_fmadd_ps(vb, vb, norm_b_v) };
+            let (prod_dot, prod_na, prod_nb) = (
+                _mm512_mul_ps(va, vb),
+                _mm512_mul_ps(va, va),
+                _mm512_mul_ps(vb, vb),
+            );
 
+            dot_v = _mm512_add_ps(dot_v, prod_dot);
+            norm_a_v = _mm512_add_ps(norm_a_v, prod_na);
+            norm_b_v = _mm512_add_ps(norm_b_v, prod_nb);
+        }
         i += 16;
     }
 
-    let mut dot = unsafe { hsum512_ps_avx(dot_v) };
-    let mut norm_a = unsafe { hsum512_ps_avx(norm_a_v) };
-    let mut norm_b = unsafe { hsum512_ps_avx(norm_b_v) };
+    let mut dot_lanes = [0.0f32; 16];
+    let mut norm_a_lanes = [0.0f32; 16];
+    let mut norm_b_lanes = [0.0f32; 16];
+
+    // SAFETY: Auslesen der 512-Bit Register in 16-Element Float-Puffer.
+    unsafe {
+        _mm512_storeu_ps(dot_lanes.as_mut_ptr(), dot_v);
+        _mm512_storeu_ps(norm_a_lanes.as_mut_ptr(), norm_a_v);
+        _mm512_storeu_ps(norm_b_lanes.as_mut_ptr(), norm_b_v);
+    }
 
     while i < len {
-        let x = unsafe { *a.get_unchecked(i) };
-        let b_val = f32::from_le_bytes([
-            unsafe { *b_bytes.get_unchecked(i * 4) },
-            unsafe { *b_bytes.get_unchecked(i * 4 + 1) },
-            unsafe { *b_bytes.get_unchecked(i * 4 + 2) },
-            unsafe { *b_bytes.get_unchecked(i * 4 + 3) },
-        ]);
-        dot += x * b_val;
-        norm_a += x * x;
-        norm_b += b_val * b_val;
+        let lane = i % 16;
+        let offset = i * 4;
+        if let (Some(&x), Some(chunk)) = (a.get(i), b_bytes.get(offset..offset + 4)) {
+            if let Ok(bytes) = chunk.try_into() {
+                let b_val = f32::from_le_bytes(bytes);
+                if let Some(slot) = dot_lanes.get_mut(lane) {
+                    *slot += x * b_val;
+                }
+                if let Some(slot) = norm_a_lanes.get_mut(lane) {
+                    *slot += x * x;
+                }
+                if let Some(slot) = norm_b_lanes.get_mut(lane) {
+                    *slot += b_val * b_val;
+                }
+            }
+        }
         i += 1;
     }
+
+    let dot = canonical_reduce_16(&dot_lanes);
+    let norm_a = canonical_reduce_16(&norm_a_lanes);
+    let norm_b = canonical_reduce_16(&norm_b_lanes);
 
     if norm_a == 0.0 || norm_b == 0.0 {
         return 1.0;
@@ -158,210 +263,98 @@ pub unsafe fn cosine_distance_f32_bytes_avx512(a: &[f32], b_bytes: &[u8]) -> f32
     1.0 - sim
 }
 
+/// Berechnet die Euklidische Distanz zwischen f32-Slice und LE Byte-Slice mittels AVX-512.
+///
+/// # Safety: CPU-Erweiterung und Pufferlängen müssen vorab validiert sein.
 #[cfg(target_arch = "x86_64")]
-#[allow(unsafe_code)]
 #[target_feature(enable = "avx512f")]
-pub unsafe fn euclidean_distance_f32_bytes_avx512(a: &[f32], b_bytes: &[u8]) -> f32 {
-    let len = a.len();
-    let mut i = 0;
+pub(crate) unsafe fn euclidean_distance_f32_bytes_avx512(a: &[f32], b_bytes: &[u8]) -> f32 {
+    let (len, mut i) = (a.len(), 0);
 
+    // SAFETY: CPU-Feature avx512f ist aktiv.
     let mut sum_v = unsafe { _mm512_setzero_ps() };
+    let (a_ptr, b_ptr) = (a.as_ptr(), b_bytes.as_ptr().cast::<f32>());
 
     while i + 16 <= len {
-        let va = unsafe { _mm512_loadu_ps(a.as_ptr().add(i)) };
-        let vb = unsafe { _mm512_loadu_ps(b_bytes.as_ptr().add(i * 4) as *const f32) };
-        let diff = unsafe { _mm512_sub_ps(va, vb) };
+        // SAFETY: Pointer-Offsets liegen innerhalb valider Grenzen und avx512f ist aktiv.
+        unsafe {
+            let (va, vb) = (_mm512_loadu_ps(a_ptr.add(i)), _mm512_loadu_ps(b_ptr.add(i)));
+            let diff = _mm512_sub_ps(va, vb);
+            let prod = _mm512_mul_ps(diff, diff);
 
-        sum_v = unsafe { _mm512_fmadd_ps(diff, diff, sum_v) };
-
+            sum_v = _mm512_add_ps(sum_v, prod);
+        }
         i += 16;
     }
 
-    let mut sum = unsafe { hsum512_ps_avx(sum_v) };
+    let mut sum_lanes = [0.0f32; 16];
+    // SAFETY: Auslesen des 512-Bit Registers in 16-Element Float-Puffer.
+    unsafe {
+        _mm512_storeu_ps(sum_lanes.as_mut_ptr(), sum_v);
+    }
 
     while i < len {
-        let b_val = f32::from_le_bytes([
-            unsafe { *b_bytes.get_unchecked(i * 4) },
-            unsafe { *b_bytes.get_unchecked(i * 4 + 1) },
-            unsafe { *b_bytes.get_unchecked(i * 4 + 2) },
-            unsafe { *b_bytes.get_unchecked(i * 4 + 3) },
-        ]);
-        let diff = unsafe { *a.get_unchecked(i) } - b_val;
-        sum += diff * diff;
+        let lane = i % 16;
+        let offset = i * 4;
+        if let (Some(&x), Some(chunk)) = (a.get(i), b_bytes.get(offset..offset + 4)) {
+            if let Ok(bytes) = chunk.try_into() {
+                let b_val = f32::from_le_bytes(bytes);
+                let diff = x - b_val;
+                if let Some(slot) = sum_lanes.get_mut(lane) {
+                    *slot += diff * diff;
+                }
+            }
+        }
         i += 1;
     }
 
+    let sum = canonical_reduce_16(&sum_lanes);
     sum.sqrt()
 }
 
+/// Berechnet die Skalarprodukt-Distanz zwischen f32-Slice und LE Byte-Slice mittels AVX-512.
+///
+/// # Safety: CPU-Erweiterung und Pufferlängen müssen vorab validiert sein.
 #[cfg(target_arch = "x86_64")]
-#[allow(unsafe_code)]
 #[target_feature(enable = "avx512f")]
-pub unsafe fn dot_product_f32_bytes_avx512(a: &[f32], b_bytes: &[u8]) -> f32 {
-    let len = a.len();
-    let mut i = 0;
+pub(crate) unsafe fn dot_product_f32_bytes_avx512(a: &[f32], b_bytes: &[u8]) -> f32 {
+    let (len, mut i) = (a.len(), 0);
 
+    // SAFETY: CPU-Feature avx512f ist aktiv.
     let mut dot_v = unsafe { _mm512_setzero_ps() };
+    let (a_ptr, b_ptr) = (a.as_ptr(), b_bytes.as_ptr().cast::<f32>());
 
     while i + 16 <= len {
-        let va = unsafe { _mm512_loadu_ps(a.as_ptr().add(i)) };
-        let vb = unsafe { _mm512_loadu_ps(b_bytes.as_ptr().add(i * 4) as *const f32) };
+        // SAFETY: Pointer-Offsets liegen innerhalb valider Grenzen und avx512f ist aktiv.
+        unsafe {
+            let (va, vb) = (_mm512_loadu_ps(a_ptr.add(i)), _mm512_loadu_ps(b_ptr.add(i)));
+            let prod = _mm512_mul_ps(va, vb);
 
-        dot_v = unsafe { _mm512_fmadd_ps(va, vb, dot_v) };
-
+            dot_v = _mm512_add_ps(dot_v, prod);
+        }
         i += 16;
     }
 
-    let mut dot = unsafe { hsum512_ps_avx(dot_v) };
+    let mut dot_lanes = [0.0f32; 16];
+    // SAFETY: Auslesen des 512-Bit Registers in 16-Element Float-Puffer.
+    unsafe {
+        _mm512_storeu_ps(dot_lanes.as_mut_ptr(), dot_v);
+    }
 
     while i < len {
-        let b_val = f32::from_le_bytes([
-            unsafe { *b_bytes.get_unchecked(i * 4) },
-            unsafe { *b_bytes.get_unchecked(i * 4 + 1) },
-            unsafe { *b_bytes.get_unchecked(i * 4 + 2) },
-            unsafe { *b_bytes.get_unchecked(i * 4 + 3) },
-        ]);
-        dot += unsafe { *a.get_unchecked(i) } * b_val;
+        let lane = i % 16;
+        let offset = i * 4;
+        if let (Some(&x), Some(chunk)) = (a.get(i), b_bytes.get(offset..offset + 4)) {
+            if let Ok(bytes) = chunk.try_into() {
+                let b_val = f32::from_le_bytes(bytes);
+                if let Some(slot) = dot_lanes.get_mut(lane) {
+                    *slot += x * b_val;
+                }
+            }
+        }
         i += 1;
     }
 
+    let dot = canonical_reduce_16(&dot_lanes);
     -dot
-}
-
-#[cfg(target_arch = "x86_64")]
-#[allow(unsafe_code)]
-#[target_feature(enable = "avx512f")]
-pub unsafe fn hsum512_ps_avx(v: __m512) -> f32 {
-    let v256 = unsafe { _mm256_add_ps(_mm512_extractf32x8_ps(v, 0), _mm512_extractf32x8_ps(v, 1)) };
-    let vlow = unsafe { _mm256_castps256_ps128(v256) };
-    let vhigh = unsafe { _mm256_extractf128_ps(v256, 1) };
-    let v128 = unsafe { _mm_add_ps(vlow, vhigh) };
-    let v64 = unsafe { _mm_add_ps(v128, _mm_movehl_ps(v128, v128)) };
-    let v32 = unsafe { _mm_add_ss(v64, _mm_shuffle_ps(v64, v64, 0x55)) };
-    unsafe { _mm_cvtss_f32(v32) }
-}
-
-#[cfg(target_arch = "x86_64")]
-#[allow(unsafe_code)]
-#[target_feature(enable = "avx512f", enable = "avx512bw", enable = "avx512vnni")]
-pub unsafe fn dot_product_u8_avx512vnni(a: &[u8], b: &[u8]) -> u32 {
-    let len = a.len().min(b.len());
-    let mut i = 0;
-
-    let mut sum_v = unsafe { _mm512_setzero_si512() };
-
-    while i + 64 <= len {
-        let va = unsafe { _mm512_loadu_si512(a.as_ptr().add(i) as *const __m512i) };
-        let vb = unsafe { _mm512_loadu_si512(b.as_ptr().add(i) as *const __m512i) };
-
-        sum_v = unsafe { _mm512_dpbusd_epi32(sum_v, va, vb) };
-
-        i += 64;
-    }
-
-    let mut sum = unsafe { hsum512_epi32_avx512(sum_v) } as u32;
-
-    while i < len {
-        sum += unsafe { (*a.get_unchecked(i) as u32) * (*b.get_unchecked(i) as u32) };
-        i += 1;
-    }
-
-    sum
-}
-
-#[cfg(target_arch = "x86_64")]
-#[allow(unsafe_code)]
-#[target_feature(enable = "avx512f", enable = "avx512bw")]
-pub unsafe fn euclidean_distance_sq_u8_avx512(a: &[u8], b: &[u8]) -> u32 {
-    let len = a.len().min(b.len());
-    let mut i = 0;
-
-    let mut sum_v = unsafe { _mm512_setzero_si512() };
-    let zero = unsafe { _mm512_setzero_si512() };
-
-    while i + 64 <= len {
-        let va = unsafe { _mm512_loadu_si512(a.as_ptr().add(i) as *const __m512i) };
-        let vb = unsafe { _mm512_loadu_si512(b.as_ptr().add(i) as *const __m512i) };
-
-        let va_lo = unsafe { _mm512_unpacklo_epi8(va, zero) };
-        let vb_lo = unsafe { _mm512_unpacklo_epi8(vb, zero) };
-        let diff_lo = unsafe { _mm512_sub_epi16(va_lo, vb_lo) };
-        let prod_lo = unsafe { _mm512_madd_epi16(diff_lo, diff_lo) };
-
-        let va_hi = unsafe { _mm512_unpackhi_epi8(va, zero) };
-        let vb_hi = unsafe { _mm512_unpackhi_epi8(vb, zero) };
-        let diff_hi = unsafe { _mm512_sub_epi16(va_hi, vb_hi) };
-        let prod_hi = unsafe { _mm512_madd_epi16(diff_hi, diff_hi) };
-
-        sum_v = unsafe { _mm512_add_epi32(sum_v, prod_lo) };
-        sum_v = unsafe { _mm512_add_epi32(sum_v, prod_hi) };
-
-        i += 64;
-    }
-
-    let mut sum = unsafe { hsum512_epi32_avx512(sum_v) } as u32;
-
-    while i < len {
-        let diff = unsafe { (*a.get_unchecked(i) as i32) - (*b.get_unchecked(i) as i32) };
-        sum += (diff * diff) as u32;
-        i += 1;
-    }
-
-    sum
-}
-
-#[cfg(target_arch = "x86_64")]
-#[allow(unsafe_code)]
-#[target_feature(enable = "avx512f", enable = "avx512bw", enable = "avx512vnni")]
-pub unsafe fn cosine_similarity_parts_u8_avx512(a: &[u8], b: &[u8]) -> CosineSimilarityPartsU8 {
-    let len = a.len().min(b.len());
-    let mut i = 0;
-
-    let mut dot_v = unsafe { _mm512_setzero_si512() };
-    let mut norm_a_v = unsafe { _mm512_setzero_si512() };
-    let mut norm_b_v = unsafe { _mm512_setzero_si512() };
-
-    while i + 64 <= len {
-        let va = unsafe { _mm512_loadu_si512(a.as_ptr().add(i) as *const __m512i) };
-        let vb = unsafe { _mm512_loadu_si512(b.as_ptr().add(i) as *const __m512i) };
-
-        dot_v = unsafe { _mm512_dpbusd_epi32(dot_v, va, vb) };
-        norm_a_v = unsafe { _mm512_dpbusd_epi32(norm_a_v, va, va) };
-        norm_b_v = unsafe { _mm512_dpbusd_epi32(norm_b_v, vb, vb) };
-
-        i += 64;
-    }
-
-    let mut dot = unsafe { hsum512_epi32_avx512(dot_v) } as u32;
-    let mut norm_a_sq = unsafe { hsum512_epi32_avx512(norm_a_v) } as u32;
-    let mut norm_b_sq = unsafe { hsum512_epi32_avx512(norm_b_v) } as u32;
-
-    while i < len {
-        let x = unsafe { *a.get_unchecked(i) as u32 };
-        let y = unsafe { *b.get_unchecked(i) as u32 };
-        dot += x * y;
-        norm_a_sq += x * x;
-        norm_b_sq += y * y;
-        i += 1;
-    }
-
-    CosineSimilarityPartsU8 {
-        dot,
-        norm_a_sq,
-        norm_b_sq,
-    }
-}
-
-#[cfg(target_arch = "x86_64")]
-#[allow(unsafe_code)]
-#[target_feature(enable = "avx512f")]
-pub unsafe fn hsum512_epi32_avx512(v: __m512i) -> i32 {
-    let v256 =
-        unsafe { _mm256_add_epi32(_mm512_castsi512_si256(v), _mm512_extracti32x8_epi32(v, 1)) };
-    let vlow = unsafe { _mm256_castsi256_si128(v256) };
-    let vhigh = unsafe { _mm256_extracti128_si256(v256, 1) };
-    let v128 = unsafe { _mm_add_epi32(vlow, vhigh) };
-    let v64 = unsafe { _mm_add_epi32(v128, _mm_srli_si128(v128, 8)) };
-    let v32 = unsafe { _mm_add_epi32(v64, _mm_srli_si128(v64, 4)) };
-    unsafe { _mm_cvtsi128_si32(v32) }
 }

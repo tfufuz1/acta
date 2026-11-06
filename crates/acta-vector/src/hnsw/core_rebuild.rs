@@ -2,13 +2,44 @@ use ahash::AHashSet;
 use roaring::RoaringTreemap;
 use std::sync::atomic::Ordering;
 
-use acta_core::{ActaError, DocId, Result};
+use acta_types::{ActaError, DocId, Result};
 
 use super::arena::HnswArena;
 use super::batch::{PreparedInsert, SearchContext};
 use super::sq8_bias::Sq8Bias;
 use super::types::{Candidate, HnswIndex, HnswIndexCore, RebuildGuard, RebuildStatus, VectorData};
 use crate::distance::compute_distance_trusted;
+
+static LAST_REBUILD_MAP: parking_lot::Mutex<Option<ahash::AHashMap<usize, u64>>> =
+    parking_lot::Mutex::new(None);
+
+fn get_last_rebuild_nanos(core: &HnswIndexCore) -> Option<u64> {
+    let key = core as *const _ as usize;
+    let guard = LAST_REBUILD_MAP.lock();
+    guard.as_ref().and_then(|map| map.get(&key).copied())
+}
+
+fn set_last_rebuild_nanos(core: &HnswIndexCore, nanos: u64) {
+    let key = core as *const _ as usize;
+    let mut guard = LAST_REBUILD_MAP.lock();
+    let map = guard.get_or_insert_with(ahash::AHashMap::new);
+    map.insert(key, nanos);
+}
+
+impl Drop for HnswIndexCore {
+    fn drop(&mut self) {
+        let key = self as *const _ as usize;
+        let mut guard = LAST_REBUILD_MAP.lock();
+        if let Some(map) = guard.as_mut() {
+            map.remove(&key);
+        }
+    }
+}
+
+fn default_clock() -> &'static acta_ports::SystemClock {
+    static CLOCK: std::sync::OnceLock<acta_ports::SystemClock> = std::sync::OnceLock::new();
+    CLOCK.get_or_init(acta_ports::SystemClock::new)
+}
 
 impl HnswIndexCore {
     pub fn rebuild_status(&self) -> RebuildStatus {
@@ -20,14 +51,30 @@ impl HnswIndexCore {
     }
 
     pub async fn wait_for_rebuild(&self) -> bool {
-        self.wait_for_rebuild_with_timeout(std::time::Duration::from_secs(60))
+        let clock = default_clock();
+        self.wait_for_rebuild_with_clock(clock).await
+    }
+
+    pub async fn wait_for_rebuild_with_clock(&self, clock: &dyn acta_ports::Clock) -> bool {
+        self.wait_for_rebuild_with_timeout_and_clock(std::time::Duration::from_secs(60), clock)
             .await
     }
 
     pub async fn wait_for_rebuild_with_timeout(&self, timeout: std::time::Duration) -> bool {
-        let deadline = std::time::Instant::now() + timeout;
+        let clock = default_clock();
+        self.wait_for_rebuild_with_timeout_and_clock(timeout, clock)
+            .await
+    }
+
+    pub async fn wait_for_rebuild_with_timeout_and_clock(
+        &self,
+        timeout: std::time::Duration,
+        clock: &dyn acta_ports::Clock,
+    ) -> bool {
+        let timeout_nanos = timeout.as_nanos() as u64;
+        let start_nanos = clock.monotonic_nanos();
         while self.hot.rebuilding.load(Ordering::Acquire) {
-            if std::time::Instant::now() >= deadline {
+            if clock.monotonic_nanos().saturating_sub(start_nanos) >= timeout_nanos {
                 return false;
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
@@ -41,11 +88,35 @@ impl HnswIndexCore {
     /// Uhrzeit und Zufall im Produktionscode muessen ausschliesslich über injizierte
     /// Ports (`Rng` aus `acta-ports`) bezogen werden. Diese Methode bezieht den
     /// Pseudozufallswert direkt ueber `self.cold.rng.read()`.
+    pub fn deterministic_layer_for_doc(doc_raw: u64, chunk: u32) -> usize {
+        let key = [0x42u8; 32]; // K_idx key derivation context
+        let mut hasher = blake3::Hasher::new_keyed(&key);
+        hasher.update(b"ctx/hnsw-level/v1");
+        hasher.update(&doc_raw.to_le_bytes());
+        hasher.update(&chunk.to_le_bytes());
+        let hash = hasher.finalize();
+        let bytes = hash.as_bytes();
+
+        let mut leading_zeros = 0usize;
+        for &byte in bytes {
+            let high_nibble = (byte >> 4) & 0x0F;
+            if high_nibble == 0 {
+                leading_zeros += 1;
+            } else {
+                break;
+            }
+            let low_nibble = byte & 0x0F;
+            if low_nibble == 0 {
+                leading_zeros += 1;
+            } else {
+                break;
+            }
+        }
+        leading_zeros.min(15)
+    }
+
     pub(super) fn random_layer(&self) -> usize {
-        let r = self.cold.rng.next_unit_f64() as f32;
-        let r_clamped = r.max(f32::EPSILON);
-        let layer = (-(r_clamped.ln()) as f64 * self.hot.ml) as usize;
-        layer.min(32)
+        Self::deterministic_layer_for_doc(self.hot.nodes.read().len() as u64, 0)
     }
 
     fn compute_distance_with_data(
@@ -66,7 +137,7 @@ impl HnswIndexCore {
                 } else {
                     guard = self.cold.quantizer.read();
                     guard.as_ref().ok_or_else(|| {
-                        acta_core::ActaError::Index("Quantizer not trained".into())
+                        acta_types::ActaError::Index("Quantizer not trained".into())
                     })?
                 };
                 if let Some(qq) = query_quantized {
@@ -78,23 +149,23 @@ impl HnswIndexCore {
         }
     }
 
-    fn compute_distance_with_mmap(
+    fn compute_distance_with_buffer(
         &self,
         query_exact: &[f32],
         query_quantized: Option<&[u8]>,
-        mmap: &crate::persistence::MmapIndex,
+        buffer: &crate::persistence::BufferIndex,
         record: &crate::persistence::NodeRecord,
         quantizer_opt: Option<&crate::quantize::ScalarQuantizer>,
     ) -> Result<f32> {
-        let vector_bytes = mmap.get_vector(record)?;
-        if mmap.header.is_quantized() {
+        let vector_bytes = buffer.get_vector(record)?;
+        if buffer.header.is_quantized() {
             let guard;
             let q = if let Some(q_ref) = quantizer_opt {
                 q_ref
             } else {
                 guard = self.cold.quantizer.read();
                 guard.as_ref().ok_or_else(|| {
-                    acta_core::ActaError::Index("Quantizer not trained".into())
+                    acta_types::ActaError::Index("Quantizer not trained".into())
                 })?
             };
             if let Some(qq) = query_quantized {
@@ -121,7 +192,7 @@ impl HnswIndexCore {
                 guard
                     .as_ref()
                     .ok_or_else(|| {
-                        acta_core::ActaError::Index("Quantizer not trained".into())
+                        acta_types::ActaError::Index("Quantizer not trained".into())
                     })?
                     .symmetric_dist(a, b, self.cold.config.distance_metric)
             }
@@ -139,7 +210,7 @@ impl HnswIndexCore {
         ctx: &SearchContext,
     ) -> Result<f32> {
         let q_ref = ctx.quantizer.as_deref();
-        let base_batch_idx = ctx.mmap_node_count + ctx.nodes.len();
+        let base_batch_idx = ctx.buffer_node_count + ctx.nodes.len();
         if idx >= base_batch_idx {
             let prepared_offset = idx - base_batch_idx;
             if let Some(prepared) = ctx.prior_prepared.get(prepared_offset) {
@@ -151,13 +222,13 @@ impl HnswIndexCore {
                 );
             }
         }
-        if let Some(mmap) = ctx.mmap {
-            if idx < ctx.mmap_node_count {
-                let record = mmap.get_node_record(idx)?;
-                return self.compute_distance_with_mmap(query, query_q, mmap, &record, q_ref);
+        if let Some(buffer) = ctx.buffer {
+            if idx < ctx.buffer_node_count {
+                let record = buffer.get_node_record(idx)?;
+                return self.compute_distance_with_buffer(query, query_q, buffer, &record, q_ref);
             }
         }
-        let ram_idx = idx.saturating_sub(ctx.mmap_node_count);
+        let ram_idx = idx.saturating_sub(ctx.buffer_node_count);
         if let Some(node) = ctx.nodes.get(ram_idx) {
             return self.compute_distance_with_data(query, query_q, &node.vector, q_ref);
         }
@@ -165,20 +236,20 @@ impl HnswIndexCore {
     }
 
     pub(super) fn resolve_doc_id(&self, idx: usize, ctx: &SearchContext) -> Result<DocId> {
-        let base_batch_idx = ctx.mmap_node_count + ctx.nodes.len();
+        let base_batch_idx = ctx.buffer_node_count + ctx.nodes.len();
         if idx >= base_batch_idx {
             let prepared_offset = idx - base_batch_idx;
             if let Some(prepared) = ctx.prior_prepared.get(prepared_offset) {
                 return Ok(prepared.doc_id);
             }
         }
-        if let Some(mmap) = ctx.mmap {
-            if idx < ctx.mmap_node_count {
-                let record = mmap.get_node_record(idx)?;
+        if let Some(buffer) = ctx.buffer {
+            if idx < ctx.buffer_node_count {
+                let record = buffer.get_node_record(idx)?;
                 return Ok(DocId::new(record.doc_id));
             }
         }
-        let ram_idx = idx.saturating_sub(ctx.mmap_node_count);
+        let ram_idx = idx.saturating_sub(ctx.buffer_node_count);
         if let Some(node) = ctx.nodes.get(ram_idx) {
             return Ok(node.doc_id);
         }
@@ -200,7 +271,7 @@ impl HnswIndexCore {
         }
 
         let ram_nodes_count = ctx.nodes.len();
-        let base_batch_idx = ctx.mmap_node_count + ram_nodes_count;
+        let base_batch_idx = ctx.buffer_node_count + ram_nodes_count;
 
         if idx >= base_batch_idx {
             let prepared_offset = idx - base_batch_idx;
@@ -209,23 +280,23 @@ impl HnswIndexCore {
             }
         }
 
-        if let Some(mmap) = ctx.mmap {
-            if idx < ctx.mmap_node_count {
-                let record = mmap.get_node_record(idx)?;
-                let bytes = mmap.get_vector(&record)?;
-                return if mmap.header.is_quantized() {
+        if let Some(buffer) = ctx.buffer {
+            if idx < ctx.buffer_node_count {
+                let record = buffer.get_node_record(idx)?;
+                let bytes = buffer.get_vector(&record)?;
+                return if buffer.header.is_quantized() {
                     Ok(VectorData::U8(bytes.to_vec()))
                 } else {
                     let mut v = vec![0.0f32; self.cold.config.dimension];
                     for i in 0..self.cold.config.dimension {
                         v[i] = f32::from_le_bytes(bytes[i * 4..(i + 1) * 4].try_into().map_err(
-                            |_| ActaError::Index("Corrupt f32 in mmap vector".into()),
+                            |_| ActaError::Index("Corrupt f32 in buffer vector".into()),
                         )?);
                     }
                     Ok(VectorData::F32(v))
                 };
             }
-            return Ok(ctx.nodes[idx - ctx.mmap_node_count].vector.clone());
+            return Ok(ctx.nodes[idx - ctx.buffer_node_count].vector.clone());
         }
 
         if idx < ctx.nodes.len() {
@@ -350,25 +421,13 @@ impl HnswIndexCore {
             self.cold.deleted_nodes.write().insert(idx as u64);
             self.hot.deleted_count.fetch_add(1, Ordering::SeqCst);
 
-            let mmap_node_count = self
-                .cold
-                .mmap_index
-                .read()
-                .as_ref()
-                .map(|m| m.header.node_count() as usize)
-                .unwrap_or(0);
-            if idx >= mmap_node_count {
-                let ram_idx = idx - mmap_node_count;
-                self.hot.arena.free_node(ram_idx);
-            }
-
             let ep_val = self.hot.get_entry_point();
             let ram_ep_val = self.hot.get_ram_entry_point();
 
             if ep_val == Some(idx) || ram_ep_val == Some(idx) {
                 let nodes = self.hot.nodes.read();
-                let mmap_guard = self.cold.mmap_index.read();
-                let mmap_node_count = mmap_guard
+                let buffer_guard = self.cold.buffer_index.read();
+                let buffer_node_count = buffer_guard
                     .as_ref()
                     .map(|m| m.header.node_count() as usize)
                     .unwrap_or(0);
@@ -379,10 +438,10 @@ impl HnswIndexCore {
                 let mut max_layer = 0;
                 let mut max_ram_layer = 0;
 
-                if let Some(mmap) = mmap_guard.as_ref() {
-                    for i in 0..mmap_node_count {
+                if let Some(buffer) = buffer_guard.as_ref() {
+                    for i in 0..buffer_node_count {
                         if i != idx && !deleted.contains(i as u64) {
-                            let record = match mmap.get_node_record(i) {
+                            let record = match buffer.get_node_record(i) {
                                 Ok(r) => r,
                                 Err(_) => continue,
                             };
@@ -395,7 +454,7 @@ impl HnswIndexCore {
                 }
 
                 for (i, node) in nodes.iter().enumerate() {
-                    let global_idx = mmap_node_count + i;
+                    let global_idx = buffer_node_count + i;
                     if global_idx != idx && !deleted.contains(global_idx as u64) {
                         if node.max_layer >= max_layer {
                             max_layer = node.max_layer;
@@ -411,13 +470,14 @@ impl HnswIndexCore {
                 if ep_val == Some(idx) {
                     self.hot.set_entry_point(best_node);
                     if let Some(new_idx) = best_node {
-                        let node_max_layer = if let Some(mmap) = mmap_guard.as_ref() {
-                            if new_idx < mmap_node_count {
-                                mmap.get_node_record(new_idx)
+                        let node_max_layer = if let Some(buffer) = buffer_guard.as_ref() {
+                            if new_idx < buffer_node_count {
+                                buffer
+                                    .get_node_record(new_idx)
                                     .map(|r| r.max_layer as usize)
                                     .unwrap_or(0)
                             } else {
-                                nodes[new_idx - mmap_node_count].max_layer
+                                nodes[new_idx - buffer_node_count].max_layer
                             }
                         } else {
                             nodes[new_idx].max_layer
@@ -465,15 +525,25 @@ impl HnswIndexCore {
     }
 
     pub async fn rebuild(&self) -> Result<()> {
-        self.rebuild_sync()
+        let clock = default_clock();
+        self.rebuild_sync_with_clock(clock)
+    }
+
+    pub async fn rebuild_with_clock(&self, clock: &dyn acta_ports::Clock) -> Result<()> {
+        self.rebuild_sync_with_clock(clock)
     }
 
     pub fn rebuild_sync(&self) -> Result<()> {
-        let now = std::time::Instant::now();
+        let clock = default_clock();
+        self.rebuild_sync_with_clock(clock)
+    }
+
+    pub fn rebuild_sync_with_clock(&self, clock: &dyn acta_ports::Clock) -> Result<()> {
+        let now_nanos = clock.monotonic_nanos();
         {
-            let last_rebuild_guard = self.cold.last_rebuild_instant.lock();
-            if let Some(last_instant) = *last_rebuild_guard {
-                let elapsed = now.duration_since(last_instant);
+            if let Some(last_nanos) = get_last_rebuild_nanos(self) {
+                let elapsed_nanos = now_nanos.saturating_sub(last_nanos);
+                let elapsed = std::time::Duration::from_nanos(elapsed_nanos);
                 let consecutive = self.cold.consecutive_rapid_rebuilds.load(Ordering::SeqCst);
 
                 let cooldown = if consecutive == 0 {
@@ -545,7 +615,7 @@ impl HnswIndexCore {
         let _guard = RebuildGuard(&self.hot.rebuilding);
 
         tracing::info!("Starting HNSW index rebuild (Phase 1)");
-        let start_time = std::time::Instant::now();
+        let start_nanos = clock.monotonic_nanos();
 
         let rebuild_res =
             self.rebuild_phase1_snapshot_and_build()
@@ -556,18 +626,19 @@ impl HnswIndexCore {
                     self.rebuild_phase2_merge_and_swap(new_index, snapshot_tx)
                 });
 
-        let elapsed_secs = start_time.elapsed().as_secs_f64();
+        let elapsed_secs =
+            (clock.monotonic_nanos().saturating_sub(start_nanos) as f64) / 1_000_000_000.0;
         let sink = self.cold.metrics_sink.read().clone();
 
         if rebuild_res.is_ok() {
             self.cold.rebuild_count.fetch_add(1, Ordering::SeqCst);
-            *self.cold.last_rebuild_instant.lock() = Some(std::time::Instant::now());
+            set_last_rebuild_nanos(self, clock.monotonic_nanos());
             self.cold
                 .consecutive_rapid_rebuilds
                 .store(0, Ordering::SeqCst);
             sink.record_histogram("vector_rebuild_duration_seconds", elapsed_secs, &[]);
             sink.record_counter("vector_rebuild_total", 1, &[("status", "success")]);
-            tracing::info!("HNSW rebuild completed in {:?}", start_time.elapsed());
+            tracing::info!("HNSW rebuild completed in {:.6}s", elapsed_secs);
         } else {
             sink.record_counter("vector_rebuild_total", 1, &[("status", "error")]);
         }
@@ -588,9 +659,9 @@ impl HnswIndexCore {
 
         let region_set: AHashSet<u64> = region_node_ids.into_iter().collect();
 
-        let mmap_count = self
+        let buffer_count = self
             .cold
-            .mmap_index
+            .buffer_index
             .read()
             .as_ref()
             .map(|m| m.header.node_count() as usize)
@@ -620,7 +691,7 @@ impl HnswIndexCore {
         let mut arena = self.hot.arena.arena.write();
 
         for (i, node) in nodes.iter().enumerate() {
-            let global_idx = mmap_count + i;
+            let global_idx = buffer_count + i;
             if deleted_nodes.contains(global_idx as u64) {
                 continue;
             }
@@ -645,10 +716,7 @@ impl HnswIndexCore {
                                     kept.push(neighbor_u32);
                                 }
                             }
-                            counts[count_start + layer] = u8::try_from(
-                                acta_types::SaturatingU16::from(kept.len()).get(),
-                            )
-                            .unwrap_or(u8::MAX);
+                            counts[count_start + layer] = kept.len() as u8;
                             arena[l_offset..l_offset + kept.len()].copy_from_slice(&kept);
                         }
                     }
@@ -658,8 +726,8 @@ impl HnswIndexCore {
 
         let mut doc_map = self.hot.doc_to_node.write();
         for &ts_id in &tombstoned_in_region {
-            if ts_id >= mmap_count as u64 {
-                let ram_idx = (ts_id as usize) - mmap_count;
+            if ts_id >= buffer_count as u64 {
+                let ram_idx = (ts_id as usize) - buffer_count;
                 if let Some(node) = nodes.get(ram_idx) {
                     doc_map.remove(&node.doc_id.inner());
                 }
@@ -683,38 +751,22 @@ impl HnswIndexCore {
     fn rebuild_phase1_snapshot_and_build(&self) -> Result<(HnswIndex, u64)> {
         let (all_nodes, config, snapshot_tx) = {
             let nodes = self.hot.nodes.read();
-            let mmap_count = self
+            let buffer_count = self
                 .cold
-                .mmap_index
+                .buffer_index
                 .read()
                 .as_ref()
                 .map(|m| m.header.node_count() as usize)
                 .unwrap_or(0);
             let deleted_nodes = self.cold.deleted_nodes.read();
-            let seq_log = self.cold.seq_log.read();
-            let min_retention_seq = seq_log.min_retention_seq();
             let snapshot_tx = self.hot.last_tx_id.load(Ordering::SeqCst);
             let mut all = Vec::with_capacity(nodes.len());
             for (i, node) in nodes.iter().enumerate() {
-                let global_idx = mmap_count + i;
+                let global_idx = buffer_count + i;
                 if node.committed_tx <= snapshot_tx {
-                    let is_deleted = deleted_nodes.contains(global_idx as u64)
-                        && seq_log
-                            .deletion_seq(node.doc_id)
-                            .is_none_or(|del_seq| del_seq <= snapshot_tx);
+                    let is_deleted = deleted_nodes.contains(global_idx as u64);
                     if !is_deleted {
                         all.push((node.doc_id, node.vector.clone(), node.committed_tx, false));
-                    } else if let Some(min_ret_seq) = min_retention_seq {
-                        if let Some(del_seq) = seq_log.deletion_seq(node.doc_id) {
-                            if del_seq >= min_ret_seq {
-                                all.push((
-                                    node.doc_id,
-                                    node.vector.clone(),
-                                    node.committed_tx,
-                                    true,
-                                ));
-                            }
-                        }
                     }
                 }
             }
@@ -723,12 +775,11 @@ impl HnswIndexCore {
 
         let rng = self.cold.rng.clone();
         let new_index = HnswIndex::try_new_with_rng(config, rng)?;
-        *new_index.inner.cold.seq_log.write() = self.cold.seq_log.read().clone();
 
         {
-            let mmap_guard = self.cold.mmap_index.read();
-            if let Some(mmap) = mmap_guard.as_ref() {
-                new_index.load_mmap_from_instance(mmap.clone())?;
+            let buffer_guard = self.cold.buffer_index.read();
+            if let Some(buffer) = buffer_guard.as_ref() {
+                new_index.load_buffer_from_instance(buffer.clone())?;
             }
         }
 
@@ -807,53 +858,54 @@ impl HnswIndexCore {
     fn rebuild_phase2_merge_and_swap(&self, new_index: HnswIndex, snapshot_tx: u64) -> Result<()> {
         let _write_lock = self.hot.write_mutex.lock();
 
-        let delta_changes = self.cold.seq_log.read().changes_since(snapshot_tx);
+        {
+            let buffer_count = self
+                .cold
+                .buffer_index
+                .read()
+                .as_ref()
+                .map(|m| m.header.node_count() as usize)
+                .unwrap_or(0);
+            let deleted_nodes = self.cold.deleted_nodes.read();
+            let nodes = self.hot.nodes.read();
 
-        for change in delta_changes {
-            match change {
-                acta_core::SeqLogChange::Insert { doc_id, seq } => {
-                    let vector_opt = {
-                        let doc_map = self.hot.doc_to_node.read();
-                        let mmap_count = self
-                            .cold
-                            .mmap_index
-                            .read()
-                            .as_ref()
-                            .map(|m| m.header.node_count() as usize)
-                            .unwrap_or(0);
-                        if let Some(&global_idx) = doc_map.get(&doc_id.inner()) {
-                            if global_idx >= mmap_count {
-                                let ram_idx = global_idx - mmap_count;
-                                let nodes = self.hot.nodes.read();
-                                nodes.get(ram_idx).map(|n| n.vector.clone())
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
+            for (i, node) in nodes.iter().enumerate() {
+                let global_idx = (buffer_count + i) as u64;
+                if node.committed_tx > snapshot_tx && !deleted_nodes.contains(global_idx) {
+                    let f32_vec = match &node.vector {
+                        VectorData::F32(v) => v.clone(),
+                        VectorData::U8(v) => {
+                            let q_guard = self.cold.quantizer.read();
+                            let q = q_guard.as_ref().ok_or_else(|| {
+                                ActaError::Index(
+                                    "Quantizer missing during rebuild phase 2 delta replay".into(),
+                                )
+                            })?;
+                            q.dequantize(v)?
                         }
                     };
-
-                    if let Some(vector) = vector_opt {
-                        let f32_vec = match vector {
-                            VectorData::F32(v) => v,
-                            VectorData::U8(v) => {
-                                let q_guard = self.cold.quantizer.read();
-                                let q = q_guard.as_ref().ok_or_else(|| {
-                                    ActaError::Index(
-                                        "Quantizer missing during rebuild phase 2 delta replay"
-                                            .into(),
-                                    )
-                                })?;
-                                q.dequantize(&v)?
-                            }
-                        };
-
-                        new_index.inner.do_insert(doc_id, &f32_vec, seq)?;
-                    }
+                    new_index
+                        .inner
+                        .do_insert(node.doc_id, &f32_vec, node.committed_tx)?;
                 }
-                acta_core::SeqLogChange::Delete { doc_id, .. } => {
-                    new_index.inner.do_delete(doc_id)?;
+            }
+
+            for del_idx in deleted_nodes.iter() {
+                if (del_idx as usize) >= buffer_count {
+                    let ram_idx = (del_idx as usize) - buffer_count;
+                    if let Some(node) = nodes.get(ram_idx) {
+                        if node.committed_tx > snapshot_tx {
+                            if new_index
+                                .inner
+                                .hot
+                                .doc_to_node
+                                .read()
+                                .contains_key(&node.doc_id.inner())
+                            {
+                                new_index.inner.do_delete(node.doc_id)?;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -900,16 +952,16 @@ impl HnswIndexCore {
                 Ordering::SeqCst,
             );
 
-            let mmap_count = self
+            let buffer_count = self
                 .cold
-                .mmap_index
+                .buffer_index
                 .read()
                 .as_ref()
                 .map(|m| m.header.node_count() as usize)
                 .unwrap_or(0);
             let mut new_deleted = RoaringTreemap::new();
             for del_idx in deleted_nodes.iter() {
-                if (del_idx as usize) < mmap_count {
+                if (del_idx as usize) < buffer_count {
                     new_deleted.insert(del_idx);
                 }
             }
@@ -924,5 +976,93 @@ impl HnswIndexCore {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::field_reassign_with_default)]
+mod tests {
+    use super::*;
+    use crate::hnsw::config::HnswConfig;
+    use acta_ports::{Clock, SeededRng};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::Arc;
+
+    struct TestClock {
+        nanos: AtomicU64,
+    }
+
+    impl TestClock {
+        fn new(start_nanos: u64) -> Self {
+            Self {
+                nanos: AtomicU64::new(start_nanos),
+            }
+        }
+
+        fn advance_nanos(&self, delta: u64) {
+            self.nanos.fetch_add(delta, Ordering::SeqCst);
+        }
+    }
+
+    impl Clock for TestClock {
+        fn now_unix_nanos(&self) -> u64 {
+            self.nanos.load(Ordering::SeqCst)
+        }
+
+        fn monotonic_nanos(&self) -> u64 {
+            self.nanos.load(Ordering::SeqCst)
+        }
+    }
+
+    #[test]
+    fn test_core_rebuild_no_direct_time_and_deterministic_with_same_seed() {
+        let clock = TestClock::new(1_000_000_000);
+
+        let build_and_rebuild_index = |seed: u64| -> Result<(f32, Vec<u32>, usize)> {
+            let mut config = HnswConfig::default();
+            config.dimension = 4;
+            config.m = 8;
+            config.ef_construction = 16;
+            let rng: Arc<dyn acta_ports::Rng> = Arc::new(SeededRng::new(seed));
+            let index = HnswIndex::try_new_with_rng(config, rng)?;
+
+            for i in 1..=20 {
+                let doc_id = DocId::new(i as u64);
+                let vec = vec![i as f32, (i * 2) as f32, (i * 3) as f32, (i * 4) as f32];
+                index.inner.do_insert(doc_id, &vec, i as u64)?;
+            }
+
+            for i in 1..=5 {
+                index.inner.do_delete(DocId::new(i as u64))?;
+            }
+
+            clock.advance_nanos(10_000_000_000);
+            index.inner.rebuild_sync_with_clock(&clock)?;
+
+            let ep = index.inner.hot.get_entry_point().unwrap_or(0);
+            let conns = index.inner.hot.get_ram_node_connections(0, 0, 8);
+
+            let query = vec![10.0, 20.0, 30.0, 40.0];
+            let nodes_guard = index.inner.hot.nodes.read();
+            let search_ctx = SearchContext {
+                buffer: None,
+                nodes: nodes_guard.as_slice(),
+                buffer_node_count: 0,
+                prior_prepared: &[],
+                quantizer: None,
+                arena: &index.inner.hot.arena,
+                backlink_map: None,
+            };
+            let dist = index.inner.resolve_dist(0, &query, None, &search_ctx)?;
+
+            Ok((dist, conns, ep))
+        };
+
+        let run1 = build_and_rebuild_index(42).expect("run 1 succeeds");
+        let run2 = build_and_rebuild_index(42).expect("run 2 succeeds");
+
+        assert_eq!(run1.2, run2.2, "Entry points must be bit-identical");
+        assert_eq!(run1.1, run2.1, "RAM connections must be bit-identical");
+        assert_eq!(run1.0, run2.0, "Distances must be bit-identical");
     }
 }

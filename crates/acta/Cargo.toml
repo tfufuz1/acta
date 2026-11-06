@@ -1,0 +1,33 @@
+[package]
+name = "acta"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Öffentliche API und Verdrahtung. Enthält keine Logik."
+
+[package.metadata.acta]
+ring = "4"
+
+[dependencies]
+acta-types = { workspace = true }
+acta-durable-fs = { workspace = true }
+acta-engine = { workspace = true }
+tokio = { workspace = true }
+thiserror = { workspace = true }
+getrandom = { version = "0.2", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+trybuild = "1"
+criterion = { workspace = true }
+
+[[bench]]
+name = "bm_facade_open"
+harness = false
+
+[features]
+default = []
+
+[lints]
+workspace = true

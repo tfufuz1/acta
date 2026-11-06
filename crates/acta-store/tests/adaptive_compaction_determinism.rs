@@ -1,8 +1,5 @@
-use acta_core::{StorageEngine, TxId};
 use acta_ports::StorageStats;
-use acta_store::{
-    AdaptiveCompactionPlanner, CompactionStrategy, CostBasedAdaptivePlanner, WorkloadMetrics,
-};
+use acta_store::{AdaptiveCompactionPlanner, CostBasedAdaptivePlanner, WorkloadMetrics};
 
 #[test]
 fn test_adaptive_compaction_determinism() {

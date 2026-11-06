@@ -1,3 +1,15 @@
+//! # acta-store (Ring 2)
+//!
+//! Zweck: LSM-Speicher: WAL, Memtable, SSTables, Manifest, Kompaktion, Purge-Primitive.
+//!
+//! Ring: Ring 2.
+//! Erlaubte Abhängigkeiten: `acta-types`, `acta-ports`, `acta-sys`, `acta-crypto`, `acta-mvcc`.
+//! Referenz: SPEC Abschnitt 5.1, 5.3, 8.8.
+//!
+//! ## Sicherheitsinvariante
+//! Die gesamte Crate erzwingt `#![forbid(unsafe_code)]` in Produktion. Es existieren keinerlei
+//! `unsafe`-Bloecke im Produktionscode.
+
 #![deny(dead_code)]
 //! `Acta` Store — LSM-Tree based storage engine.
 //!
@@ -12,12 +24,12 @@
 // MODUL-HIERARCHIE: lsm.rs orchestriert, memtable/wal/sstable sind Bausteine.
 
 #![forbid(unsafe_code)]
-#![allow(unexpected_cfgs)]
 
 #[cfg(not(loom))]
 pub mod compaction;
 pub mod engine;
-pub mod kv;
+pub mod envelope;
+pub mod fsync;
 #[cfg(not(loom))]
 pub mod lsm;
 #[cfg(not(loom))]
@@ -31,11 +43,17 @@ pub mod system_pressure;
 #[cfg(not(loom))]
 pub mod tenant_codec;
 pub(crate) mod util;
+pub mod vfs;
 pub mod wal;
 
-// WP-4.1 (UNIMPLEMENTED): mmap-basierter SSTable-Zugriff für Out-of-Core-Daten.
+pub mod erase;
+pub mod health;
+pub mod purge;
+pub mod tenant_scoped;
+
+// WP-4.1 (UNIMPLEMENTED): Vfs-basierter SSTable-Zugriff für Out-of-Core-Daten.
 // Aktuell: reguläres tokio::fs/std::fs File-I/O in sstable.rs.
-// Tracking-Issue: TODO(owner): Issue anlegen
+// Tracking-Issue: WP-4.1 (Out-of-Core Vfs SSTable-Zugriff; siehe docs/PLAN.md)
 // INVARIANTE: LSM-Kern bleibt blind gegenüber Indexstrukturen.
 
 #[cfg(not(loom))]

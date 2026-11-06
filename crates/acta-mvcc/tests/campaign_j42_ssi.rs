@@ -1,11 +1,14 @@
-//! Campaign J-42: SSI Read-Set & Write-Skew Isolation Audit Test Suite
-//! Oracle Source (R4): Formal Serializability / Write-Skew Isolation Invariant (Spec B.2 & INV-MVCC-SSI-1)
-//! counter-test (R10): Verified against validator bypass (passing empty ReadSet fails conflict detection).
+//! # Kampagne J-42: SSI Read-Set & Write-Skew Isolations-Audit
+//!
+//! Formale Prüfung des Write-Skew-Orakels und Gegenprüfung gegen fehlerhafte
+//! Umgehung des ReadSets (Counter-Factual Verification).
 
 use acta_mvcc::ssi::{ReadSet, SequenceLogSsiValidator, SsiValidator};
 use acta_mvcc::TxId;
+use acta_testmacros::ctx_test;
 
-#[test]
+// Prüft die formale Erkennung von Write-Skew-Anomalien über das unabhängige Orakel.
+#[ctx_test(id = "T-TXN-1")]
 #[allow(clippy::expect_used)]
 fn test_campaign_j42_ssi_write_skew_oracle_verification() {
     // Independent Oracle: Write Skew occurs when Tx1 reads A and writes B, Tx2 reads B and writes A concurrently.
@@ -32,7 +35,8 @@ fn test_campaign_j42_ssi_write_skew_oracle_verification() {
     );
 }
 
-#[test]
+// Gegenprobe: Verifiziert, dass ein absichtlich unvollständiges ReadSet die Konflikterkennung verfehlt (Beweis für die Wirksamkeit des ReadSets).
+#[ctx_test(id = "T-TXN-1")]
 fn test_campaign_j42_ssi_counter_factual_mutation_check() {
     // R10 Counter-Test: Demonstrates that if an empty ReadSet is passed (as occurs when LSM get() skips ReadSet registration),
     // the SSI validator fails to catch the conflict!

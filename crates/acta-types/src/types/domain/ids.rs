@@ -1,3 +1,16 @@
+//! Identifikatoren: `DocId`, `EntityId`, `TxId`, `TenantId`, `CollectionId`.
+//!
+//! # Architektur-Rolle: Ring 0 (Typensichere Newtypes)
+//!
+//! Alle Primärschlüssel und logischen Referenzen sind als Newtypes modelliert.
+//! Dies verhindert das versehentliche Verwechseln von Roh-Ganzzahlen (z. B. Übergabe einer `TxId`
+//! an eine Funktion, die eine `DocId` erwartet).
+//!
+//! # Invarianten
+//! - INV-TENANT-1: `TenantId(0)` ist zwingend für das System reserviert (`TenantId::SYSTEM`).
+//! - AGT-GRAPH-001: `TxId` unterscheidet strikt zwischen regulären Collection-Transaktionen
+//!   (`[1, MAX_COLLECTION_SEQUENCE]`) und internen System-Transaktionen (`[INTERNAL_BASE, u64::MAX]`).
+
 use crate::error::{ActaError, Result};
 use serde::{Deserialize, Serialize};
 
@@ -7,6 +20,11 @@ use serde::{Deserialize, Serialize};
 ///
 /// INVARIANTE INV-TENANT-1: TenantId(0) ist SYSTEM-reserviert.
 /// `TenantId::try_new(0)` → Err. Keine Ausnahmen.
+///
+/// # Abgrenzung
+/// Dieser Typ `acta_types::TenantId` ist der kanonische 64-Bit-Ganzzahl-Mandantenidentifikator
+/// in Ring 0 zur Durchsetzung der Mandantenisolation über LSM-Store, WAL und Indexe (INV-TENANT-1).
+/// Stellt die strikte Mandantentrennung auf Speicherebene sicher.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[repr(transparent)]
 pub struct TenantId(pub u64);
@@ -22,6 +40,13 @@ impl TenantId {
     pub const INVALID: Self = Self(0);
 
     /// Const-Konstruktor.
+    ///
+    /// # Invariante INV-TENANT-1 & Deprecation
+    /// `TenantId::new` erlaubt die Erstellung von `TenantId(0)` ohne Laufzeit-Validierung.
+    /// Da `TenantId(0)` zwingend für den System-Kontext ([`TenantId::SYSTEM`]) reserviert ist,
+    /// umgeht `new()` die Invariante INV-TENANT-1.
+    /// Verwende stattdessen [`TenantId::try_new`] für Benutzermandanten oder [`TenantId::SYSTEM`]
+    /// für Systemtransaktionen.
     #[deprecated(
         since = "0.1.0",
         note = "Nutze TenantId::try_new() oder TenantId::SYSTEM — new() umgeht INV-TENANT-1 und wird in einer künftigen Version entfernt."
@@ -155,10 +180,7 @@ impl DocId {
     pub const MAX: Self = Self(u64::MAX);
     /// Minimum possible `DocId` value (`0`).
     ///
-    /// Note: `DocId(0)` is conventionally treated as a sentinel/null value
-    /// by the MCP layer (`acta-mcp/src/lib.rs` line 214 uses it as a
-    /// fallback). Callers MUST propagate `from_key()` errors rather than
-    /// silently producing `DocId(0)`.
+    /// Note: Callers MUST propagate `from_key()` errors rather than silently producing `DocId(0)`.
     pub const MIN: Self = Self(0);
 
     /// Creates a new `DocId` wrapping the provided `u64` identifier.
@@ -186,7 +208,7 @@ impl DocId {
     /// Durch die Trunkierung auf 64 Bit besteht bei sehr großen Dokumentenmengen (ca. 2^32 bzw. ~4 Milliarden Keys)
     /// eine theoretische Kollisionswahrscheinlichkeit von ~50% (Geburtstagsparadoxon).
     ///
-    /// Um stille Datenkorruption zu verhindern, führt die Orchestrierungsschicht (`acta-db::Collection`)
+    /// Um stille Datenkorruption zu verhindern, führt die Orchestrierungsschicht
     /// bei Einfügeoperationen (`insert_op` / `update_op`) eine Kollisionsprüfung durch (Reverse-Lookup des `doc_key`).
     /// Sollte eine Kollision mit einem abweichenden Originalschlüssel erkannt werden, wird die Operation
     /// mit `ActaError::Internal` abgelehnt (Fail-Safe statt Fail-Silent).
@@ -223,7 +245,6 @@ impl DocId {
 
     /// Returns the lower 64 bits of the identifier for backwards compatibility.
     #[inline]
-    #[allow(clippy::cast_possible_truncation)]
     pub const fn as_u64(self) -> u64 {
         self.0 as u64
     }
@@ -294,9 +315,15 @@ impl EntityId {
     }
 
     /// Creates an `EntityId` directly from a `DocId`.
-    #[allow(clippy::unnecessary_cast, clippy::cast_possible_truncation)]
+    #[cfg(not(feature = "docid-128"))]
     pub fn from_doc_id(doc_id: DocId) -> Self {
-        Self(doc_id.inner() as u64)
+        Self(doc_id.inner())
+    }
+
+    /// Creates an `EntityId` directly from a `DocId`.
+    #[cfg(feature = "docid-128")]
+    pub fn from_doc_id(doc_id: DocId) -> Self {
+        Self(doc_id.as_u64())
     }
 
     /// Derives an `EntityId` from a string key using the first 8 bytes of its BLAKE3 hash.
@@ -307,9 +334,22 @@ impl EntityId {
     /// # Infallible Fallback
     /// If you need the old infallible behaviour (parse-as-u64 or hash), use `EntityId::from(key)` directly.
     /// Prefer this fallible variant for consistency with `DocId` at API boundaries.
-    #[allow(clippy::unnecessary_cast, clippy::cast_possible_truncation)]
+    #[cfg(not(feature = "docid-128"))]
     pub fn from_key(key: &str) -> Result<Self> {
-        DocId::from_key(key).map(|d| Self(d.inner() as u64))
+        DocId::from_key(key).map(|d| Self(d.inner()))
+    }
+
+    /// Derives an `EntityId` from a string key using the first 8 bytes of its BLAKE3 hash.
+    ///
+    /// # Errors
+    /// Returns `ActaError::InvalidInput` if `key` is empty, mirroring `DocId::from_key`.
+    ///
+    /// # Infallible Fallback
+    /// If you need the old infallible behaviour (parse-as-u64 or hash), use `EntityId::from(key)` directly.
+    /// Prefer this fallible variant for consistency with `DocId` at API boundaries.
+    #[cfg(feature = "docid-128")]
+    pub fn from_key(key: &str) -> Result<Self> {
+        DocId::from_key(key).map(|d| Self(d.as_u64()))
     }
 }
 
@@ -418,12 +458,6 @@ impl TxId {
     #[inline]
     pub const fn internal() -> Self {
         Self(Self::INTERNAL_BASE)
-    }
-
-    /// Returns a new internal/system transaction ID with the given offset from INTERNAL_BASE.
-    #[inline]
-    pub fn internal_with_offset(offset: u64) -> Result<Self> {
-        Self::try_from_internal_offset(offset)
     }
 
     /// Safely constructs an internal system TxId from an offset relative to `TxId::INTERNAL_BASE`.

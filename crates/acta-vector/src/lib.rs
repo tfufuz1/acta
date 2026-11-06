@@ -7,16 +7,24 @@
 
 //! Acta Index — HNSW vector index with SIMD distance computation.
 // INVARIANT: Vector Engine (Triebwerk — Layer 1).
-// IMPLEMENTS: VectorIndex Trait (acta-core/traits.rs)
+// IMPLEMENTS: VectorIndex Trait (acta-ports/src/vector.rs)
 // KERNKOMPONENTEN: HNSW (Graph-basierte ANN) + CSR Graph (Relationen) + SIMD-Distanz.
 // INVARIANTE: HNSW-Graphen liegen exklusiv im RAM. Disk-Storage erfolgt über acta-store (via LsmStorage).
 
-// ANCHOR[REFACTOR:WP-0.0-STABLESIMD] STATUS:DONE (TS:2026-06-01T00:00:00Z) — Remove nightly portable_simd
 // TEST: cargo +stable check -p acta-index
 // DONE: #![feature(portable_simd)] ist entfernt und distance.rs nutzt stabiles Rust.
-// INVARIANTE: Zero unsafe code in acta-vector. SIMD an acta-simd, mmap an acta-sys ausgelagert.
+// INVARIANTE: Zero unsafe code in acta-vector. SIMD an acta-simd, buffer an acta-sys ausgelagert.
 #![forbid(unsafe_code)]
-#![allow(clippy::too_many_arguments)]
+// ADR-077: Vector index numerical conversions, array indexing, and internal collections.
+#![allow(
+    clippy::too_many_arguments,
+    clippy::indexing_slicing,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::disallowed_types,
+    clippy::collapsible_if,
+    clippy::wrong_self_convention
+)]
 
 #[cfg(feature = "experimental-diskann")]
 pub mod diskann;
@@ -37,8 +45,10 @@ pub use candidate_stream::{VectorCandidateStream, DEFAULT_VECTOR_STREAM_BATCH_SI
 pub use compute_pool::ComputePool;
 #[cfg(feature = "experimental-diskann")]
 pub use diskann::{DiskAnnConfig, DiskAnnFallbackPolicy, DiskAnnIndex};
-pub use hnsw::{HnswConfig, HnswIndex, RebuildStatus};
-pub use persistence::{HnswHeader, MmapIndex};
+pub use hnsw::{
+    DeletionStats, GhostFreeVectorIndex, HnswConfig, HnswConfigBuilder, HnswIndex, RebuildStatus,
+};
+pub use persistence::{BufferIndex, HnswHeader};
 pub use quantize::ScalarQuantizer;
 #[cfg(feature = "experimental-rabitq")]
 pub use quantize_rabitq::RaBitQQuantizer;

@@ -1,7 +1,8 @@
 //! Test suite for fsync syscall discipline, call sequence verification, and performance overhead measurements.
 
-use acta_core::{StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::{LsmConfig, LsmStorage};
+use acta_types::TxId;
 use std::time::Instant;
 use tempfile::tempdir;
 

@@ -1,16 +1,16 @@
 // FILE-CONTEXT
 // ZWECK: DiskANN-Graphindex für Out-of-Core Approximate Nearest Neighbor Search (WP-4.3).
-// INVARIANTEN: Lock-Hierarchie: header -> mmap -> cache / quantizer / doc_ids; atomic rename + parent dir sync bei file persistence.
-// NICHT-OFFENSICHTLICH: Mmap für Vektor- & Graphlesezugriffe, ausgelagert an acta-sys::mmap_readonly.
+// INVARIANTEN: Lock-Hierarchie: header -> vfs_file -> cache / quantizer / doc_ids; atomic rename + parent dir sync bei file persistence.
+// NICHT-OFFENSICHTLICH: Positional VFS-Lesevorgänge über acta_ports::Vfs.
 // STAND: TS:2026-09-10T19:30:00Z (SESSION: a9d67eae)
 
 use super::format::{
-    DISKANN_INTEGRITY_KEY, MAX_PENDING_WAL_DIM, PENDING_WAL_HEADER_SIZE, PENDING_WAL_MAGIC,
+    compute_diskann_tag, MAX_PENDING_WAL_DIM, PENDING_WAL_HEADER_SIZE, PENDING_WAL_MAGIC,
     PENDING_WAL_VERSION, TOMBSTONE_WAL_HEADER_SIZE, TOMBSTONE_WAL_MAGIC, TOMBSTONE_WAL_VERSION,
 };
 use super::types::{DiskAnnIndex, SearchCandidate};
 use crate::distance::compute_distance_trusted;
-use acta_core::{ActaError, DocId, Result};
+use acta_types::{ActaError, DocId, Result};
 #[cfg(not(feature = "docid-128"))]
 pub(crate) type TombstoneSet = roaring::RoaringTreemap;
 
@@ -97,14 +97,13 @@ impl DiskAnnIndex {
         Ok(pruned)
     }
 
-    /// Appends a tombstone record to `tombstone.wal` with HMAC-SHA256 integrity protection.
+    /// Synchronous blocking helper to append a tombstone record to `tombstone.wal`.
     ///
-    /// # Binary Format
-    /// - File Header (written on new/empty file creation): `[TWAL: 4 bytes] [version=1: 1 byte]`
-    /// - Entry Layout:
-    ///   - `id`: `u64` LE (8 bytes)
-    ///   - `hmac`: `[u8; 32]` (32-byte HMAC-SHA256 computed over `id_bytes`)
-    pub(crate) async fn append_to_tombstone_wal(path: &std::path::Path, id: DocId) -> Result<()> {
+    /// Aufrufer wählt spawn_blocking.
+    pub(crate) fn append_to_tombstone_wal_blocking(
+        path: &std::path::Path,
+        id: DocId,
+    ) -> Result<()> {
         use std::io::Write;
 
         let is_new = match std::fs::metadata(path) {
@@ -126,14 +125,23 @@ impl DiskAnnIndex {
         }
 
         let id_bytes = id.inner().to_le_bytes();
-        let mut hmac = acta_crypto::wal_crypto::WalHmac::new(DISKANN_INTEGRITY_KEY)?;
-        hmac.update(&id_bytes);
-        let computed_hmac = hmac.finalize();
+        let computed_tag = compute_diskann_tag(&[&id_bytes]);
 
         file.write_all(&id_bytes).map_err(ActaError::Io)?;
-        file.write_all(&computed_hmac).map_err(ActaError::Io)?;
+        file.write_all(&computed_tag).map_err(ActaError::Io)?;
         file.sync_all().map_err(ActaError::Io)?;
         Ok(())
+    }
+
+    /// Appends a tombstone record to `tombstone.wal` with HMAC-SHA256 integrity protection.
+    ///
+    /// # Binary Format
+    /// - File Header (written on new/empty file creation): `[TWAL: 4 bytes] [version=1: 1 byte]`
+    /// - Entry Layout:
+    ///   - `id`: `u64` LE (8 bytes)
+    ///   - `hmac`: `[u8; 32]` (32-byte HMAC-SHA256 computed over `id_bytes`)
+    pub(crate) async fn append_to_tombstone_wal(path: &std::path::Path, id: DocId) -> Result<()> {
+        Self::append_to_tombstone_wal_blocking(path, id)
     }
 
     /// Reads and verifies uncommitted tombstone entries from `tombstone.wal`.
@@ -203,40 +211,32 @@ impl DiskAnnIndex {
                     .map_err(|_| ActaError::Storage("Corrupt DocId in WAL".into()))?,
             );
 
-            let mut buf_hmac = [0u8; 32];
-            if file.read_exact(&mut buf_hmac).is_err() {
-                tracing::warn!("Truncated HMAC in tombstone.wal");
+            let mut buf_tag = [0u8; 16];
+            if file.read_exact(&mut buf_tag).is_err() {
+                tracing::warn!("Truncated tag in tombstone.wal");
                 break;
             }
-            offset += 32;
+            offset += 16;
 
-            let mut hmac = acta_crypto::wal_crypto::WalHmac::new(DISKANN_INTEGRITY_KEY)?;
-            hmac.update(&buf_id);
-            let computed_hmac = hmac.finalize();
+            let computed_tag = compute_diskann_tag(&[&buf_id]);
 
-            if computed_hmac.ct_eq(&buf_hmac).into() {
+            if computed_tag.ct_eq(&buf_tag).into() {
                 bitset.insert(doc_id);
             } else {
                 tracing::error!(
                     offset = entry_offset,
                     doc_id = doc_id,
-                    "tombstone.wal: HMAC-Mismatch bei Eintrag, Eintrag verworfen"
+                    "tombstone.wal: Tag-Mismatch bei Eintrag, Eintrag verworfen"
                 );
             }
         }
         Ok(bitset)
     }
 
-    /// Appends a vector insertion record to `pending.wal` with HMAC-SHA256 integrity protection.
+    /// Synchronous blocking helper to append a vector insertion record to `pending.wal`.
     ///
-    /// # Binary Format
-    /// - File Header (written on new/empty file creation): `[PWAL: 4 bytes] [version=1: 1 byte]`
-    /// - Entry Layout:
-    ///   - `id`: `u64` LE (8 bytes)
-    ///   - `dim`: `u32` LE (4 bytes)
-    ///   - `embedding`: `[f32 LE; dim]` (`dim * 4` bytes)
-    ///   - `hmac`: `[u8; 32]` (32-byte HMAC-SHA256 computed over `id_bytes || dim_bytes || embedding_bytes`)
-    pub(crate) async fn append_to_pending_wal(
+    /// Aufrufer wählt spawn_blocking.
+    pub(crate) fn append_to_pending_wal_blocking(
         path: &std::path::Path,
         id: DocId,
         embedding: &[f32],
@@ -273,14 +273,29 @@ impl DiskAnnIndex {
             entry_bytes.extend_from_slice(&val.to_le_bytes());
         }
 
-        let mut hmac = acta_crypto::wal_crypto::WalHmac::new(DISKANN_INTEGRITY_KEY)?;
-        hmac.update(&entry_bytes);
-        let computed_hmac = hmac.finalize();
+        let computed_tag = compute_diskann_tag(&[&entry_bytes]);
 
         file.write_all(&entry_bytes).map_err(ActaError::Io)?;
-        file.write_all(&computed_hmac).map_err(ActaError::Io)?;
+        file.write_all(&computed_tag).map_err(ActaError::Io)?;
         file.sync_all().map_err(ActaError::Io)?;
         Ok(())
+    }
+
+    /// Appends a vector insertion record to `pending.wal` with HMAC-SHA256 integrity protection.
+    ///
+    /// # Binary Format
+    /// - File Header (written on new/empty file creation): `[PWAL: 4 bytes] [version=1: 1 byte]`
+    /// - Entry Layout:
+    ///   - `id`: `u64` LE (8 bytes)
+    ///   - `dim`: `u32` LE (4 bytes)
+    ///   - `embedding`: `[f32 LE; dim]` (`dim * 4` bytes)
+    ///   - `hmac`: `[u8; 32]` (32-byte HMAC-SHA256 computed over `id_bytes || dim_bytes || embedding_bytes`)
+    pub(crate) async fn append_to_pending_wal(
+        path: &std::path::Path,
+        id: DocId,
+        embedding: &[f32],
+    ) -> Result<()> {
+        Self::append_to_pending_wal_blocking(path, id, embedding)
     }
 
     /// Reads and verifies uncommitted vector entries from `pending.wal`.
@@ -376,20 +391,21 @@ impl DiskAnnIndex {
             }
             offset += vec_byte_len;
 
-            let mut buf_hmac = [0u8; 32];
-            if file.read_exact(&mut buf_hmac).is_err() {
-                tracing::warn!("Truncated HMAC in pending.wal");
+            let mut buf_tag = [0u8; 16];
+            if file.read_exact(&mut buf_tag).is_err() {
+                tracing::warn!("Truncated tag in pending.wal");
                 break;
             }
-            offset += 32;
+            offset += 16;
 
-            let mut hmac = acta_crypto::wal_crypto::WalHmac::new(DISKANN_INTEGRITY_KEY)?;
-            hmac.update(&buf_id);
-            hmac.update(&buf_dim);
-            hmac.update(&vec_bytes);
-            let computed_hmac = hmac.finalize();
+            let mut entry_bytes =
+                Vec::with_capacity(buf_id.len() + buf_dim.len() + vec_bytes.len());
+            entry_bytes.extend_from_slice(&buf_id);
+            entry_bytes.extend_from_slice(&buf_dim);
+            entry_bytes.extend_from_slice(&vec_bytes);
+            let computed_tag = compute_diskann_tag(&[&entry_bytes]);
 
-            if computed_hmac.ct_eq(&buf_hmac).into() {
+            if computed_tag.ct_eq(&buf_tag).into() {
                 let mut vec = Vec::with_capacity(dim);
                 let (chunks, _) = vec_bytes.as_chunks::<4>();
                 for &b in chunks {
@@ -400,7 +416,7 @@ impl DiskAnnIndex {
                 tracing::error!(
                     offset = entry_offset,
                     doc_id = %doc_id.inner(),
-                    "pending.wal: HMAC-Mismatch bei Eintrag, Eintrag verworfen"
+                    "pending.wal: Tag-Mismatch bei Eintrag, Eintrag verworfen"
                 );
             }
         }
@@ -408,6 +424,12 @@ impl DiskAnnIndex {
     }
 
     /// Liest uncommittete Pending-Vektoren aus `pending.wal` und fügt sie in den Index ein.
+    pub fn recover_pending_delta(
+        &self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<usize>> + Send + '_>> {
+        Box::pin(async move { self.recover_pending_delta_sync() })
+    }
+
     pub fn recover_pending_delta_sync(&self) -> Result<usize> {
         let pending_wal = self.inner.config.index_path.with_extension("pending.wal");
         if !pending_wal.exists() {
@@ -424,8 +446,8 @@ impl DiskAnnIndex {
                 *guard = recovered;
             }
             self.persist_delta_sync()?;
-        } else {
-            let _ = std::fs::remove_file(&pending_wal);
+        } else if let Err(e) = std::fs::remove_file(&pending_wal) {
+            tracing::warn!("Failed to remove pending.wal: {e}");
         }
         Ok(count)
     }
@@ -489,7 +511,7 @@ impl DiskAnnIndex {
 
     /// Inkrementeller Vamana-Insert für neue Vektoren (Streaming DiskANN; arXiv:2602.21514 §4).
     ///
-    /// Phase 1: Lade bestehende Graph-Topologie read-only aus Mmap via `load_node`.
+    /// Phase 1: Lade bestehende Graph-Topologie read-only aus Buffer via `load_node`.
     /// Phase 2: Für jeden neuen Vektor: Greedy Beam-Search über den aktuellen Graphen.
     /// Phase 3: RNG-Pruning (α = 1.2) zur Auswahl von maximal `max_degree` Nachbarn.
     /// Phase 4: Rückwärts-Kanten hinzufügen und ggf. Nachbarschaft überschrittener Nachbarn re-prunen.
@@ -519,7 +541,7 @@ impl DiskAnnIndex {
         let total_nodes = existing_count + new_vecs.len();
         let mut graph: Vec<Vec<u32>> = vec![vec![]; total_nodes];
 
-        // Phase 1: Adjazenzlisten bestehender Knoten aus Mmap laden
+        // Phase 1: Adjazenzlisten bestehender Knoten aus Buffer laden
         #[allow(clippy::needless_range_loop)]
         for i in 0..existing_count {
             let node = self.load_node(i as u32)?;
@@ -594,7 +616,7 @@ impl DiskAnnIndex {
         }
 
         // Phase 5: Vektoren für alle Knoten zusammenstellen und in tmp_path serialisieren
-        let (mut all_vecs, _) = self.load_all_vectors_from_mmap()?;
+        let (mut all_vecs, _) = self.load_all_vectors_from_storage()?;
         for (_, vec) in new_vecs {
             all_vecs.push(vec.clone());
         }
@@ -702,12 +724,16 @@ impl DiskAnnIndex {
 
         let pending_wal = self.inner.config.index_path.with_extension("pending.wal");
         if pending_wal.exists() {
-            let _ = std::fs::remove_file(&pending_wal);
+            if let Err(e) = std::fs::remove_file(&pending_wal) {
+                tracing::warn!("Failed to remove pending.wal: {e}");
+            }
         }
 
         let tombstone_wal = self.inner.config.index_path.with_extension("tombstone.wal");
         if tombstone_wal.exists() {
-            let _ = std::fs::remove_file(&tombstone_wal);
+            if let Err(e) = std::fs::remove_file(&tombstone_wal) {
+                tracing::warn!("Failed to remove tombstone.wal: {e}");
+            }
         }
         self.inner.tombstones.write().clear();
 
@@ -744,6 +770,7 @@ impl DiskAnnIndex {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "docid-128")]
     use super::*;
 
     #[cfg(feature = "docid-128")]

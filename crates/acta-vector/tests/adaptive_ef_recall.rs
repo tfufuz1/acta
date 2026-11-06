@@ -1,10 +1,17 @@
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 // FILE-CONTEXT
 // ZWECK: Integrationstests für adaptives ef_search (Ada-ef) Recall, Determinismus, Performance- und Lösch-Invarianten.
 // INVARIANTEN: Zero-Panic in Produktion; Lints in Tests freigegeben.
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-
-use acta_core::{DistanceMetric, DocId, TxId, VectorIndex};
+use acta_ports::VectorIndex;
+use acta_types::{DistanceMetric, DocId, TxId};
 use acta_vector::hnsw::{AdaptiveEfPolicy, HnswConfig, HnswIndex};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};

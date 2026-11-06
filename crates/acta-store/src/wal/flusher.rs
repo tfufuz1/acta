@@ -1,4 +1,8 @@
-use acta_core::{ActaError, Result};
+//! # Asynchroner WAL-Flusher (Ring 1)
+//!
+//! Koordiniert Flush- und fsync-Aufrufe mit Timeout und Batching-Strategien.
+
+use acta_types::{ActaError, Result};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
@@ -278,6 +282,12 @@ impl Wal {
                             }
                         }
 
+                        if acks.iter().all(|a| a.is_closed()) {
+                            // All waiting callers cancelled/timed out before physical write.
+                            // Discard this batch to maintain atomicity and prevent phantom commits.
+                            continue;
+                        }
+
                         let size_before = size.load(std::sync::atomic::Ordering::Acquire);
                         let write_header = !header_written
                             .load(std::sync::atomic::Ordering::Acquire)
@@ -441,6 +451,8 @@ impl Wal {
                                 ));
                             }
 
+                            size.store(offset, std::sync::atomic::Ordering::SeqCst);
+
                             if let Err(e) = file.set_len(offset).await {
                                 return Err(ActaError::Storage(format!(
                                     "WAL truncate failed for {}: {}",
@@ -475,8 +487,6 @@ impl Wal {
                             flusher_last_hmac = new_last_hmac;
                             let mut last_hmac_guard = last_hmac.lock().await;
                             *last_hmac_guard = new_last_hmac;
-
-                            size.store(offset, std::sync::atomic::Ordering::SeqCst);
 
                             Ok(())
                         }

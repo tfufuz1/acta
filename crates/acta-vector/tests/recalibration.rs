@@ -1,4 +1,13 @@
-use acta_core::{DocId, TxId, VectorIndex};
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
+use acta_ports::VectorIndex;
+use acta_types::{DocId, TxId};
 use acta_vector::hnsw::{HnswConfig, HnswIndex};
 use rand::{Rng, SeedableRng};
 use std::sync::Arc;
@@ -12,7 +21,7 @@ async fn test_quantizer_recalibration() {
         ef_construction: 100,
         ef_search: 50,
         rebuild_threshold: 0.8,
-        distance_metric: acta_core::DistanceMetric::Euclidean,
+        distance_metric: acta_types::DistanceMetric::Euclidean,
         quantize: true,
         quantizer_recalibration_sample_size: 1000,
         ..Default::default()

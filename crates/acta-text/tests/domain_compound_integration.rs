@@ -1,8 +1,29 @@
+// Begründung: Integrationstest-Fixtures und Assertions dürfen Test-Unwraps, Indizierung und Test-Zeitgeber verwenden.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::disallowed_methods,
+    clippy::disallowed_types,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::unnecessary_cast,
+    clippy::type_complexity
+)]
+
+//! Testsuite `domain_compound_integration.rs` für acta-text.
+//!
+//! # Ring-Zuordnung
+//! Ring LAB / Testbereich.
+
 // FILE-CONTEXT: Integrationspruefung fuer GermanCompoundSplitter mit Domaenenvokabularen.
 // ZWECK: Verifiziert, dass der GermanCompoundSplitter mit den ausgebauten Vokabularen mindestens 20 reprasentative Komposita je Domaene (Recht & Medizin) korrekt zerlegt und geschuetzte Begriffe unangetastet laesst.
 
 use acta_text::morphology::{GermanCompoundSplitter, MorphologicalTokenizer};
 
+// ANCHOR[acta-text:TEST-156]
+// Testfall `test_legal_compounds_decomposition_at_least_20_cases`: Prüft das Verhalten und Invarianten der Textverarbeitung.
 #[test]
 fn test_legal_compounds_decomposition_at_least_20_cases() {
     let splitter = GermanCompoundSplitter::new_with_all_domains();
@@ -48,6 +69,8 @@ fn test_legal_compounds_decomposition_at_least_20_cases() {
     }
 }
 
+// ANCHOR[acta-text:TEST-157]
+// Testfall `test_medical_compounds_decomposition_at_least_20_cases`: Prüft das Verhalten und Invarianten der Textverarbeitung.
 #[test]
 fn test_medical_compounds_decomposition_at_least_20_cases() {
     let splitter = GermanCompoundSplitter::new_with_all_domains();
@@ -93,6 +116,8 @@ fn test_medical_compounds_decomposition_at_least_20_cases() {
     }
 }
 
+// ANCHOR[acta-text:TEST-158]
+// Testfall `test_protected_terms_are_not_decomposed`: Prüft das Verhalten und Invarianten der Textverarbeitung.
 #[test]
 fn test_protected_terms_are_not_decomposed() {
     let splitter = GermanCompoundSplitter::new_with_all_domains();

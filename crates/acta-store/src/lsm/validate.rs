@@ -1,5 +1,9 @@
+//! # Invarianten-Validierung (Ring 1)
+//!
+//! Prueft interne Datenstrukturen auf Konsistenz und Korrektheit.
+
 use super::{MAX_KEY_SIZE, MAX_VALUE_SIZE};
-use acta_core::{ActaError, DocId, Result};
+use acta_types::{ActaError, DocId, Result};
 
 pub fn validate_key(key: &[u8]) -> Result<()> {
     if key.is_empty() {
@@ -19,7 +23,9 @@ pub fn validate_key(key: &[u8]) -> Result<()> {
 pub fn derive_doc_id(key: &[u8]) -> DocId {
     let hash = blake3::hash(key);
     let mut bytes = [0u8; 8];
-    bytes.copy_from_slice(&hash.as_bytes()[..8]);
+    if let Some(src) = hash.as_bytes().get(..8) {
+        bytes.copy_from_slice(src);
+    }
     DocId::new(u64::from_le_bytes(bytes))
 }
 
@@ -27,7 +33,9 @@ pub fn derive_doc_id(key: &[u8]) -> DocId {
 pub fn derive_doc_id(key: &[u8]) -> DocId {
     let hash = blake3::hash(key);
     let mut bytes = [0u8; 16];
-    bytes.copy_from_slice(&hash.as_bytes()[..16]);
+    if let Some(src) = hash.as_bytes().get(..16) {
+        bytes.copy_from_slice(src);
+    }
     DocId::new(u128::from_le_bytes(bytes))
 }
 

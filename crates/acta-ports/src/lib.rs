@@ -1,7 +1,10 @@
-//! Core trait definitions for Acta subsystems.
+//! Schnittstellen (Traits) zwischen den Schichten: Speicher, Index, Dateisystem, Zeit, Zufall, Löschschicht.
 //!
-//! These traits define the abstract interfaces that concrete implementations
-//! must fulfill, enabling modularity and testability.
+//! Ring 0 Komponente laut SPEC 5.1a, 5.2, 5.3 und 8.2.
+//! Erlaubte Abhängigkeiten laut SPEC §3.1 und §5.3: acta-types (Ring 0).
+//!
+//! Diese Traits definieren die abstrakten Schnittstellen (Ports) zwischen
+//! den Schichten zur Realisierung einer hexagonalen Architektur.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -18,8 +21,10 @@
 use std::future::Future;
 use std::pin::Pin;
 
-pub use acta_types::*;
-pub use acta_types::{error, error_dto, model_fingerprint, schema, tombstone, types};
+// AR-10: Nur Typen re-exportieren, die in Trait-Signaturen vorkommen
+pub use acta_types::{
+    ActaError, DocId, ResourceBudget, ResourceTracker, Result, ScoredDocument, TxId,
+};
 
 /// Type alias for a pinned, heap-allocated `Future` that is `Send` and dyn-compatible.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -27,38 +32,30 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 /// Type alias for a pinned, heap-allocated `Stream` that is `Send` and dyn-compatible.
 pub type BoxStream<'a, T> = Pin<Box<dyn futures_util::stream::Stream<Item = T> + Send + 'a>>;
 
-/// Attention exporter trait and request ID types.
-pub mod attention;
-/// Checkpoint and snapshot traits.
-pub mod checkpoint;
+/// Synchronization barriers for commit, compaction, and purge mutual exclusion.
+pub mod barrier;
 /// Clock port trait and system time implementation.
 pub mod clock;
-/// Embedding provider and LLM generation traits.
-pub mod embedding;
-/// Graph mutation and CSR traversal port traits.
-pub mod graph;
-/// Graph index traits and CSR statistics.
-pub mod graph_index;
+/// Erasure layer contracts.
+pub mod erasure;
+/// ReadGate interface and types.
+pub mod gate;
 /// Unique ID generator port trait and atomic implementation.
 pub mod id_gen;
-/// Key-value prefix store traits and types.
-pub mod kv;
-/// Key-value bridge storage port trait.
-pub mod kv_bridge_port;
-/// License and activation gate port traits.
-pub mod license;
-/// Grounding validator traits and context preparer contracts.
-pub mod lifecycle;
+/// Key management, RecordSealer, and FileKeyring.
+pub mod keys;
+/// Ledger sink contracts.
+pub mod ledger;
+/// Memory locking and dumping protection ports for vector arenas.
+pub mod memory;
 /// Metrics reporting port trait.
 pub mod metrics;
-/// Observability and lifecycle re-exports.
-pub mod observability;
-/// Plugin registry and dependency resolution.
-pub mod plugin;
-/// QueryRewriter port trait for multi-step retrieval sub-query generation.
-pub mod query_rewriter;
-/// Reranker port trait for cross-encoder post-retrieval ranking.
-pub mod reranker;
+/// Erase-Observer port trait and event representations (SPEC D-118).
+pub mod observer;
+/// Pre-gate execution hook port trait (SPEC D-115, D-117).
+pub mod pre_gate;
+/// Audit report signer port trait (SPEC D-130).
+pub mod report_signer;
 /// Random number generator port trait and SplitMix64 implementation.
 pub mod rng;
 /// Key-value storage engine traits.
@@ -67,27 +64,35 @@ pub mod storage;
 pub mod text_index;
 /// Vector retrieval and HNSW indexing traits.
 pub mod vector_index;
+/// Virtual File System (VFS) port interface and contracts.
+pub mod vfs;
 
-pub use attention::*;
-pub use checkpoint::*;
-pub use clock::*;
-pub use embedding::*;
-pub use graph::*;
-pub use graph_index::*;
-pub use id_gen::*;
-pub use kv::*;
-pub use kv_bridge_port::*;
-pub use license::*;
-pub use lifecycle::*;
-pub use metrics::*;
-pub use observability::*;
-pub use plugin::*;
-pub use query_rewriter::*;
-pub use reranker::*;
-pub use rng::*;
-pub use storage::*;
-pub use text_index::*;
-pub use vector_index::*;
+// AR-10: Einzelne Re-Exporte statt Glob-Re-Exporte
+pub use barrier::{
+    BarrierExclusive, BarrierShared, CommitBarrier, CompactionPermit, PurgeBarrier, PurgePermit,
+};
+pub use clock::{Clock, SystemClock};
+pub use erasure::{
+    Armed, EraseTarget, ErasureLayer, KeyCoverage, LayerId, LayerScope, LayerWitness, PurgeCx,
+    PurgeOutcome, Scanner,
+};
+pub use gate::{GateDecision, KeyBound, KeyBuf, KeyRange, RangeGate, ReadGate, Seq};
+pub use id_gen::{IdGen, SequentialIdGen};
+pub use keys::{Envelope, FileId, FileKey, FileKeyring, FileKind, RecordSealer, SealCtx};
+pub use ledger::{LedgerEntry, LedgerSink, RangeSet, Timestamp};
+pub use memory::{ArenaGuard, MemoryLockGuard};
+pub use metrics::{
+    HistogramSnapshot, InMemoryMetricsSink, MetricKey, MetricName, MetricSnapshot, Metrics,
+    MetricsSink, MetricsSinkAdapter, NoopMetricsSink,
+};
+pub use observer::{ErasureEvent, ErasureObserver, ObservedPhase, ObserverError, TargetKind};
+pub use pre_gate::{PreGate, PreGateIntent, PreGateOutcome};
+pub use report_signer::{ReportSignature, ReportSigner, SignerError, SignerId};
+pub use rng::{Rng, SeededRng};
+pub use storage::{StorageEngine, StorageStats, MAX_SCAN_MERGE_ACCUMULATOR};
+pub use text_index::{TextIndex, TextIndexStats};
+pub use vector_index::{VectorIndex, VectorIndexStats};
+pub use vfs::{VerifiedVia, Vfs, VfsFile, VfsOpenOptions};
 
 #[cfg(test)]
 mod dyn_safety {
@@ -95,47 +100,52 @@ mod dyn_safety {
 
     fn _assert_dyn_storage(_: Option<&dyn StorageEngine>) {}
     fn _assert_dyn_metrics_sink(_: Option<&dyn MetricsSink>) {}
-    fn _assert_dyn_kv_bridge_storage(_: Option<&dyn KvBridgeStorage>) {}
-    fn _assert_dyn_kv_prefix_store(_: Option<&dyn KvPrefixStore>) {}
-    fn _assert_dyn_kv_lifecycle_hooks(_: Option<&dyn KvLifecycleHooks>) {}
-    fn _assert_dyn_graph_mutation(_: Option<&dyn GraphCollectionMutation>) {}
-    fn _assert_dyn_graph(_: Option<&dyn GraphIndex>) {}
-    fn _assert_dyn_embedding(_: Option<&dyn TextEmbeddingEngine>) {}
-    fn _assert_dyn_response_grounding_validator(_: Option<&dyn ResponseGroundingValidator>) {}
     fn _assert_dyn_clock(_: Option<&dyn Clock>) {}
     fn _assert_dyn_rng(_: Option<&dyn Rng>) {}
     fn _assert_dyn_id_gen(_: Option<&dyn IdGen>) {}
-    fn _assert_dyn_license_gate(_: Option<&dyn LicenseGate>) {}
-    fn _assert_dyn_attention_exporter(_: Option<&dyn AttentionExporter>) {}
-    fn _assert_dyn_reranker(_: Option<&dyn Reranker>) {}
-    fn _assert_dyn_query_rewriter(_: Option<&dyn QueryRewriter>) {}
+    fn _assert_dyn_vfs(_: Option<&dyn Vfs>) {}
+    fn _assert_dyn_commit_barrier(_: Option<&dyn CommitBarrier>) {}
+    fn _assert_dyn_purge_barrier(_: Option<&dyn PurgeBarrier>) {}
+    fn _assert_dyn_arena_guard(_: Option<&dyn ArenaGuard>) {}
+    fn _assert_dyn_erasure_observer(_: Option<&dyn ErasureObserver>) {}
+    fn _assert_dyn_report_signer(_: Option<&dyn ReportSigner>) {}
+    fn _assert_dyn_pre_gate(_: Option<&dyn PreGate>) {}
+    fn _assert_dyn_erasure_layer(_: Option<&dyn ErasureLayer>) {}
+    fn _assert_dyn_read_gate(_: Option<&dyn ReadGate>) {}
+    fn _assert_dyn_record_sealer(_: Option<&dyn RecordSealer>) {}
+    fn _assert_dyn_file_keyring(_: Option<&dyn FileKeyring>) {}
+    fn _assert_dyn_ledger_sink(_: Option<&dyn LedgerSink>) {}
 
+    /// SPEC: T-ARCH-6
     #[test]
     fn test_dyn_safety_compiles() {
         _assert_dyn_storage(None);
         _assert_dyn_metrics_sink(None);
-        _assert_dyn_kv_bridge_storage(None);
-        _assert_dyn_kv_prefix_store(None);
-        _assert_dyn_kv_lifecycle_hooks(None);
-        _assert_dyn_graph_mutation(None);
-        _assert_dyn_graph(None);
-        _assert_dyn_embedding(None);
         _assert_dyn_clock(None);
         _assert_dyn_rng(None);
         _assert_dyn_id_gen(None);
-        _assert_dyn_license_gate(None);
-        _assert_dyn_attention_exporter(None);
-        _assert_dyn_reranker(None);
-        _assert_dyn_query_rewriter(None);
+        _assert_dyn_vfs(None);
+        _assert_dyn_commit_barrier(None);
+        _assert_dyn_purge_barrier(None);
+        _assert_dyn_arena_guard(None);
+        _assert_dyn_erasure_observer(None);
+        _assert_dyn_report_signer(None);
+        _assert_dyn_pre_gate(None);
+        _assert_dyn_erasure_layer(None);
+        _assert_dyn_read_gate(None);
+        _assert_dyn_record_sealer(None);
+        _assert_dyn_file_keyring(None);
+        _assert_dyn_ledger_sink(None);
+    }
+
+    /// SPEC: T-ARCH-3 / Rule 3
+    #[test]
+    fn test_ports_forbid_unsafe() {
+        // Enforces crate-level unsafe code prohibition per SPEC §3.2 and Rule 3.
+        let lib_src = include_str!("lib.rs");
+        assert!(
+            lib_src.contains("#![forbid(unsafe_code)]"),
+            "acta-ports must enforce #![forbid(unsafe_code)]"
+        );
     }
 }
-
-// =============================================================================
-// ÄNDERUNGSNOTIZ / CHANGELOG (v17 Teil 2.2 Cleanup)
-// =============================================================================
-// Bereinigung verwaister und überholter Port-Definitionen gemäß Spec v17 Teil 2.2:
-// - `DistanceCalculator`: Verwaister Trait, ersetzt durch `DistanceMetric::compute` in `acta-types`.
-// - `MemoryLifecycleManager`: Verwaister Trait ohne Implementierung im Workspace.
-// - `StorageRead`: Überholt und konsolidiert im umfassenden `StorageEngine`-Trait in `storage.rs`.
-// - `StorageWrite`: Überholt und konsolidiert im umfassenden `StorageEngine`-Trait in `storage.rs`.
-// =============================================================================

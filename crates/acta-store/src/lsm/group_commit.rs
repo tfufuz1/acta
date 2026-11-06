@@ -1,6 +1,10 @@
+//! # Group-Commit Pipeline (Ring 1)
+//!
+//! Buendelt parallele Schreibanfragen deterministisch zur Reduktion von fsync-Aufrufen.
+
 use crate::lsm::config::DurabilityMode;
 use crate::wal::{PreparedBatch, Wal, WalOp};
-use acta_core::{Result, TxId};
+use acta_types::{Result, TxId};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -12,7 +16,7 @@ pub(super) async fn execute_group_commit_append(
     committed_flag: &AtomicBool,
 ) -> Result<()> {
     match durability_mode {
-        DurabilityMode::Full | DurabilityMode::WalNoHmac => {
+        DurabilityMode::Full => {
             let start_offset = wal.size();
             let start_hmac = wal.last_hmac_snapshot().await;
             let append_res = wal

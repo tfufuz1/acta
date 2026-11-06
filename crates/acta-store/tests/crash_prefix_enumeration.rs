@@ -6,9 +6,10 @@
 
 mod support;
 
-use acta_core::{StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
 use acta_testkit::ReferenceModel;
+use acta_types::TxId;
 use support::{copy_dir_recursive, truncate_wal_file, verify_storage_against_reference_model};
 use tempfile::TempDir;
 

@@ -1,9 +1,17 @@
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 // FILE-CONTEXT
 // ZWECK: Audit Benchmark Suite zur Ermittlung von Durchsatz, Speedup, Latenz-Perzentilen, Pareto-Front und RAM-Footprint
 // STAND: TS:2026-08-31T00:00:00Z
 
-use acta_core::traits::VectorIndex;
-use acta_core::types::{DocId, TxId};
+use acta_ports::VectorIndex;
+use acta_types::{DocId, TxId};
 use acta_vector::distance::*;
 use acta_vector::hnsw::{HnswConfig, HnswIndex};
 use rand::Rng;
@@ -46,7 +54,7 @@ async fn main() {
     let mut rng = rand::thread_rng();
 
     println!("===============================================================================");
-    println!("                   CONTEXTRA-INDEX EMPIRICAL AUDIT BENCHMARKS                   ");
+    println!("                   ACTA-INDEX EMPIRICAL AUDIT BENCHMARKS                   ");
     println!("===============================================================================");
 
     // 1. Distance Metric Throughput & Speedup (SIMD vs Scalar)
@@ -352,7 +360,7 @@ async fn main() {
 
     for &num_threads in &thread_counts {
         let index = HnswIndex::try_new(base_config.clone()).unwrap();
-        index.load_mmap(&base_file).await.unwrap();
+        index.load_buffer(&base_file).await.unwrap();
 
         let extra_vectors_arc = std::sync::Arc::new(extra_vectors.clone());
         let index_arc = std::sync::Arc::new(index);
@@ -407,7 +415,7 @@ async fn main() {
     // 6. HNSW Mixed Workload Benchmark (Concurrent Search under Write Load)
     println!("\n--- 6. HNSW MIXED WORKLOAD BENCHMARK (Concurrent Reads + High Write Load) ---");
     let mixed_index = HnswIndex::try_new(base_config.clone()).unwrap();
-    mixed_index.load_mmap(&base_file).await.unwrap();
+    mixed_index.load_buffer(&base_file).await.unwrap();
     let mixed_index_arc = std::sync::Arc::new(mixed_index);
 
     // Baseline: Pure Search Latency (Zero Write Load)

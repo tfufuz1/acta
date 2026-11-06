@@ -1,12 +1,33 @@
+// Begründung: Integrationstest-Fixtures und Assertions dürfen Test-Unwraps, Indizierung und Test-Zeitgeber verwenden.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::disallowed_methods,
+    clippy::disallowed_types,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::unnecessary_cast,
+    clippy::type_complexity
+)]
+
+//! Testsuite `audit_inspection.rs` für acta-text.
+//!
+//! # Ring-Zuordnung
+//! Ring LAB / Testbereich.
+
 use acta_text::morphology::{
     normalize_umlauts, GermanCompoundSplitter, MorphologicalTokenizer,
 };
 use acta_text::tokenizer::{GermanMorphTokenizer, Tokenizer};
 
+// ANCHOR[acta-text:TEST-135]
+// Testfall `inspect_20_compounds`: Prüft das Verhalten und Invarianten der Textverarbeitung.
 #[test]
 fn inspect_20_compounds() {
     let splitter = GermanCompoundSplitter::new();
-    let tokenizer = GermanMorphTokenizer::new();
+    let tokenizer = GermanMorphTokenizer::try_new().unwrap_or_default();
 
     let words = vec![
         "Datenschutzgrundverordnung",
@@ -42,9 +63,11 @@ fn inspect_20_compounds() {
     }
 }
 
+// ANCHOR[acta-text:TEST-136]
+// Testfall `inspect_umlaut_bimap`: Prüft das Verhalten und Invarianten der Textverarbeitung.
 #[test]
 fn inspect_umlaut_bimap() {
-    let tokenizer = GermanMorphTokenizer::new();
+    let tokenizer = GermanMorphTokenizer::try_new().unwrap_or_default();
 
     let pairs = vec![
         ("Bär", "Baer"),
@@ -76,6 +99,8 @@ fn inspect_umlaut_bimap() {
     }
 }
 
+// ANCHOR[acta-text:TEST-137]
+// Testfall `test_b3_avgdl_consistency_100_insert_50_delete`: Prüft das Verhalten und Invarianten der Textverarbeitung.
 #[tokio::test]
 async fn test_b3_avgdl_consistency_100_insert_50_delete() -> acta_types::Result<()> {
     use acta_ports::{StorageEngine, TextIndex};
@@ -294,6 +319,8 @@ async fn test_b3_avgdl_consistency_100_insert_50_delete() -> acta_types::Result<
     Ok(())
 }
 
+// ANCHOR[acta-text:TEST-138]
+// Testfall `test_b6_morphology_idempotency_and_proper_nouns`: Prüft das Verhalten und Invarianten der Textverarbeitung.
 #[test]
 fn test_b6_morphology_idempotency_and_proper_nouns() {
     let splitter = GermanCompoundSplitter::new();
@@ -326,6 +353,8 @@ fn test_b6_morphology_idempotency_and_proper_nouns() {
     );
 }
 
+// ANCHOR[acta-text:TEST-139]
+// Testfall `test_b5_wand_vs_bruteforce_1000_docs_3_terms`: Prüft das Verhalten und Invarianten der Textverarbeitung.
 #[tokio::test]
 async fn test_b5_wand_vs_bruteforce_1000_docs_3_terms() -> acta_types::Result<()> {
     use acta_ports::{StorageEngine, TextIndex};

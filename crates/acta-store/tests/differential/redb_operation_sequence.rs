@@ -1,5 +1,7 @@
-use acta_core::{StorageEngine, TxId};
+#![allow(dead_code)]
+use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
+use acta_types::TxId;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use redb::{ReadableTable, TableDefinition};
@@ -9,6 +11,7 @@ use tempfile::TempDir;
 
 const TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("diff_table");
 
+#[allow(dead_code)]
 fn get_rss_bytes() -> usize {
     if let Ok(statm) = std::fs::read_to_string("/proc/self/statm") {
         let parts: Vec<&str> = statm.split_whitespace().collect();
@@ -359,6 +362,7 @@ async fn run_differential_with_config(
                 .await?;
             }
             Op::Restart => {
+                storage.wait_shutdown().await;
                 drop(storage);
                 storage = LsmStorage::new(lsm_config.clone())
                     .await
@@ -614,6 +618,7 @@ async fn run_differential_large(ops: Vec<Op>) -> Result<(), TestCaseError> {
                 .await?;
             }
             Op::Restart => {
+                storage.wait_shutdown().await;
                 drop(storage);
                 storage = LsmStorage::new(lsm_config.clone())
                     .await

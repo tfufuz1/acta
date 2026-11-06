@@ -2,12 +2,13 @@ use roaring::RoaringTreemap;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 use ahash::AHashMap;
-use acta_core::{ActaError, DocId, Result, TxBuffer};
+use acta_types::{ActaError, DocId, Result};
 use parking_lot::{Mutex, RwLock};
 
 use super::arena::HnswArena;
 use super::config::HnswConfig;
 use super::sq8_bias::Sq8Bias;
+use super::staging::LocalTxBuffer;
 
 /// Sentinel-Wert für ungültigen / nicht gesetzten Entry-Point in HNSW.
 pub const SENTINEL_NO_ENTRY_POINT: u32 = u32::MAX;
@@ -27,12 +28,12 @@ pub enum VectorData {
 }
 
 /// A node in the HNSW graph.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HnswNode {
-    pub(super) doc_id: DocId,
-    pub(super) vector: VectorData,
-    pub(super) max_layer: usize,
-    pub(super) committed_tx: u64,
+    pub doc_id: DocId,
+    pub vector: VectorData,
+    pub max_layer: usize,
+    pub committed_tx: u64,
 }
 
 /// Search candidate.
@@ -69,24 +70,10 @@ impl<'a> Drop for RebuildGuard<'a> {
     }
 }
 
-pub struct SnapshotPinGuard<'a>(pub &'a HnswIndexCore, u64);
-
-impl<'a> SnapshotPinGuard<'a> {
-    pub(super) fn new(core: &'a HnswIndexCore, seq_no: u64) -> Self {
-        core.cold.seq_log.write().pin_snapshot(seq_no);
-        Self(core, seq_no)
-    }
-}
-
-impl<'a> Drop for SnapshotPinGuard<'a> {
-    fn drop(&mut self) {
-        self.0.cold.seq_log.write().unpin_snapshot(self.1);
-    }
-}
-
 /// The HNSW (Hierarchical Navigable Small World) vector index.
+#[derive(Clone)]
 pub struct HnswIndex {
-    pub(super) inner: std::sync::Arc<HnswIndexCore>,
+    pub inner: std::sync::Arc<HnswIndexCore>,
 }
 
 #[repr(align(64))]
@@ -172,11 +159,10 @@ impl HnswHotCore {
 pub struct HnswColdCore {
     pub config: HnswConfig,
     pub validation_error: Option<String>,
-    pub tx_buffer: TxBuffer<Vec<f32>>,
+    pub tx_buffer: LocalTxBuffer,
     pub quantizer: RwLock<Option<crate::quantize::ScalarQuantizer>>,
     pub sq8_bias: RwLock<Sq8Bias>,
-    pub mmap_index: RwLock<Option<crate::persistence::MmapIndex>>,
-    pub seq_log: RwLock<acta_core::SequenceLog>,
+    pub buffer_index: RwLock<Option<crate::persistence::BufferIndex>>,
     pub rebuild_count: AtomicU64,
     pub visited_dead_nodes: AtomicU64,
     pub deleted_nodes: RwLock<RoaringTreemap>,
@@ -186,7 +172,7 @@ pub struct HnswColdCore {
     pub last_rebuild_instant: Mutex<Option<std::time::Instant>>,
     pub consecutive_rapid_rebuilds: AtomicU32,
     #[cfg(feature = "partial-index-rebuild")]
-    pub traversal_tracker: RwLock<crate::partial_rebuild::TraversalTracker>,
+    pub traversal_tracker: Option<RwLock<crate::partial_rebuild::TraversalTracker>>,
     #[cfg(test)]
     pub fault_injection_insert_target: AtomicU64,
     #[cfg(test)]
@@ -240,11 +226,10 @@ impl HnswIndex {
                 cold: HnswColdCore {
                     config,
                     validation_error: None,
-                    tx_buffer: TxBuffer::new_with_config(16, std::time::Duration::from_secs(60)),
+                    tx_buffer: LocalTxBuffer::new(),
                     quantizer: RwLock::new(None),
                     sq8_bias: RwLock::new(Sq8Bias::default()),
-                    mmap_index: RwLock::new(None),
-                    seq_log: RwLock::new(acta_core::SequenceLog::new()),
+                    buffer_index: RwLock::new(None),
                     rebuild_count: AtomicU64::new(0),
                     visited_dead_nodes: AtomicU64::new(0),
                     deleted_nodes: RwLock::new(RoaringTreemap::new()),
@@ -256,9 +241,13 @@ impl HnswIndex {
                     last_rebuild_instant: Mutex::new(None),
                     consecutive_rapid_rebuilds: AtomicU32::new(0),
                     #[cfg(feature = "partial-index-rebuild")]
-                    traversal_tracker: RwLock::new(crate::partial_rebuild::TraversalTracker::new(
-                        partial_rebuild_config,
-                    )),
+                    traversal_tracker: if partial_rebuild_config.traversal_window > 0 {
+                        Some(RwLock::new(crate::partial_rebuild::TraversalTracker::new(
+                            partial_rebuild_config,
+                        )))
+                    } else {
+                        None
+                    },
                     #[cfg(test)]
                     fault_injection_insert_target: AtomicU64::new(0),
                     #[cfg(test)]
@@ -270,7 +259,7 @@ impl HnswIndex {
 
     /// Creates a new HNSW index, validating configuration upfront.
     ///
-    /// Uses an internal, non-cryptographic, reproducible default RNG seeded with [`DEFAULT_LAYER_SEED`].
+    /// Uses an internal, non-cryptographic, reproducible default RNG seeded with `DEFAULT_LAYER_SEED`.
     pub fn try_new(config: HnswConfig) -> Result<Self> {
         let rng = std::sync::Arc::new(acta_ports::SeededRng::new(DEFAULT_LAYER_SEED));
         Self::try_new_with_rng(config, rng)
@@ -308,11 +297,10 @@ impl HnswIndex {
                 cold: HnswColdCore {
                     config,
                     validation_error,
-                    tx_buffer: TxBuffer::new_with_config(16, std::time::Duration::from_secs(60)),
+                    tx_buffer: LocalTxBuffer::new(),
                     quantizer: RwLock::new(None),
                     sq8_bias: RwLock::new(Sq8Bias::default()),
-                    mmap_index: RwLock::new(None),
-                    seq_log: RwLock::new(acta_core::SequenceLog::new()),
+                    buffer_index: RwLock::new(None),
                     rebuild_count: AtomicU64::new(0),
                     visited_dead_nodes: AtomicU64::new(0),
                     deleted_nodes: RwLock::new(RoaringTreemap::new()),
@@ -324,9 +312,13 @@ impl HnswIndex {
                     last_rebuild_instant: Mutex::new(None),
                     consecutive_rapid_rebuilds: AtomicU32::new(0),
                     #[cfg(feature = "partial-index-rebuild")]
-                    traversal_tracker: RwLock::new(crate::partial_rebuild::TraversalTracker::new(
-                        partial_rebuild_config,
-                    )),
+                    traversal_tracker: if partial_rebuild_config.traversal_window > 0 {
+                        Some(RwLock::new(crate::partial_rebuild::TraversalTracker::new(
+                            partial_rebuild_config,
+                        )))
+                    } else {
+                        None
+                    },
                     #[cfg(test)]
                     fault_injection_insert_target: AtomicU64::new(0),
                     #[cfg(test)]
@@ -396,7 +388,7 @@ impl HnswIndex {
         self.inner.connectivity_score()
     }
 
-    pub fn check_connectivity(&self) -> acta_core::Result<()> {
+    pub fn check_connectivity(&self) -> acta_types::Result<()> {
         self.inner.check_connectivity()
     }
 
@@ -414,8 +406,11 @@ impl HnswIndex {
 
     #[cfg(feature = "partial-index-rebuild")]
     pub fn check_and_trigger_partial_rebuild(&self) {
+        let Some(ref tracker_lock) = self.inner.cold.traversal_tracker else {
+            return;
+        };
         let global_tombstone_ratio = self.deleted_ratio() as f32;
-        let tracker = self.inner.cold.traversal_tracker.read();
+        let tracker = tracker_lock.read();
 
         let mut tombstone_map = ahash::AHashMap::new();
         let total_nodes = self.inner.hot.nodes.read().len();
@@ -444,18 +439,6 @@ impl HnswIndex {
                 }
             });
         }
-    }
-
-    pub fn compact_seq_log(&self, min_active_seqno: u64) {
-        self.inner.cold.seq_log.write().compact(min_active_seqno);
-    }
-
-    pub fn pin_snapshot(&self, seq_no: u64) {
-        self.inner.cold.seq_log.write().pin_snapshot(seq_no);
-    }
-
-    pub fn unpin_snapshot(&self, seq_no: u64) {
-        self.inner.cold.seq_log.write().unpin_snapshot(seq_no);
     }
 
     pub fn all_doc_ids_from_map(&self) -> Vec<DocId> {
@@ -505,23 +488,23 @@ impl HnswIndex {
         self.inner.wait_for_rebuild_with_timeout(timeout).await
     }
 
-    pub async fn load_mmap(&self, path: impl AsRef<std::path::Path> + Send) -> Result<()> {
-        let mmap_index = crate::persistence::MmapIndex::open_async(path).await?;
-        self.load_mmap_from_instance(mmap_index)
+    pub async fn load_buffer(&self, path: impl AsRef<std::path::Path> + Send) -> Result<()> {
+        let buffer_index = crate::persistence::BufferIndex::open_async(path).await?;
+        self.load_buffer_from_instance(buffer_index)
     }
 
-    pub(super) fn load_mmap_from_instance(
+    pub(super) fn load_buffer_from_instance(
         &self,
-        mmap_index: crate::persistence::MmapIndex,
+        buffer_index: crate::persistence::BufferIndex,
     ) -> Result<()> {
-        let ep = if mmap_index.header.entry_point() >= 0 {
-            Some(mmap_index.header.entry_point() as usize)
+        let ep = if buffer_index.header.entry_point() >= 0 {
+            Some(buffer_index.header.entry_point() as usize)
         } else {
             None
         };
 
         let max_layer = if let Some(e) = ep {
-            let record = mmap_index.get_node_record(e)?;
+            let record = buffer_index.get_node_record(e)?;
             record.max_layer as u64
         } else {
             0
@@ -533,11 +516,11 @@ impl HnswIndex {
             self.inner.hot.max_layer.store(max_layer, Ordering::SeqCst);
         }
 
-        *self.inner.cold.sq8_bias.write() = mmap_index.header.sq8_bias();
+        *self.inner.cold.sq8_bias.write() = buffer_index.header.sq8_bias();
 
-        if mmap_index.header.is_quantized() {
+        if buffer_index.header.is_quantized() {
             let dim = self.inner.cold.config.dimension;
-            let header = &mmap_index.header;
+            let header = &buffer_index.header;
 
             let mut mins = Vec::new();
             let mut maxes = Vec::new();
@@ -547,8 +530,8 @@ impl HnswIndex {
                 && header.quant_calibration_len() as usize >= dim * 4 * 2
             {
                 let offset = header.quant_calibration_offset() as usize;
-                let cal_bytes = mmap_index
-                    .mmap
+                let cal_bytes = buffer_index
+                    .buffer
                     .get(offset..offset + dim * 4 * 2)
                     .ok_or_else(|| {
                         ActaError::Storage("Calibration segment out of bounds".into())
@@ -597,17 +580,16 @@ impl HnswIndex {
             });
         }
 
-        let mut guard = self.inner.cold.mmap_index.write();
+        let mut guard = self.inner.cold.buffer_index.write();
         self.inner
             .hot
             .last_tx_id
-            .store(mmap_index.header.last_tx_id(), Ordering::SeqCst);
-        *guard = Some(mmap_index);
+            .store(buffer_index.header.last_tx_id(), Ordering::SeqCst);
+        *guard = Some(buffer_index);
         Ok(())
     }
 
-    pub async fn save(&self, path: impl AsRef<std::path::Path>) -> Result<()> {
-        let _lock = self.inner.hot.write_mutex.lock();
+    pub(super) fn save_internal(&self, path: impl AsRef<std::path::Path>) -> Result<()> {
         let inner = &self.inner;
         let path_buf = path.as_ref().to_path_buf();
 
@@ -808,5 +790,14 @@ impl HnswIndex {
         }
 
         Ok(())
+    }
+
+    pub fn save_sync(&self, path: impl AsRef<std::path::Path>) -> Result<()> {
+        let _lock = self.inner.hot.write_mutex.lock();
+        self.save_internal(path)
+    }
+
+    pub async fn save(&self, path: impl AsRef<std::path::Path>) -> Result<()> {
+        self.save_sync(path)
     }
 }

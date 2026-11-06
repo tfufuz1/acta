@@ -1,7 +1,17 @@
-//! Error types for `Acta`.
+//! Fehlertypen für `Acta`.
+//!
+//! # Architektur-Rolle: Ring 0 (Kanonische Fehlerdefinition)
+//!
+//! Dieses Modul stellt das zentrale `ActaError`-Enum bereit.
+//! In Übereinstimmung mit dem Zero-Panic-Prinzip werden Fehler strukturiert modelliert
+//! und über den `?`-Operator im System propagiert.
+//!
+//! # Invarianten
+//! - Einzige Fehler-Enum: Im gesamten Workspace dient `ActaError` als systemweiter Fehlertyp.
+//! - Abwärtskompatibilität: Durch `#[non_exhaustive]` können neue Varianten ergänzt werden,
+//!   ohne Downstream-Gleichheitsprüfungen (`match`) zu brechen.
+//! - Keine Panics: Alle Hilfs- und Konvertierungsmethoden sind panic-frei.
 
-// FILE-CONTEXT
-// STAND: 2026-08-30T21:51:46Z (SESSION: a43b7682)
 // ZWECK: Kanonische unified ActaError Enum für den gesamten Workspace.
 // INVARIANTEN: Zero-Panic via ? propagation; #[non_exhaustive] für binäre Abwärtskompatibilität. KEINE neue Error-Enum in anderen Crates anlegen.
 // HOTSPOTS: 20-180
@@ -10,7 +20,7 @@
 
 // INVARIANT: Einzige Error-Enum für den gesamten Workspace.
 // Neue Varianten nur ANHÄNGEN (niemals umsortieren) → binäre Kompatibilität.
-// DOWNSTREAM: acta-store, acta-index, acta-db konvertieren via `?` und `From`.
+// DOWNSTREAM: acta-store, acta-engine, acta konvertieren via `?` und `From`.
 
 use crate::DocId;
 use thiserror::Error;
@@ -66,7 +76,7 @@ impl From<u64> for StepId {
 }
 
 /// Declarative agent directive controlling segment caching, pinning, and eviction lifecycle.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CacheDirective {
     /// Segment is explicitly pinned in memory until TTL expiration or explicit release.
     Pin {
@@ -76,18 +86,13 @@ pub enum CacheDirective {
     /// Segment must never be inserted into the cache.
     NeverCache,
     /// Standard automatic cache insertion and eviction management.
+    #[default]
     Auto,
     /// Transient step segment automatically released after completion of the specified step.
     ReleaseAfterStep {
         /// Step ID after whose completion this segment should be released.
         step_id: StepId,
     },
-}
-
-impl Default for CacheDirective {
-    fn default() -> Self {
-        Self::Auto
-    }
 }
 
 /// Convenience alias for `Result<T, ActaError>`.
@@ -98,7 +103,6 @@ pub type Result<T> = std::result::Result<T, ActaError>;
 /// # Non-Exhaustive Variant Guarantee
 /// This enum is marked `#[non_exhaustive]` to allow appending new error variants
 /// in future minor releases without breaking downstream `match` statements across crate boundaries
-/// (such as `acta-py` and `acta-mcp`).
 ///
 /// Downstream callers matching on `ActaError` must include a wildcard arm (`_ => ...`).
 /// New variants are appended strictly to the bottom of the enum to preserve binary and FFI compatibility.
@@ -285,7 +289,7 @@ pub enum ActaError {
     },
 
     /// GGUF-/Modell-Ladefehler (Candle-Backend). Nutzung: korrupte, unvollständige
-    /// oder dimensions-inkompatible Modell-Dateien beim Laden über acta-candle.
+    /// oder dimensions-inkompatible Modell-Dateien beim Laden über Modell-Backends.
     #[error("Model load error for {path}: {reason}")]
     ModelLoad {
         /// Path to model file.
@@ -425,51 +429,9 @@ impl ActaError {
         Self::KvQuantization(msg.into())
     }
 
-    /// Constructs a `ActaError` from an error kind identifier and detail message.
-    pub fn from_kind_and_message(kind: &str, msg: impl Into<String>) -> Self {
-        let msg = msg.into();
-        match kind {
-            "DurabilityConfig" => Self::durability_config(msg),
-            "OrphanedVectorReference" => {
-                let parts: Vec<&str> = msg.split("->").collect();
-                if parts.len() == 2 {
-                    Self::orphaned_vector_reference(parts[0].trim(), parts[1].trim())
-                } else {
-                    Self::orphaned_vector_reference("unknown", msg)
-                }
-            }
-            "InvalidInput" => Self::invalid_input(msg),
-            "KvQuantization" => Self::kv_quantization(msg),
-            "PinBudgetExceeded" => Self::pin_budget_exceeded(msg),
-            _ => Self::Internal(msg),
-        }
-    }
-
     /// Creates a `DurabilityConfig` error.
     pub fn durability_config(msg: impl Into<String>) -> Self {
         Self::DurabilityConfig(msg.into())
-    }
-
-    /// Helper to validate durability configuration, producing `DurabilityConfig` on failure.
-    pub fn check_durability(condition: bool, msg: impl Into<String>) -> Result<()> {
-        if condition {
-            Ok(())
-        } else {
-            Err(Self::durability_config(msg))
-        }
-    }
-
-    /// Helper to validate vector reference existence, producing `OrphanedVectorReference` on failure.
-    pub fn check_vector_reference(
-        found: bool,
-        doc_id: impl Into<String>,
-        index_id: impl Into<String>,
-    ) -> Result<()> {
-        if found {
-            Ok(())
-        } else {
-            Err(Self::orphaned_vector_reference(doc_id, index_id))
-        }
     }
 
     /// Creates a `PinBudgetExceeded` error.
@@ -1061,7 +1023,10 @@ mod tests {
         );
         assert_eq!(dto.kind, "CustomKind");
         assert_eq!(dto.message, "Custom message");
-        assert_eq!(dto.details.expect("details present")["trace_id"], "12345"); // expect
+        assert_eq!(
+            dto.details.expect("details present").get("trace_id"), // #[cfg(test)]
+            Some(&serde_json::json!("12345"))
+        );
     }
 
     #[test]
@@ -1154,4 +1119,120 @@ mod tests {
         assert!(conflict.is_occ_conflict());
         assert!(!not_found.is_occ_conflict());
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Schlanke, I-11-konforme Fehlertypen (SPEC 7.5, TY-12).
+//
+// Diese Typen tragen keine Nutzdaten, Schlüssel oder Klartextkennungen.
+// Sie sind für neue Schnittstellen und für den Übergang von `ActaError`
+// vorgesehen (Arbeitspaket WP-x.y laut BACKLOG).
+//
+// WICHTIG: `Result<T>` ist weiterhin `std::result::Result<T, ActaError>`.
+// Die folgenden Typen werden nur direkt als `error::Error` etc. verwendet.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Konfigurations- und Eingabefehler (I-11-konform, kein Nutzerinhalt).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, thiserror::Error)]
+pub enum ConfigError {
+    /// Identifier ist leer.
+    #[error("identifier is empty")]
+    EmptyIdentifier,
+    /// Identifier überschreitet Maximallänge.
+    #[error("identifier exceeds maximum length")]
+    IdentifierTooLong,
+    /// Ungültige Bytegröße.
+    #[error("invalid byte length")]
+    InvalidLength,
+}
+
+/// Konflikte bei Einfüge- oder Update-Operationen (I-11-konform).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, thiserror::Error)]
+pub enum Conflict {
+    /// Kollision bei Identifikatoren oder kryptografischen Tags (SPEC D-08).
+    #[error("identifier collision")]
+    IdCollision,
+    /// Objekt oder Dokument existiert bereits.
+    #[error("record already exists")]
+    Exists,
+}
+
+/// Kapazitäts- und Ressourcenlimits (SPEC 14.4, D-87, L-10, I-11-konform).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, thiserror::Error)]
+pub enum Limit {
+    /// Speicherkapazität erschöpft.
+    #[error("limit exceeded: storage capacity")]
+    Capacity,
+    /// Mindest-Plattenreserve unterschritten (SPEC D-65).
+    #[error("limit exceeded: disk reserve exhausted")]
+    DiskReserve,
+    /// Maximale Anzahl aktiver Mandanten-Snapshots erreicht.
+    #[error("limit exceeded: snapshots")]
+    Snapshots,
+    /// Suchanfrage überschreitet Termgrenze.
+    #[error("limit exceeded: query too large")]
+    QueryTooLarge,
+    /// Vektordimension überschreitet Grenze (L-10).
+    #[error("limit exceeded: dimension")]
+    Dimension,
+}
+
+/// Kanonische I-11-konforme Fehler-Enum (SPEC 7.5, TY-12).
+///
+/// Kein Feld trägt Nutzerinhalt, Schlüssel oder Klartextkennungen.
+/// Für neue Schnittstellen; bestehende Schnittstellen verwenden weiter `ActaError`.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum Error {
+    /// Konfigurations- oder Konstruktionsfehler.
+    #[error("configuration error: {0}")]
+    Config(#[from] ConfigError),
+
+    /// Ein-/Ausgabefehler oder Handle-Vergiftung (SPEC D-55).
+    #[error("i/o error")]
+    Io,
+
+    /// Datenkorruption oder unerwartetes Format (fatal für das Objekt, P2).
+    #[error("data corruption detected")]
+    Corrupt,
+
+    /// Authentisierungsfehler (z. B. falsche Passphrase).
+    #[error("authentication failed")]
+    Auth,
+
+    /// Dokument oder Ziel ist gelöscht (SPEC 11.3).
+    #[error("target is erased")]
+    Erased,
+
+    /// Verarbeitung ist eingeschränkt (SPEC 11.3, Art. 18 DSGVO).
+    #[error("target is restricted")]
+    Restricted,
+
+    /// Nicht gefunden.
+    #[error("not found")]
+    NotFound,
+
+    /// Konflikt bei Transaktion oder Identität.
+    #[error("conflict: {0}")]
+    Conflict(#[from] Conflict),
+
+    /// Ressourcen- oder Systemgrenze überschritten.
+    #[error("{0}")]
+    Limit(#[from] Limit),
+
+    /// Snapshot wurde durch Purge oder Timeout widerrufen (SPEC D-61).
+    #[error("snapshot revoked")]
+    SnapshotRevoked,
+
+    /// Operation wurde abgebrochen.
+    #[error("operation cancelled")]
+    Cancelled,
+
+    /// Operation durch Richtlinie oder Aufbewahrung verweigert.
+    #[error("operation refused")]
+    Refused,
+
+    /// Interner Fehler.
+    #[error("internal system error")]
+    Internal,
 }

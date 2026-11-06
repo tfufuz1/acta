@@ -1,8 +1,12 @@
+//! # Kompaktierungsoperationen (Ring 1)
+//!
+//! Integriert die CompactionEngine in den Lebenszyklus des LSM-Speichers.
+
 use super::super::engine::LsmStorage;
 use super::super::{MemTable, SstableBuilder, SstableReader, Wal};
 use crate::compaction::retain_key_versions;
 use bytes::Bytes;
-use acta_core::{ActaError, Result, TOMBSTONE_BIT};
+use acta_types::{ActaError, Result, TOMBSTONE_BIT};
 use std::collections::BTreeMap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -105,7 +109,7 @@ pub(super) async fn flush(storage: &LsmStorage) -> Result<()> {
             SstableBuilder::create_with_key_manager(&sst_path, storage.key_manager.clone()).await?;
 
         for (k, mut versions) in key_map {
-            versions.sort_by(|a, b| (b.1 & !TOMBSTONE_BIT).cmp(&(a.1 & !TOMBSTONE_BIT)));
+            versions.sort_by_key(|b| std::cmp::Reverse(b.1 & !TOMBSTONE_BIT));
             let retained = retain_key_versions(versions, |(_, seq, _)| *seq, floor_seq);
             for (v, seq, tx) in retained {
                 builder.add(&k, &v, seq, tx).await?;
@@ -157,16 +161,19 @@ pub(super) async fn flush(storage: &LsmStorage) -> Result<()> {
 
         // last_committed_tx MUSS vor sstables.push() aktualisiert werden — sonst Race-Fenster für parallele Reader, siehe DECISIONS.md ADR-043.
         let sst_max_tx = reader.metadata().max_tx_id;
-        storage.advance_visibility(acta_core::TxId::new(sst_max_tx));
+        storage.advance_visibility(acta_types::TxId::new(sst_max_tx));
 
         sstables.push(Arc::new(reader));
         sstables.sort_by_key(|sst| sst.metadata().max_seq & !TOMBSTONE_BIT);
 
         debug_assert!(
-            sstables
-                .windows(2)
-                .all(|w| (w[0].metadata().max_seq & !TOMBSTONE_BIT)
-                    <= (w[1].metadata().max_seq & !TOMBSTONE_BIT)),
+            sstables.windows(2).all(|w| match (w.first(), w.get(1)) {
+                (Some(a), Some(b)) => {
+                    (a.metadata().max_seq & !TOMBSTONE_BIT)
+                        <= (b.metadata().max_seq & !TOMBSTONE_BIT)
+                }
+                _ => true,
+            }),
             "SSTable list must be sorted by max_seq in ascending order after flush"
         );
 
@@ -208,27 +215,27 @@ pub(super) async fn flush(storage: &LsmStorage) -> Result<()> {
                     drop(trunc_guard_opt);
                 }
             }
-            let _ = crate::util::fsync_parent_dir(&storage.config.path).await;
+            crate::util::fsync_parent_dir(&storage.config.path).await?;
         }
 
         let bytes_freed: u64 = to_flush.iter().map(|mt| mt.size() as u64).sum();
         storage.budget.release_memory(bytes_freed);
-        tracing::debug!(
-            freed_bytes = bytes_freed,
-            total_used_bytes = storage.budget.memory_used(),
-            "Memory budget released during SSTable flush"
-        );
 
         storage
             .budget_tracking_drift_bytes
             .store(0, std::sync::atomic::Ordering::Relaxed);
 
-        let prune_bound = storage
-            .tx_buffer
-            .min_read_snapshot()
-            .unwrap_or(u64::MAX)
-            .min(storage.snapshot_registry.min_active_seqno());
-        storage.ssi_validator.prune_through(prune_bound);
+        let tx_min = storage.tx_buffer.min_read_snapshot();
+        let snap_min = storage.snapshot_registry.min_read_snapshot();
+        let prune_bound = match (tx_min, snap_min) {
+            (Some(t), Some(s)) => Some(t.min(s)),
+            (Some(t), None) => Some(t),
+            (None, Some(s)) => Some(s),
+            (None, None) => None,
+        };
+        if let Some(ref seq_val) = storage.sequence_log_ssi_validator {
+            seq_val.prune_through_checked(prune_bound)?;
+        }
 
         tracing::info!("Flushed memtable to SSTable: {} bytes", bytes_freed);
         Ok(())

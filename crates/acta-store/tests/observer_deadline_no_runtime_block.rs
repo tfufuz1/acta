@@ -2,8 +2,8 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use acta_core::TxId;
 use acta_store::{CommittedBatch, ObserverRegistry, WalObserver, WriteOrigin};
+use acta_types::TxId;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};

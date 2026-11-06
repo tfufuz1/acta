@@ -7,8 +7,9 @@
 //! b. Bloom-Filter-Korruption -> Darf NIEMALS zu False Negatives (`Ok(None)`) für existierende Keys führen (Datenverlust).
 //! c. Index-Korruption -> MUSS deterministisch mit Fehler behandeln (z.B. ChecksumMismatch oder ParseError), NIEMALS Panik.
 
-use acta_core::{ActaError, StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
+use acta_types::{ActaError, TxId};
 use proptest::prelude::*;
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -125,7 +126,6 @@ async fn setup_sstable_and_ground_truth(
         memtable_size_limit: 1024 * 1024,
         max_ram_mb: 64,
         tx_timeout: Duration::from_secs(60),
-        encryption_passphrase: None,
         ..Default::default()
     };
 
@@ -197,7 +197,6 @@ proptest! {
                         memtable_size_limit: 1024 * 1024,
                         max_ram_mb: 64,
                         tx_timeout: Duration::from_secs(60),
-                        encryption_passphrase: None,
                         ..Default::default()
                     };
 
@@ -274,7 +273,6 @@ proptest! {
                     memtable_size_limit: 1024 * 1024,
                     max_ram_mb: 64,
                     tx_timeout: Duration::from_secs(60),
-                    encryption_passphrase: None,
                     ..Default::default()
                 };
 
@@ -345,7 +343,6 @@ proptest! {
                     memtable_size_limit: 1024 * 1024,
                     max_ram_mb: 64,
                     tx_timeout: Duration::from_secs(60),
-                    encryption_passphrase: None,
                     ..Default::default()
                 };
 

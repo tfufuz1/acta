@@ -2,8 +2,9 @@
 //! Validates stateful LSM operations (`put`, `delete`, `put_batch`, `delete_prefix`, `get`, `get_at_seq`, `scan_prefix`, `scan_range`, `commit`, `rollback`, close/reopen)
 //! against an independent `BTreeMap`-based reference model tracking active transactions, MVCC versions, and committed history.
 
-use acta_core::{StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
+use acta_types::TxId;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use std::collections::{BTreeMap, BTreeSet};

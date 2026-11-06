@@ -4,7 +4,7 @@ use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::sync::atomic::Ordering;
 
-use acta_core::{ActaError, DistanceMetric, DocId, Result, ScoredDocument};
+use acta_types::{ActaError, DistanceMetric, DocId, Result, ScoredDocument};
 
 use super::adaptive_ef::{AdaptiveEfPolicy, AdaptiveEfStateMachine, AdaptiveEfStats};
 use super::arena::BacklinkTable;
@@ -34,8 +34,8 @@ impl HnswIndexCore {
         backlink_map: Option<&BacklinkTable>,
     ) -> Result<Vec<Candidate>> {
         let nodes_guard = self.hot.nodes.read();
-        let mmap_guard = self.cold.mmap_index.read();
-        let mmap_node_count = mmap_guard
+        let buffer_guard = self.cold.buffer_index.read();
+        let buffer_node_count = buffer_guard
             .as_ref()
             .map(|m| m.header.node_count() as usize)
             .unwrap_or(0);
@@ -49,8 +49,8 @@ impl HnswIndexCore {
 
         let ctx = SearchContext {
             nodes: &nodes_guard,
-            mmap: mmap_guard.as_ref(),
-            mmap_node_count,
+            buffer: buffer_guard.as_ref(),
+            buffer_node_count,
             prior_prepared,
             backlink_map,
             quantizer: q_ref.map(Cow::Borrowed),
@@ -121,28 +121,14 @@ impl HnswIndexCore {
                 }
             }
 
-            if has_dead_neighbors && current.index >= mmap_node_count {
-                let ram_idx = current.index - mmap_node_count;
-                let seq_log = self.cold.seq_log.read();
-                let min_retention_seq = seq_log.min_retention_seq();
+            if has_dead_neighbors && current.index >= buffer_node_count {
+                let ram_idx = current.index - buffer_node_count;
                 let m = self.cold.config.m;
                 let layer_slice = self.hot.arena.get_ram_node_connections(ram_idx, layer, m);
                 let mut kept = Vec::with_capacity(layer_slice.len());
                 for &neighbor_u32 in &layer_slice {
                     if !deleted_snapshot.contains(neighbor_u32 as u64) {
                         kept.push(neighbor_u32);
-                    } else if let Some(min_ret_seq) = min_retention_seq {
-                        let neighbor_idx = neighbor_u32 as usize;
-                        if neighbor_idx >= mmap_node_count {
-                            let neighbor_ram_idx = neighbor_idx - mmap_node_count;
-                            if let Some(neighbor_node) = nodes_guard.get(neighbor_ram_idx) {
-                                if let Some(del_seq) = seq_log.deletion_seq(neighbor_node.doc_id) {
-                                    if del_seq >= min_ret_seq {
-                                        kept.push(neighbor_u32);
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
                 self.hot
@@ -152,10 +138,9 @@ impl HnswIndexCore {
         }
         #[cfg(feature = "partial-index-rebuild")]
         if layer == 0 && !visited_node_ids.is_empty() {
-            self.cold
-                .traversal_tracker
-                .write()
-                .record_traversal(visited_node_ids);
+            if let Some(ref tracker) = self.cold.traversal_tracker {
+                tracker.write().record_traversal(visited_node_ids);
+            }
         }
 
         let mut vec = results.into_vec();
@@ -189,11 +174,11 @@ impl HnswIndex {
         if k == 0 {
             return Ok(Vec::new());
         }
-        if k > acta_core::MAX_SEARCH_K {
+        if k > acta_types::MAX_SEARCH_K {
             return Err(ActaError::invalid_input(format!(
                 "Requested k ({k}) exceeds maximum allowed search limit ({}). \
                  Use Collection::query() with appropriate k bounds.",
-                acta_core::MAX_SEARCH_K
+                acta_types::MAX_SEARCH_K
             )));
         }
         for (i, &val) in query.iter().enumerate() {
@@ -231,12 +216,12 @@ impl HnswIndex {
         if ep.is_empty() {
             let nodes = self.inner.hot.nodes.read();
             let deleted = self.inner.cold.deleted_nodes.read();
-            let mmap_guard = self.inner.cold.mmap_index.read();
-            let mmap_node_count = mmap_guard
+            let buffer_guard = self.inner.cold.buffer_index.read();
+            let buffer_node_count = buffer_guard
                 .as_ref()
                 .map(|m| m.header.node_count() as usize)
                 .unwrap_or(0);
-            let total = mmap_node_count + nodes.len();
+            let total = buffer_node_count + nodes.len();
             for i in 0..total {
                 if !deleted.contains(i as u64) {
                     ep.push(i);
@@ -250,8 +235,8 @@ impl HnswIndex {
         if let Some(f) = filter {
             let nodes = self.inner.hot.nodes.read();
             let deleted = self.inner.cold.deleted_nodes.read();
-            let mmap_guard = self.inner.cold.mmap_index.read();
-            let mmap_node_count = mmap_guard
+            let buffer_guard = self.inner.cold.buffer_index.read();
+            let buffer_node_count = buffer_guard
                 .as_ref()
                 .map(|m| m.header.node_count() as usize)
                 .unwrap_or(0);
@@ -263,8 +248,8 @@ impl HnswIndex {
             let q_ref = q_guard.as_ref().and_then(|g| g.as_ref());
             let ctx = SearchContext {
                 nodes: &nodes,
-                mmap: mmap_guard.as_ref(),
-                mmap_node_count,
+                buffer: buffer_guard.as_ref(),
+                buffer_node_count,
                 prior_prepared: &[],
                 backlink_map: None,
                 quantizer: q_ref.map(Cow::Borrowed),
@@ -278,7 +263,7 @@ impl HnswIndex {
             };
             let max_filter_eps = self.inner.cold.config.ef_search.max(k) * factor;
 
-            let total_nodes = mmap_node_count + nodes.len();
+            let total_nodes = buffer_node_count + nodes.len();
             for i in (0..total_nodes).rev() {
                 if !ep.contains(&(i as _)) {
                     if snapshot_seq.is_none() && deleted.contains(i as u64) {
@@ -337,7 +322,7 @@ impl HnswIndex {
         let score = self.inner.connectivity_score();
         if score < self.inner.cold.config.rebuild_threshold {
             let deleted_ratio = (1.0 - score) * 100.0;
-            let err = acta_core::ActaError::HnswConnectivityDegraded { deleted_ratio };
+            let err = acta_types::ActaError::HnswConnectivityDegraded { deleted_ratio };
             tracing::warn!(
                 error = %err,
                 connectivity_score = score,
@@ -351,12 +336,6 @@ impl HnswIndex {
         let nodes = self.inner.hot.nodes.read();
         let deleted = self.inner.cold.deleted_nodes.read();
 
-        let seq_log_guard = if snapshot_seq.is_some() {
-            Some(self.inner.cold.seq_log.read())
-        } else {
-            None
-        };
-
         for c in candidates.iter() {
             let node = nodes.get(c.index).ok_or_else(|| {
                 ActaError::Index(format!("HNSW candidate node missing at index {}", c.index))
@@ -366,13 +345,7 @@ impl HnswIndex {
             }
             let doc_id = node.doc_id;
 
-            if let Some(snap_seq) = snapshot_seq {
-                if let Some(ref seq_log) = seq_log_guard {
-                    if !seq_log.is_visible(doc_id, snap_seq) {
-                        continue;
-                    }
-                }
-            } else if deleted.contains(c.index as u64) {
+            if deleted.contains(c.index as u64) {
                 continue;
             }
 
@@ -386,7 +359,7 @@ impl HnswIndex {
                 if let VectorData::U8(v) = &node.vector {
                     let guard = self.inner.cold.quantizer.read();
                     let q = guard.as_ref().ok_or_else(|| {
-                        acta_core::ActaError::Index("Quantizer not trained".into())
+                        acta_types::ActaError::Index("Quantizer not trained".into())
                     })?;
                     q.asymmetric_dist(query, v, self.inner.cold.config.distance_metric)?
                 } else {
@@ -484,10 +457,10 @@ impl HnswIndex {
             ));
         }
 
-        if k > acta_core::MAX_SEARCH_K {
+        if k > acta_types::MAX_SEARCH_K {
             return Err(ActaError::invalid_input(format!(
                 "Requested k ({k}) exceeds maximum allowed search limit ({}).",
-                acta_core::MAX_SEARCH_K
+                acta_types::MAX_SEARCH_K
             )));
         }
 
@@ -524,12 +497,12 @@ impl HnswIndex {
         if ep.is_empty() {
             let nodes = self.inner.hot.nodes.read();
             let deleted = self.inner.cold.deleted_nodes.read();
-            let mmap_guard = self.inner.cold.mmap_index.read();
-            let mmap_node_count = mmap_guard
+            let buffer_guard = self.inner.cold.buffer_index.read();
+            let buffer_node_count = buffer_guard
                 .as_ref()
                 .map(|m| m.header.node_count() as usize)
                 .unwrap_or(0);
-            let total = mmap_node_count + nodes.len();
+            let total = buffer_node_count + nodes.len();
             for i in 0..total {
                 if !deleted.contains(i as u64) {
                     ep.push(i);
@@ -544,8 +517,8 @@ impl HnswIndex {
 
         let mut filter_eps = Vec::new();
         if let Some(f) = filter {
-            let mmap_guard = self.inner.cold.mmap_index.read();
-            let mmap_node_count = mmap_guard
+            let buffer_guard = self.inner.cold.buffer_index.read();
+            let buffer_node_count = buffer_guard
                 .as_ref()
                 .map(|m| m.header.node_count() as usize)
                 .unwrap_or(0);
@@ -557,8 +530,8 @@ impl HnswIndex {
             let q_ref = q_guard.as_ref().and_then(|g| g.as_ref());
             let ctx = SearchContext {
                 nodes: &nodes,
-                mmap: mmap_guard.as_ref(),
-                mmap_node_count,
+                buffer: buffer_guard.as_ref(),
+                buffer_node_count,
                 prior_prepared: &[],
                 backlink_map: None,
                 quantizer: q_ref.map(Cow::Borrowed),
@@ -572,7 +545,7 @@ impl HnswIndex {
             };
             let max_filter_eps = policy.max_ef.max(k) * factor;
 
-            let total_nodes = mmap_node_count + nodes.len();
+            let total_nodes = buffer_node_count + nodes.len();
             for i in (0..total_nodes).rev() {
                 if !ep.contains(&(i as _)) {
                     if deleted.contains(i as u64) {
@@ -639,8 +612,8 @@ impl HnswIndex {
                 self.inner
                     .search_layer(query, query_quantized.as_deref(), &ep, ef, 0)?;
 
-            let mmap_guard = self.inner.cold.mmap_index.read();
-            let mmap_node_count = mmap_guard
+            let buffer_guard = self.inner.cold.buffer_index.read();
+            let buffer_node_count = buffer_guard
                 .as_ref()
                 .map(|m| m.header.node_count() as usize)
                 .unwrap_or(0);
@@ -652,8 +625,8 @@ impl HnswIndex {
             let q_ref = q_guard.as_ref().and_then(|g| g.as_ref());
             let ctx = SearchContext {
                 nodes: &nodes,
-                mmap: mmap_guard.as_ref(),
-                mmap_node_count,
+                buffer: buffer_guard.as_ref(),
+                buffer_node_count,
                 prior_prepared: &[],
                 backlink_map: None,
                 quantizer: q_ref.map(Cow::Borrowed),
@@ -666,14 +639,19 @@ impl HnswIndex {
                 if deleted.contains(c.index as u64) {
                     continue;
                 }
-                if c.index >= mmap_node_count {
-                    if let Some(node) = nodes.get(c.index - mmap_node_count) {
+                if c.index >= buffer_node_count {
+                    if let Some(node) = nodes.get(c.index - buffer_node_count) {
                         if node.committed_tx == 0 {
                             continue;
                         }
+                    } else {
+                        continue;
                     }
                 }
-                let doc_id = self.inner.resolve_doc_id(c.index, &ctx)?;
+                let doc_id = match self.inner.resolve_doc_id(c.index, &ctx) {
+                    Ok(id) => id,
+                    Err(_) => continue,
+                };
 
                 if let Some(f) = filter {
                     if !f(doc_id) {
@@ -724,7 +702,7 @@ impl HnswIndex {
         let score = self.inner.connectivity_score();
         if score < self.inner.cold.config.rebuild_threshold {
             let deleted_ratio = (1.0 - score) * 100.0;
-            let err = acta_core::ActaError::HnswConnectivityDegraded { deleted_ratio };
+            let err = acta_types::ActaError::HnswConnectivityDegraded { deleted_ratio };
             tracing::warn!(
                 error = %err,
                 connectivity_score = score,

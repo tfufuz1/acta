@@ -1,5 +1,13 @@
-use acta_core::traits::VectorIndex;
-use acta_core::types::{DocId, TxId};
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
+use acta_ports::VectorIndex;
+use acta_types::{DocId, TxId};
 use acta_vector::hnsw::{HnswConfig, HnswIndex};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use rand::Rng;

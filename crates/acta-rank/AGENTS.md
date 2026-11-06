@@ -1,54 +1,39 @@
-# AGENTS.md — acta-rank
-> Ring 0 · stable · Quelle: capabilities.toml · Spec: K.22, §A2, §A3, §A4, §0, §4, §7, §17, §21, §D
+# AGENTS – acta-rank
 
-## 1. Zweck
-`acta-rank` stellt Ranking-, Fusion- und Score-Kalibrierungs-Algorithmen für das Acta Cognitive OS bereit (RRF Fusion, Normalisierte Fusion, Isotonische Kalibrierung, Platt Scaler, Conformal Calibration).
-Er ist strikt synchron (P26) und erzwingt `#![forbid(unsafe_code)]`.
+Abgeleitet aus [`docs/SPEC.md`](../../docs/SPEC.md) (8.11, D-26, D-62, T-RANK-1). Bei Widerspruch gilt die SPEC (D-98). Gemeinsame Regeln: [`AGENTS.md`](../../AGENTS.md).
 
-## 2. Modul-Karte
-| Datei / Verzeichnis | Verantwortung |
-| :--- | :--- |
-| `src/lib.rs` | Re-Exporte der Fusion-, Kalibrierungs- und Ranking-Schnittstellen. |
-| `src/drift.rs` | Drift-Statistiken für Ranking-Scores (`ScoredDocumentDriftTracker`). |
-| `src/explain.rs` | Score-Erklärbarkeit (`RankingExplanation`, `SignalScoreContribution`). |
-| `src/calibration/mod.rs` | Kalibrierungs-Modul-Re-Exporte (`IsotonicCalibrator`, `PlattScaler`, `AdaptiveConformalCalibrator`). |
-| `src/calibration/isotonic.rs` | `IsotonicCalibrator` zur nicht-parametrischen isotopen Score-Regression. |
-| `src/calibration/platt.rs` | `PlattScaler` zur sigmoidalen Score-Transformation. |
-| `src/calibration/conformal.rs` | `AdaptiveConformalCalibrator` und `ConformalCalibrator` Trait (`INV-CALIBRATION-CONFORMAL-1`). |
-| `src/fusion/mod.rs` | Fusion-Subsystem-Re-Exporte (RRF, Normalized, Resonance). |
-| `src/fusion/rrf.rs` | Reciprocal Rank Fusion (RRF) über mehrere Signal-Slices. |
-| `src/fusion/normalized.rs` | Score-Normalisierte Fusion (Z-Score / Min-Max). |
-| `src/fusion/resonance.rs` | Semantische Resonanz- und Kohärenz-Bonus-Scorer. |
-| `src/fusion/global.rs` | Globale 4-Signal-Fusion (Vector, Text, Graph, Rerank/Metadata). |
-| `src/fusion/provenance.rs` | Provenance-Tracking für Fusions-Ergebnisse. |
-| `src/fusion/signal.rs` | Signal-Eingabe-Abstraktionen für Fusions-Pipelines. |
-| `src/fusion/topk.rs` | Bounded Top-K Selection und Aggregation. |
-| `src/fusion/types.rs` | Fusion-spezifische Typen und Gewichtungskonfigurationen. |
-| `src/dibud/` | Dynamic Information Budget (DiBud) Treiber, Typen und Zustandsverwaltung (`feature = "dibud"`). |
+**Zweck:** Reciprocal Rank Fusion für die Hybridsuche.
 
-## 3. Invarianten
-- **INV-CALIBRATION-CONFORMAL-1:** Adaptive Conformal Calibration wird über `AdaptiveConformalCalibrator` im Code bereitgestellt.
-- **NO-AD-HOC-SIGMOID:** Sigmoidale Kalibrierungs- und Transformationslogik darf NICHT ad-hoc außerhalb von `acta-rank` (z. B. in `PlattScaler`) reimplementiert werden.
-- **NO-DUPLICATE-RECALIBRATE:** `recalibrate_conformal` ist eine High-Level-Routing-Aktion und lebt primär in `acta-router` (Spec Anhang C Nr. 2); `acta-rank` liefert die reinen Kalibrierungs-Algorithmen.
+**Ring und Abhängigkeiten:** Ring 2. Erlaubt: `types`, `ports`.
 
-## 4. Verboten / Anti-Patterns
-- **VERBOTEN:** Async-Operationen, I/O oder `tokio`-Abhängigkeiten in `acta-rank` einfügen.
-- **VERBOTEN:** Unsafe Rust (`#![forbid(unsafe_code)]`).
-- **VERBOTEN:** Ad-hoc-Ranking-Formeln verstreut in Storage- oder DB-Crates implementieren.
+## Fachprofil (Arbeitsrolle)
 
-## 5. Nebenläufigkeit, Async- und Lock-Regeln
-- Reiner synchroner CPU-gebundener Ring-0-Code (P26).
-- Alle Datenstrukturen sind thread-safe, reentrant und lock-frei oder nutzen unveränderliche Referenzen.
+Ranking- und Evaluationsingenieur (Reciprocal Rank Fusion, Retrieval-Metriken). Dieses Profil beschreibt Arbeitsweise und Fachwissen und begründet keine eigene Anforderung.
 
-## 6. Verifikation
+- RRF mit festem `k`, stabile deterministische Tie-Breaks, Fusion bei fehlenden Kandidaten, Robustheit bei leeren oder teilweisen Ergebnislisten.
+- Metriken (nDCG, Recall@k, MRR) als Prüfwerkzeug, keine Score-Skalenannahmen zwischen BM25 und Vektor (RRF arbeitet auf Rängen).
+
+## Normative Anker
+
+- **Nur RRF (D-26)** mit `k_rrf = 60`; deterministische Tie-Breaks nach `doc_tag` (8.11, T-RANK-1).
+- Fusion ist eine reine Funktion ohne I/O, ohne Zeit und ohne Zufall (P7). **Folgerung:** gleiche Eingabe liefert gleiche Ausgabe.
+- Die Hybridsuche liefert `SearchPage { hits, exhausted }`; `rank` verkürzt nie still (D-62, T-HYB-1).
+
+## Verboten
+
+Andere Fusionsverfahren, Kalibrierung, Drift-Erkennung, Erklär-Module, Score-Normalisierung als Pflicht (D-26); Gleitkomma-Ergebnisse, die von der Reihenfolge der Eingaben abhängen; Features.
+
+## Abnahme
+
+`T-RANK-1`, `T-HYB-1`; Proptests auf Permutations- und Duplikat-Invarianz und Golden-Rankings als Arbeitshinweis. Der Umfang außerhalb des Soll (`dibud`, `explain`, `drift`, Teile von `fusion`; F-31, F-36) wird zurückgebaut.
+
+## Arbeitspakete
+
+WP-8.2 (RRF, Hybridsuche). Statusquelle: `.agents/jules/tasks/BACKLOG.md`.
+
+## Prüfbefehle
 
 ```bash
-cargo test -p acta-rank
-cargo xtask check-agents-integrity
-cargo xtask doctrine-scan --crate acta-rank
-cargo xtask check-ring0-async-purity
-cargo xtask check-unsafe-islands
+cargo test -p acta-rank --locked
+cargo test -p acta-arch-tests --locked
 ```
-
-## 7. Bekannte Lücken / SOLL
-- DiBud-Integration ist hinter dem Feature `dibud` gesealt.

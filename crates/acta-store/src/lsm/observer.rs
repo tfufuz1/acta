@@ -1,8 +1,12 @@
+//! # WAL-Observer & Ereignisbeobachter (Ring 1)
+//!
+//! Informiert registrierte Beobachter ueber persistierte WAL-Eintraege.
+
 // ZWECK: WalObserver Interface, Circuit-Breaker und Bounded-Dispatcher für Fail-Open Commit-Sicherheit.
 
 use crate::wal::{WalEntry, WalOp};
-use acta_core::TxId;
 use acta_ports::{Clock, SystemClock};
+use acta_types::TxId;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{sync_channel, RecvTimeoutError, SyncSender};
 use std::sync::Arc;
@@ -292,7 +296,6 @@ impl ObserverRegistry {
     }
 
     /// Returns the number of dropped events for a specific registered observer.
-    // TODO(wiring): Facade-Anbindung in acta/src/builder.rs folgt in separatem Task
     pub fn dropped_count_for(&self, observer: &Arc<dyn WalObserver>) -> u64 {
         let guard = self.observers.read();
         guard
@@ -315,7 +318,6 @@ impl ObserverRegistry {
     }
 
     /// Returns whether any registered observer currently has an open circuit breaker.
-    // TODO(wiring): Facade-Anbindung in acta/src/builder.rs folgt in separatem Task
     pub fn is_any_circuit_breaker_open(&self) -> bool {
         let clock = self.clock.read().clone();
         let now_nanos = clock.monotonic_nanos();
@@ -324,7 +326,6 @@ impl ObserverRegistry {
     }
 
     /// Resets the circuit breaker state for a specific observer.
-    // TODO(wiring): Facade-Anbindung in acta/src/builder.rs folgt in separatem Task
     pub fn clear_circuit_breaker(&self, observer: &Arc<dyn WalObserver>) {
         let guard = self.observers.read();
         if let Some(worker) = guard.iter().find(|w| Arc::ptr_eq(&w.inner, observer)) {
@@ -351,13 +352,13 @@ impl ObserverRegistry {
 
         let clock = self.clock.read().clone();
         let max_latency = self.max_observer_latency();
-        let max_latency_nanos = max_latency.as_nanos() as u64;
+        let max_latency_nanos = u64::try_from(max_latency.as_nanos()).unwrap_or(u64::MAX);
         let now_nanos = clock.monotonic_nanos();
 
         // Circuit breaker cooldown: 1 second
         let cooldown_nanos = 1_000_000_000u64;
 
-        let mut panicking: Vec<Arc<dyn WalObserver>> = Vec::new();
+        let mut failed_observers: Vec<Arc<dyn WalObserver>> = Vec::new();
 
         let mut run_notify = || {
             for worker in &observers_snapshot {
@@ -421,9 +422,9 @@ impl ObserverRegistry {
                             .store(now_nanos.saturating_add(cooldown_nanos), Ordering::Relaxed);
                         tracing::error!(
                             tx_id = ctx.tx_id.inner(),
-                            "WalObserver panicked during on_commit execution; deregistering observer"
+                            "WalObserver failed during on_commit execution; deregistering observer"
                         );
-                        panicking.push(Arc::clone(&worker.inner));
+                        failed_observers.push(Arc::clone(&worker.inner));
                     }
                     Err(RecvTimeoutError::Timeout) => {
                         worker.dropped_count.fetch_add(1, Ordering::Relaxed);
@@ -457,9 +458,9 @@ impl ObserverRegistry {
             run_notify();
         }
 
-        if !panicking.is_empty() {
+        if !failed_observers.is_empty() {
             let mut guard = self.observers.write();
-            guard.retain(|w| !panicking.iter().any(|p| Arc::ptr_eq(&w.inner, p)));
+            guard.retain(|w| !failed_observers.iter().any(|p| Arc::ptr_eq(&w.inner, p)));
         }
     }
 

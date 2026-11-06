@@ -2,8 +2,9 @@
 //! Chaos test verifying resilience against concurrent task aborts, no partial state corruption,
 //! and deterministic recovery after restart.
 
-use acta_core::{StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
+use acta_types::TxId;
 use parking_lot::Mutex;
 use rand::seq::SliceRandom;
 use std::collections::{HashMap, HashSet};

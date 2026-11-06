@@ -3,10 +3,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use bytes::Bytes;
-use acta_core::{StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::compaction::adaptive::{CostBasedAdaptivePlanner, WorkloadMetricsSnapshot};
 use acta_store::compaction::{CompactionConfig, CompactionEngine};
 use acta_store::{LsmConfig, LsmStorage};
+use acta_types::TxId;
 use tempfile::tempdir;
 
 #[tokio::test]
@@ -82,7 +83,7 @@ async fn test_compaction_candidate_selection_is_contiguous() {
     // Test CostBasedAdaptivePlanner plan_compaction
     let planner = CostBasedAdaptivePlanner::new(0.70, 4, 4.0);
     use acta_store::AdaptiveCompactionPlanner;
-    let stats = acta_core::StorageStats {
+    let stats = acta_ports::StorageStats {
         num_segments: sstables_guard.len(),
         total_size_bytes: sstables_guard.iter().map(|s| s.metadata().file_size).sum(),
         memtable_size_bytes: 0,

@@ -1,5 +1,9 @@
-use acta_core::TxId;
+//! # Benchmark: WAL Schreibdurchsatz
+//!
+//! Testet Append- und fsync-Performance des Write-Ahead-Logs unter Last.
+
 use acta_store::wal::{KeyManager, Wal, WalConfig, WalFlusherConfig, WalOp};
+use acta_types::TxId;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::sync::Arc;
 use tempfile::TempDir;

@@ -1,7 +1,9 @@
-use acta_core::{ResourceBudget, ResourceTracker, SnapshotRegistry, TxId};
+use acta_mvcc::SnapshotRegistry;
+use acta_ports::{ResourceBudget, ResourceTracker};
 use acta_store::compaction::{CompactionConfig, CompactionEngine};
 use acta_store::sstable::BlockCache;
 use acta_store::wal::{Wal, WalOp};
+use acta_types::TxId;
 use std::collections::HashSet;
 use std::sync::Arc;
 use tempfile::tempdir;

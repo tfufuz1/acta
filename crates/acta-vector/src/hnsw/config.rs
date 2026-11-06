@@ -1,4 +1,4 @@
-use acta_core::{ActaError, DistanceMetric, Result};
+use acta_types::{ActaError, DistanceMetric, Result};
 
 use super::types::HNSW_REBUILD_DELETION_RATIO;
 

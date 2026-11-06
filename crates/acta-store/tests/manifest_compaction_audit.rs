@@ -1,9 +1,11 @@
 // Integration tests for store manifest and compaction audit findings.
 
-use acta_core::{ResourceBudget, ResourceTracker, SnapshotRegistry, TOMBSTONE_BIT};
+use acta_mvcc::SnapshotRegistry;
+use acta_ports::{ResourceBudget, ResourceTracker};
 use acta_store::compaction::{CompactionConfig, CompactionEngine};
 use acta_store::manifest::ManifestEntry;
 use acta_store::sstable::{BlockCache, SstableBuilder, SstableReader};
+use acta_types::TOMBSTONE_BIT;
 use std::sync::Arc;
 use tempfile::tempdir;
 

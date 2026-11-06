@@ -6,6 +6,11 @@ use std::sync::Arc;
 /// Port trait for unique ID generation.
 pub trait IdGen: Send + Sync + 'static {
     /// Generates and returns the next unique 64-bit unsigned identifier.
+    /// # Fehler
+    /// Keine; atomare Inkrementierung ist unfehlbar.
+    ///
+    /// # Crash
+    /// Monotoner Sequenzgenerator im RAM.
     fn next_id(&self) -> u64;
 }
 
@@ -47,10 +52,11 @@ impl<T: IdGen + ?Sized> IdGen for Arc<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
+    use std::collections::BTreeSet;
 
     fn _assert_dyn_id_gen(_: Option<&dyn IdGen>) {}
 
+    /// SPEC: T-ARCH-6
     #[test]
     fn test_sequential_id_gen_monotonic() {
         let gen = SequentialIdGen::new(10);
@@ -59,6 +65,7 @@ mod tests {
         assert_eq!(gen.next_id(), 12);
     }
 
+    /// SPEC: T-ARCH-6
     #[test]
     fn test_sequential_id_gen_concurrent_no_duplicates() {
         let gen = Arc::new(SequentialIdGen::new(1));
@@ -75,7 +82,7 @@ mod tests {
             })
             .collect();
 
-        let mut all_ids = HashSet::with_capacity(8000);
+        let mut all_ids = BTreeSet::new();
         for handle in handles {
             let ids = handle.join().expect("Thread panicked");
             for id in ids {
@@ -86,6 +93,7 @@ mod tests {
         assert_eq!(all_ids.len(), 8000);
     }
 
+    /// SPEC: T-ARCH-6
     #[test]
     fn test_arc_dyn_id_gen() {
         let gen: Arc<dyn IdGen> = Arc::new(SequentialIdGen::new(100));

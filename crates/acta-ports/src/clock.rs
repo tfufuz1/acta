@@ -9,9 +9,21 @@ pub trait Clock: Send + Sync + 'static {
     /// Returns the current wall-clock time as nanoseconds since the Unix epoch.
     ///
     /// Returns `0` if system time is before the epoch instead of panicking.
+    ///
+    /// # Fehler
+    /// Keine; Abfrage der Systemzeit ist unfehlbar.
+    ///
+    /// # Crash
+    /// Reiner Zeitzugriff ohne Seiteneffekte.
     fn now_unix_nanos(&self) -> u64;
 
     /// Returns nanoseconds elapsed since a monotonic baseline reference point.
+    ///
+    /// # Fehler
+    /// Keine; monotoner Takt ist unfehlbar.
+    ///
+    /// # Crash
+    /// Monoton wachsender Zeitgeber; keine Zustandsänderung.
     fn monotonic_nanos(&self) -> u64;
 }
 
@@ -23,8 +35,10 @@ pub struct SystemClock {
 
 impl SystemClock {
     /// Creates a new [`SystemClock`] using the current [`Instant`] as the monotonic baseline.
+    #[allow(clippy::disallowed_methods)]
     pub fn new() -> Self {
         Self {
+            // DIRECT TIME CALL (1/3): Authorized baseline monotonic instant for SystemClock.
             start_instant: Instant::now(),
         }
     }
@@ -37,17 +51,22 @@ impl Default for SystemClock {
 }
 
 impl Clock for SystemClock {
+    #[allow(clippy::disallowed_methods)]
     fn now_unix_nanos(&self) -> u64 {
+        // DIRECT TIME CALL (2/3): Authorized OS wall-clock access encapsulated within SystemClock adapter.
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos() as u64)
+            .map(|d| u64::try_from(d.as_nanos()).unwrap_or(u64::MAX))
             .unwrap_or(0)
     }
 
+    #[allow(clippy::disallowed_methods)]
     fn monotonic_nanos(&self) -> u64 {
-        Instant::now()
+        // DIRECT TIME CALL (3/3): Authorized OS monotonic clock access encapsulated within SystemClock adapter.
+        let nanos = Instant::now()
             .saturating_duration_since(self.start_instant)
-            .as_nanos() as u64
+            .as_nanos();
+        u64::try_from(nanos).unwrap_or(u64::MAX)
     }
 }
 
@@ -67,6 +86,7 @@ mod tests {
 
     fn _assert_dyn_clock(_: Option<&dyn Clock>) {}
 
+    /// SPEC: T-ARCH-6
     #[test]
     fn test_system_clock_monotonic_non_decreasing() {
         let clock = SystemClock::new();
@@ -76,6 +96,7 @@ mod tests {
         assert!(t2 >= t1);
     }
 
+    /// SPEC: T-ARCH-6
     #[test]
     fn test_system_clock_now_unix_nanos() {
         let clock = SystemClock::default();
@@ -83,6 +104,7 @@ mod tests {
         assert!(nanos > 0);
     }
 
+    /// SPEC: T-ARCH-6
     #[test]
     fn test_arc_dyn_clock() {
         let clock: Arc<dyn Clock> = Arc::new(SystemClock::new());

@@ -1,6 +1,12 @@
+//! # Kompaktierungs-Unit-Tests (Ring 1)
+//!
+//! Testsuite fuer grundlegende und fortgeschrittene Kompaktierungsszenarien.
+
 use super::*;
 use crate::sstable::{create_block_cache, BlockCache, SstableBuilder, SstableReader};
-use acta_core::{SnapshotRegistry, StorageEngine, TOMBSTONE_BIT};
+use acta_mvcc::SnapshotRegistry;
+use acta_ports::StorageEngine;
+use acta_types::TOMBSTONE_BIT;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;

@@ -1,7 +1,28 @@
+// Begründung: Integrationstest-Fixtures und Assertions dürfen Test-Unwraps, Indizierung und Test-Zeitgeber verwenden.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::disallowed_methods,
+    clippy::disallowed_types,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::unnecessary_cast,
+    clippy::type_complexity
+)]
+
+//! Testsuite `rca_investigation.rs` für acta-text.
+//!
+//! # Ring-Zuordnung
+//! Ring LAB / Testbereich.
+
 use acta_text::morphology::{GermanCompoundSplitter, MorphologicalTokenizer};
 use std::collections::HashSet;
 use std::time::Instant;
 
+// ANCHOR[acta-text:TEST-188]
+// Testfall `test_rca_investigation_full_suite`: Prüft das Verhalten und Invarianten der Textverarbeitung.
 #[test]
 fn test_rca_investigation_full_suite() {
     println!("\n=== RUND 2 RCA INVESTIGATION: GermanCompoundSplitter ===");

@@ -1,4 +1,13 @@
-use acta_core::{DocId, TxId, VectorIndex};
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
+use acta_ports::VectorIndex;
+use acta_types::{DocId, TxId};
 use acta_vector::hnsw::{HnswConfig, HnswIndex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;

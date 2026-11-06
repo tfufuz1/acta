@@ -1,15 +1,14 @@
 use std::borrow::Cow;
 use std::sync::atomic::Ordering;
 
-use acta_core::{
-    ActaError, DistanceMetric, DocId, IndexOp, Result, ScoredDocument, TxId, VectorIndex,
-    VectorIndexStats,
-};
+use crate::hnsw::staging::LocalVectorOp;
+use acta_ports::{VectorIndex, VectorIndexStats};
+use acta_types::{ActaError, DistanceMetric, DocId, Result, ScoredDocument, TxId};
 
 use super::batch::{BatchContext, SearchContext};
 use super::config::validate_vector;
 use super::sq8_bias::Sq8Bias;
-use super::types::{HnswIndex, HnswNode, SnapshotPinGuard, VectorData};
+use super::types::{HnswIndex, HnswNode, VectorData};
 
 impl VectorIndex for HnswIndex {
     async fn insert(&self, tx: TxId, id: DocId, embedding: &[f32]) -> Result<()> {
@@ -31,7 +30,7 @@ impl VectorIndex for HnswIndex {
 
         self.inner.cold.tx_buffer.stage(
             tx,
-            IndexOp::Insert {
+            LocalVectorOp::Insert {
                 doc_id: id,
                 data: embedding.to_vec(),
             },
@@ -40,11 +39,11 @@ impl VectorIndex for HnswIndex {
     }
 
     async fn search(&self, query: &[f32], k: usize) -> Result<Vec<ScoredDocument>> {
-        if k > acta_core::MAX_SEARCH_K {
+        if k > acta_types::MAX_SEARCH_K {
             return Err(ActaError::invalid_input(format!(
                 "Requested k ({}) exceeds maximum allowed search limit ({})",
                 k,
-                acta_core::MAX_SEARCH_K
+                acta_types::MAX_SEARCH_K
             )));
         }
         if let Some(ref err) = self.inner.cold.validation_error {
@@ -71,8 +70,8 @@ impl VectorIndex for HnswIndex {
 
         let query_quantized: Option<Vec<u8>> = None;
 
-        let mmap_guard = self.inner.cold.mmap_index.read();
-        let mmap_node_count = mmap_guard
+        let buffer_guard = self.inner.cold.buffer_index.read();
+        let buffer_node_count = buffer_guard
             .as_ref()
             .map(|m| m.header.node_count() as usize)
             .unwrap_or(0);
@@ -90,12 +89,12 @@ impl VectorIndex for HnswIndex {
         if ep.is_empty() {
             let nodes = self.inner.hot.nodes.read();
             let deleted = self.inner.cold.deleted_nodes.read();
-            let mmap_guard = self.inner.cold.mmap_index.read();
-            let mmap_node_count = mmap_guard
+            let buffer_guard = self.inner.cold.buffer_index.read();
+            let buffer_node_count = buffer_guard
                 .as_ref()
                 .map(|m| m.header.node_count() as usize)
                 .unwrap_or(0);
-            let total = mmap_node_count + nodes.len();
+            let total = buffer_node_count + nodes.len();
             for i in 0..total {
                 if !deleted.contains(i as u64) {
                     ep.push(i);
@@ -139,7 +138,7 @@ impl VectorIndex for HnswIndex {
         let score = self.inner.connectivity_score();
         if score < self.inner.cold.config.rebuild_threshold {
             let deleted_ratio = (1.0 - score) * 100.0;
-            let err = acta_core::ActaError::HnswConnectivityDegraded { deleted_ratio };
+            let err = acta_types::ActaError::HnswConnectivityDegraded { deleted_ratio };
             tracing::warn!(
                 error = %err,
                 connectivity_score = score,
@@ -161,8 +160,8 @@ impl VectorIndex for HnswIndex {
 
         let ctx = SearchContext {
             nodes: &nodes,
-            mmap: mmap_guard.as_ref(),
-            mmap_node_count,
+            buffer: buffer_guard.as_ref(),
+            buffer_node_count,
             prior_prepared: &[],
             backlink_map: None,
             quantizer: q_ref.map(Cow::Borrowed),
@@ -173,8 +172,8 @@ impl VectorIndex for HnswIndex {
             if deleted.contains(c.index as u64) {
                 continue;
             }
-            if c.index >= mmap_node_count {
-                if let Some(node) = nodes.get(c.index - mmap_node_count) {
+            if c.index >= buffer_node_count {
+                if let Some(node) = nodes.get(c.index - buffer_node_count) {
                     if node.committed_tx == 0 {
                         continue;
                     }
@@ -234,13 +233,10 @@ impl VectorIndex for HnswIndex {
                 err
             )));
         }
-        self.inner.cold.tx_buffer.stage(
-            tx,
-            IndexOp::Delete {
-                doc_id: id,
-                data: None,
-            },
-        )?;
+        self.inner
+            .cold
+            .tx_buffer
+            .stage(tx, LocalVectorOp::Delete { doc_id: id })?;
         Ok(())
     }
 
@@ -257,7 +253,7 @@ impl VectorIndex for HnswIndex {
         if self.inner.cold.config.quantize && self.inner.cold.quantizer.read().is_none() {
             let mut train_data = Vec::with_capacity(256.min(ops.len()));
             for op in &ops {
-                if let IndexOp::Insert { data, .. } = op {
+                if let LocalVectorOp::Insert { data, .. } = op {
                     train_data.push(data.clone());
                     if train_data.len() >= 256 {
                         break;
@@ -303,7 +299,7 @@ impl VectorIndex for HnswIndex {
 
         for op in &ops {
             match op {
-                IndexOp::Insert { doc_id, data } => {
+                LocalVectorOp::Insert { doc_id, data } => {
                     let prepared = self.inner.compute_insert_with_context(
                         *doc_id,
                         data,
@@ -313,15 +309,8 @@ impl VectorIndex for HnswIndex {
                     )?;
                     prepared_inserts.push(prepared);
                 }
-                IndexOp::Delete { doc_id, .. } => {
+                LocalVectorOp::Delete { doc_id } => {
                     deletes_to_apply.push(*doc_id);
-                }
-                other => {
-                    return Err(ActaError::Index(format!(
-                        "HNSW commit received unsupported IndexOp variant: {:?}. \
-                         Add a handler arm before enabling this operation.",
-                        std::mem::discriminant(other)
-                    )));
                 }
             }
         }
@@ -334,22 +323,15 @@ impl VectorIndex for HnswIndex {
         let mut inserted_doc_ids = Vec::with_capacity(prepared_inserts.len());
         for prepared in prepared_inserts {
             inserted_doc_ids.push(prepared.doc_id);
+            if let VectorData::F32(ref v) = prepared.vector_data {
+                let ram_idx = prepared.new_idx;
+                self.inner
+                    .hot
+                    .arena
+                    .store_vector(ram_idx, self.inner.cold.config.dimension, v);
+            }
             self.inner.apply_insert(prepared, seq);
         }
-
-        let mut seq_log = self.inner.cold.seq_log.write();
-        for op in &ops {
-            match op {
-                IndexOp::Insert { doc_id, .. } => {
-                    seq_log.record_insert(*doc_id, seq);
-                }
-                IndexOp::Delete { doc_id, .. } => {
-                    seq_log.record_delete(*doc_id, seq);
-                }
-                _ => {}
-            }
-        }
-        drop(seq_log);
 
         if self.inner.is_rebuild_required() {
             tracing::warn!(
@@ -375,18 +357,22 @@ impl VectorIndex for HnswIndex {
     /// ## Invariant (v17 K-02 / SSI-Determinism & Pin-first):
     /// This method pins the sequence log via [`SnapshotPinGuard`] and applies `is_visible(doc_id, seq_no)`
     /// filtering over all candidates. Searches executed concurrently with background index rebuilds
-    /// ([`HnswIndexCore::rebuild`]) are guaranteed to yield 100% identical document results as pre-rebuild
+    /// ([`super::types::HnswIndexCore::rebuild`]) yield identical document results as pre-rebuild
     /// searches at the same pinned sequence number, regardless of rebuild progress or graph swaps.
     ///
     /// Verified by integration tests `crates/acta-vector/tests/k02_snapshot_rebuild_determinism.rs` and
     /// `crates/acta-vector/tests/hnsw_rebuild_search_consistency.rs` across multiple deterministic seeds and
     /// targeted timing execution inside the critical rebuild swap window.
-    async fn search_at(&self, query: &[f32], k: usize, seq_no: u64) -> Result<Vec<ScoredDocument>> {
-        let _pin_guard = SnapshotPinGuard::new(&self.inner, seq_no);
-        let log = self.inner.cold.seq_log.read().clone();
-        let filter_fn = move |doc_id: DocId| -> bool { log.is_visible(doc_id, seq_no) };
-        self.search_filtered_internal(query, k, Some(&filter_fn), Some(seq_no))
-            .await
+    async fn search_at(
+        &self,
+        _query: &[f32],
+        _k: usize,
+        _seq_no: u64,
+    ) -> Result<Vec<ScoredDocument>> {
+        Err(acta_types::ActaError::CapabilityUnsupported {
+            capability: "snapshot_read_at".to_string(),
+            reason: "Snapshot reads are decoupled from vector index per SPEC D-88".to_string(),
+        })
     }
 
     async fn rollback(&self, tx: TxId) -> Result<()> {
@@ -438,17 +424,17 @@ impl VectorIndex for HnswIndex {
         }
 
         {
-            let mmap_count = self
+            let buffer_count = self
                 .inner
                 .cold
-                .mmap_index
+                .buffer_index
                 .read()
                 .as_ref()
                 .map(|m| m.header.node_count() as usize)
                 .unwrap_or(0);
             let mut deleted = self.inner.cold.deleted_nodes.write();
             for &idx in &indices_to_remove {
-                deleted.insert((mmap_count + idx) as u64);
+                deleted.insert((buffer_count + idx) as u64);
             }
             self.inner
                 .hot
@@ -477,8 +463,8 @@ impl VectorIndex for HnswIndex {
             return Ok(Vec::new());
         }
         let nodes = self.inner.hot.nodes.read();
-        let mmap_guard = self.inner.cold.mmap_index.read();
-        let mmap_node_count = mmap_guard
+        let buffer_guard = self.inner.cold.buffer_index.read();
+        let buffer_node_count = buffer_guard
             .as_ref()
             .map(|m| m.header.node_count() as usize)
             .unwrap_or(0);
@@ -486,15 +472,15 @@ impl VectorIndex for HnswIndex {
 
         let ctx = SearchContext {
             nodes: &nodes,
-            mmap: mmap_guard.as_ref(),
-            mmap_node_count,
+            buffer: buffer_guard.as_ref(),
+            buffer_node_count,
             prior_prepared: &[],
             backlink_map: None,
             quantizer: None,
             arena: &self.inner.hot.arena,
         };
 
-        let total_nodes = mmap_node_count + nodes.len();
+        let total_nodes = buffer_node_count + nodes.len();
         let mut ids = Vec::with_capacity(total_nodes.saturating_sub(deleted.len() as usize));
 
         for i in 0..total_nodes {
@@ -509,15 +495,15 @@ impl VectorIndex for HnswIndex {
         if self.inner.cold.validation_error.is_some() {
             return 0;
         }
-        let mmap_count = self
+        let buffer_count = self
             .inner
             .cold
-            .mmap_index
+            .buffer_index
             .read()
             .as_ref()
             .map(|m| m.header.node_count() as usize)
             .unwrap_or(0);
-        let total = mmap_count + self.inner.hot.nodes.read().len();
+        let total = buffer_count + self.inner.hot.nodes.read().len();
         let deleted = self.inner.hot.deleted_count.load(Ordering::SeqCst) as usize;
         total.saturating_sub(deleted)
     }
@@ -532,14 +518,14 @@ impl VectorIndex for HnswIndex {
 
     async fn stats(&self) -> Result<VectorIndexStats> {
         let nodes = self.inner.hot.nodes.read();
-        let mmap_guard = self.inner.cold.mmap_index.read();
-        let mmap_count = mmap_guard
+        let buffer_guard = self.inner.cold.buffer_index.read();
+        let buffer_count = buffer_guard
             .as_ref()
             .map(|m| m.header.node_count() as usize)
             .unwrap_or(0);
 
         let deleted_count = self.inner.hot.deleted_count.load(Ordering::SeqCst) as usize;
-        let num_vectors = (mmap_count + nodes.len()).saturating_sub(deleted_count);
+        let num_vectors = (buffer_count + nodes.len()).saturating_sub(deleted_count);
 
         let mut vector_memory: usize = nodes
             .iter()
@@ -552,8 +538,8 @@ impl VectorIndex for HnswIndex {
         let connection_memory: usize =
             self.inner.hot.arena.arena.read().len() * std::mem::size_of::<u32>();
 
-        if let Some(mmap) = mmap_guard.as_ref() {
-            vector_memory += mmap.mmap.len();
+        if let Some(buffer) = buffer_guard.as_ref() {
+            vector_memory += buffer.buffer.len();
         }
 
         Ok(VectorIndexStats {

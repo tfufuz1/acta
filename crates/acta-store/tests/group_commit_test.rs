@@ -2,8 +2,9 @@
 
 #![cfg(feature = "fault-injection")]
 
-use acta_core::{ActaError, StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
+use acta_types::{ActaError, TxId};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
@@ -81,8 +82,8 @@ async fn test_group_commit_200_parallel_tasks_durability_and_replay_parity() {
 #[tokio::test]
 #[cfg(feature = "fault-injection")]
 async fn test_group_commit_mid_batch_fsync_failure_atomicity() {
-    use acta_core::ActaError;
     use acta_store::wal::FAIL_APPEND_FOR_TX;
+    use acta_types::ActaError;
 
     let tmp = TempDir::new().expect("temp dir");
     let config = LsmConfig {

@@ -10,8 +10,9 @@
 //! 3. Scenario C: Tail-truncated Replace record at MANIFEST end.
 //!    Incomplete Replace record is safely discarded (no Err/panic), input SSTables remain active.
 
-use acta_core::{Result, StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
+use acta_types::{Result, TxId};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tempfile::TempDir;
@@ -22,7 +23,6 @@ fn create_test_config(path: &Path) -> LsmConfig {
         memtable_size_limit: 1024 * 1024,
         max_ram_mb: 64,
         tx_timeout: Duration::from_secs(60),
-        encryption_passphrase: None,
         compaction: acta_store::compaction::CompactionConfig {
             min_sstables_per_tier: 2,
             ..Default::default()

@@ -1,4 +1,12 @@
-use acta_core::DocId;
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
+use acta_types::DocId;
 use acta_vector::acorn::{compute_gamma_edge_budget, FilteredIndex, NaiveReferenceIndex};
 
 #[test]

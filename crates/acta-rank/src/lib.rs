@@ -1,33 +1,29 @@
-//! `acta-rank`: 4-Signal Fusion, Isotonic & Platt Calibration, and Drift Detection.
+//! Reciprocal Rank Fusion für die Hybridsuche.
+//!
+//! # Acta Rank (`acta-rank`)
+//!
+//! **Ring:** Ring 2 (Ranking & Fusion, SPEC §8.11, D-26)
+//! **Klasse:** Rand `[R]`
+//! **Reifegrad:** Aktiv (Kern v1)
+//!
+//! ## Zweck des Crates
+//! Dieses Crate implementiert die deterministische Reciprocal Rank Fusion (RRF)
+//! für die Hybridsuche im Acta-System:
+//! - Kanonische Schnittstelle: [`rrf_fuse`]
+//! - Fester Glättungsfaktor: $k = 60$ ([`K_RRF`])
+//! - Reine Festkomma-Arithmetik ($\lfloor 2^{40} / (60 + \text{Rang}) \rfloor$), keine Gleitkommazahlen
+//! - Deterministischer Tie-Break (primär Score absteigend, sekundär `doc_tag` aufsteigend, tertiär `cluster_tag` aufsteigend)
+//! - Bit-genaue Permutationsinvarianz bezüglich der Listenreihenfolge
+//! - Schrankenberechnung für ungesehene Dokumente ([`unseen_bound`])
+//! - Keine Hintergrund-Threads, kein `unsafe` (`#![forbid(unsafe_code)]`).
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
-pub mod calibration;
-pub mod drift;
-pub mod explain;
-pub mod fusion;
+pub mod bound;
+pub mod error;
+pub mod rrf;
 
-#[cfg(feature = "dibud")]
-pub mod dibud;
-
-pub use calibration::{
-    AdaptiveConformalCalibrator, ConformalCalibrator, ConformalError, IsotonicCalibrator,
-    PlattScaler,
-};
-#[cfg(feature = "dibud")]
-pub use dibud::{
-    fuse_exact_prefix, fuse_exact_prefix_async, BudgetedChannel, DiBudFusionState, DiBudOutcome,
-    DiBudStep, FusionBudget,
-};
-pub use drift::{DriftDetector, DriftStatus};
-pub use explain::{explain, ExplanationEntry, RetrievalExplanation};
-pub use fusion::{
-    apply_resonance_bonus, fuse_search_results_with_strategy, g, modulate_and_renormalize_weights,
-    reciprocal_rank_fusion, score_normalized_fusion_with_options, weighted_reciprocal_rank_fusion,
-    weighted_reciprocal_rank_fusion_mrrf, weighted_reciprocal_rank_fusion_with_options,
-    weighted_reciprocal_rank_fusion_with_priority, weights_to_signal_factors, BoundedTopK,
-    GlobalFusionConfig, GlobalFusionStrategy, MetadataMergePriority, ProvenanceBuilder,
-    ProvenanceRecord, ResonanceConfig, SearchResult, SignalCalibrationContext, SignalContribution,
-    SignalKind,
-};
+pub use bound::unseen_bound;
+pub use error::RankError;
+pub use rrf::{rrf_fuse, Candidate, DocHandle, Fused, RrfScore, K_RRF};

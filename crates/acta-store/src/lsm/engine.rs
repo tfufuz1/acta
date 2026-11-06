@@ -1,3 +1,7 @@
+//! # LSM-Storage Engine (Ring 1)
+//!
+//! Implementiert [`LsmStorage`] als zentrale Fassade fuer alle Speicheroperationen.
+
 use super::config::LsmConfig;
 use super::group_commit::PendingCommitQueue;
 use super::guard::LsmState;
@@ -8,8 +12,10 @@ use crate::sstable::{BlockCache, SstableReader};
 use crate::wal::KeyManager;
 use crate::wal::Wal;
 use bytes::Bytes;
-use acta_core::{ResourceTracker, Result, SnapshotRegistry, StorageEngine, TxBuffer, TxId};
-use std::collections::HashMap;
+use acta_mvcc::{SnapshotRegistry, TxBuffer};
+use acta_ports::{ResourceTracker, StorageEngine};
+use acta_types::{Result, TxId};
+use std::collections::BTreeMap;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -19,23 +25,26 @@ use tokio::sync::RwLock;
 pub enum StorageHealth {
     Healthy,
     FlushFailing,
+    Poisoned,
 }
 
 /// LSM-Tree based storage engine.
+// ANCHOR[acta-store:LSM-ENG-001]
+/// Primaere Schnittstelle fuer den LSM-Baum mit get, put, delete und scan.
 pub struct LsmStorage {
-    pub(super) config: LsmConfig,
+    pub config: LsmConfig,
     pub(super) key_manager: Option<Arc<KeyManager>>,
-    pub(super) state: RwLock<LsmState>,
+    pub(crate) state: RwLock<LsmState>,
     /// SSTables stored separately for shared access with compaction engine.
     pub(super) sstables: Arc<RwLock<Vec<Arc<SstableReader>>>>,
     pub(super) tx_buffer: TxBuffer<(Vec<u8>, Vec<u8>)>,
     pub(super) budget: Arc<ResourceTracker>,
     pub(super) block_cache: Arc<BlockCache>,
-    pub(super) wal: RwLock<Arc<Wal>>,
+    pub wal: RwLock<Arc<Wal>>,
     pub snapshot_registry: Arc<SnapshotRegistry>,
     /// Persistent CompactionEngine instance — retains counter across maybe_compact() calls.
     /// Prevents SSTable name collisions from fresh-counter ad-hoc instantiation (audit H-3).
-    pub(super) compaction_engine: Arc<CompactionEngine>,
+    pub compaction_engine: Arc<CompactionEngine>,
     pub(super) manifest: Arc<crate::manifest::Manifest>,
     pub(super) next_seq_no: AtomicU64,
     pub(super) last_committed_tx: AtomicU64,
@@ -56,9 +65,11 @@ pub struct LsmStorage {
     pub(super) pending_commit_queue: tokio::sync::Mutex<Option<PendingCommitQueue>>,
     pub(super) wal_queue_depth: Arc<std::sync::atomic::AtomicUsize>,
     pub(super) pressure_rx: tokio::sync::watch::Receiver<crate::system_pressure::SystemPressure>,
-    pub(super) intent_locks: std::sync::Mutex<HashMap<Vec<u8>, TxId>>,
+    pub(super) intent_locks: std::sync::Mutex<BTreeMap<Vec<u8>, TxId>>,
     pub(super) observer_registry: ObserverRegistry,
-    pub ssi_validator: Arc<acta_mvcc::SequenceLogSsiValidator>,
+    pub(super) clock: parking_lot::RwLock<Arc<dyn acta_ports::Clock>>,
+    pub ssi_validator: Arc<dyn acta_mvcc::SsiValidator + Send + Sync>,
+    pub(super) sequence_log_ssi_validator: Option<Arc<acta_mvcc::SequenceLogSsiValidator>>,
     pub(super) metrics_sink: Arc<parking_lot::RwLock<Arc<dyn acta_ports::MetricsSink>>>,
 }
 
@@ -74,8 +85,15 @@ impl LsmStorage {
         Self::new_with_merge_operator(config, None).await
     }
 
+    /// Opens or recovers an LSM storage instance with the given configuration and a KeyManager.
+    pub async fn open_with_key_manager(
+        config: LsmConfig,
+        key_manager: Option<Arc<KeyManager>>,
+    ) -> Result<Self> {
+        Self::new_with_key_manager_and_merge_operator(config, key_manager, None).await
+    }
+
     /// Opens or recovers an LSM storage instance with the given configuration and a `MergeOperator`.
-    // TODO(wiring): Facade-Anbindung in acta/src/builder.rs folgt in separatem Task
     pub async fn open_with_merge_operator(
         config: LsmConfig,
         merge_operator: Arc<dyn MergeOperator>,
@@ -84,7 +102,6 @@ impl LsmStorage {
     }
 
     /// Returns a watch receiver for monitoring system pressure levels.
-    // TODO(wiring): Facade-Anbindung in acta/src/builder.rs folgt in separatem Task
     pub fn pressure_receiver(
         &self,
     ) -> tokio::sync::watch::Receiver<crate::system_pressure::SystemPressure> {
@@ -94,7 +111,6 @@ impl LsmStorage {
     /// Signals the background compaction engine to stop.
     pub fn shutdown(&self) {
         self.cancel_token.cancel();
-        self.task_tracker.close();
     }
 
     /// Waits for all spawned tasks to shut down fully.
@@ -107,16 +123,10 @@ impl LsmStorage {
     pub async fn close(&self) -> Result<()> {
         self.wait_shutdown().await;
         self.flush().await?;
-        let active_wal = {
-            let wal_guard = self.wal.read().await;
-            Arc::clone(&*wal_guard)
-        };
-        active_wal.close().await?;
         Ok(())
     }
 
     /// Spawns a background task tracked by this storage instance.
-    // TODO(wiring): Facade-Anbindung in acta/src/builder.rs folgt in separatem Task
     pub fn spawn_tracked<F>(&self, future: F)
     where
         F: std::future::Future<Output = ()> + Send + 'static,
@@ -125,18 +135,21 @@ impl LsmStorage {
     }
 
     #[doc(hidden)]
+    #[cfg(any(test, feature = "test-utils", feature = "test-hooks"))]
     pub async fn simulate_wal_append_failure_for_test(&self) {
         #[cfg(feature = "fault-injection")]
         crate::wal::FAIL_APPEND_FOR_TX.store(u64::MAX, std::sync::atomic::Ordering::SeqCst);
     }
 
     #[doc(hidden)]
+    #[cfg(any(test, feature = "test-utils", feature = "test-hooks"))]
     pub async fn simulate_wal_append_failure_for_tx_for_test(&self, _tx_id: u64) {
         #[cfg(feature = "fault-injection")]
         crate::wal::FAIL_APPEND_FOR_TX.store(_tx_id, std::sync::atomic::Ordering::SeqCst);
     }
 
     #[doc(hidden)]
+    #[cfg(any(test, feature = "test-utils", feature = "test-hooks"))]
     pub async fn restore_wal_file_handle_for_test(&self) {
         #[cfg(feature = "fault-injection")]
         crate::wal::FAIL_APPEND_FOR_TX.store(0, std::sync::atomic::Ordering::SeqCst);
@@ -189,9 +202,39 @@ impl LsmStorage {
         self
     }
 
-    /// Sets the injected clock port for deterministic observer latency evaluation (P28).
+    /// Returns the currently configured clock port.
+    pub fn clock(&self) -> Arc<dyn acta_ports::Clock> {
+        self.clock.read().clone()
+    }
+
+    /// Sets the injected clock port for deterministic execution timing (P28).
     pub fn set_clock(&self, clock: Arc<dyn acta_ports::Clock>) {
+        *self.clock.write() = Arc::clone(&clock);
         self.observer_registry.set_clock(clock);
+    }
+
+    /// Configures the clock port fluently on `self` and returns `self`.
+    pub fn with_clock(self, clock: Arc<dyn acta_ports::Clock>) -> Self {
+        self.set_clock(clock);
+        self
+    }
+
+    /// Sets or replaces the [`SsiValidator`] port for transaction conflict detection.
+    pub fn set_ssi_validator(
+        &mut self,
+        validator: Arc<dyn acta_mvcc::SsiValidator + Send + Sync>,
+    ) {
+        self.ssi_validator = validator;
+        self.sequence_log_ssi_validator = None;
+    }
+
+    /// Configures the [`SsiValidator`] fluently on `self` and returns `self`.
+    pub fn with_ssi_validator(
+        mut self,
+        validator: Arc<dyn acta_mvcc::SsiValidator + Send + Sync>,
+    ) -> Self {
+        self.set_ssi_validator(validator);
+        self
     }
 
     /// Performs a tracked read for transaction `tx_id`.
@@ -244,23 +287,25 @@ impl LsmStorage {
             .load(std::sync::atomic::Ordering::Acquire)
     }
 
-    /// Returns the number of dropped events for a specific registered observer.
-    pub fn dropped_count_for(&self, observer: &Arc<dyn WalObserver>) -> u64 {
-        self.observer_registry.dropped_count_for(observer)
-    }
-
-    /// Resets the circuit breaker state for a specific observer.
-    pub fn clear_circuit_breaker(&self, observer: &Arc<dyn WalObserver>) {
-        self.observer_registry.clear_circuit_breaker(observer);
-    }
-
     /// Returns the current storage health status.
+    /// Gibt an, ob der Speicher nach einem I/O- oder Fsync-Fehler vergiftet ist (D-55).
+    pub fn is_poisoned(&self) -> bool {
+        matches!(self.health(), StorageHealth::Poisoned)
+    }
+
+    /// Vergiftet den Speicher nach einem schwerwiegenden I/O- oder Fsync-Fehler dauerhaft (D-55).
+    pub fn poison(&self) {
+        *self.health.write() = StorageHealth::Poisoned;
+    }
+
+    /// Versiegelt das aktive WAL-Segment (ST-04).
+    pub async fn seal_wal_at(&self) -> Result<crate::purge::backend::SealPoint> {
+        use crate::purge::backend::PurgePrimitives;
+        PurgePrimitives::seal_wal_at(self).await
+    }
+
     pub fn health(&self) -> StorageHealth {
-        if self.observer_registry.is_any_circuit_breaker_open() {
-            StorageHealth::FlushFailing
-        } else {
-            *self.health.read()
-        }
+        *self.health.read()
     }
 
     /// Requests an asynchronous background flush without blocking the caller or holding commit locks.
@@ -274,31 +319,38 @@ impl LsmStorage {
     }
 
     /// Returns the current `next_seq_no` value for testing verification.
+    #[doc(hidden)]
+    #[cfg(any(test, feature = "test-utils", feature = "test-hooks"))]
     pub fn next_seq_no_for_test(&self) -> u64 {
         self.next_seq_no.load(std::sync::atomic::Ordering::Acquire)
     }
 
     #[doc(hidden)]
+    #[cfg(any(test, feature = "test-utils", feature = "test-hooks"))]
     pub fn sstables_for_test(&self) -> Arc<RwLock<Vec<Arc<SstableReader>>>> {
         Arc::clone(&self.sstables)
     }
 
     #[doc(hidden)]
+    #[cfg(any(test, feature = "test-utils", feature = "test-hooks"))]
     pub fn block_cache_for_test(&self) -> Arc<BlockCache> {
         Arc::clone(&self.block_cache)
     }
 
     #[doc(hidden)]
+    #[cfg(any(test, feature = "test-utils", feature = "test-hooks"))]
     pub fn budget_for_test(&self) -> Arc<ResourceTracker> {
         Arc::clone(&self.budget)
     }
 
     #[doc(hidden)]
+    #[cfg(any(test, feature = "test-utils", feature = "test-hooks"))]
     pub fn manifest_for_test(&self) -> Arc<crate::manifest::Manifest> {
         Arc::clone(&self.manifest)
     }
 
     #[doc(hidden)]
+    #[cfg(any(test, feature = "test-utils", feature = "test-hooks"))]
     pub async fn maybe_compact_for_test(&self) -> Result<bool> {
         self.compaction_engine
             .maybe_compact(&self.sstables, &self.config.path)
@@ -315,14 +367,14 @@ impl LsmStorage {
             Ok(entries) => entries,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
             Err(e) => {
-                return Err(acta_core::ActaError::Storage(format!(
+                return Err(acta_types::ActaError::Storage(format!(
                     "Failed to read directory for legacy WAL check: {e}"
                 )))
             }
         };
 
         while let Some(entry) = entries.next_entry().await.map_err(|e| {
-            acta_core::ActaError::Storage(format!(
+            acta_types::ActaError::Storage(format!(
                 "Failed to read directory entry for legacy WAL check: {e}"
             ))
         })? {
@@ -361,7 +413,6 @@ impl LsmStorage {
     /// Dies ist der Migrationsmechanismus vor der endgültigen Entfernung des Legacy-Fallbacks
     /// (v17 Teil 4.1, Ziel P1). Die Entfernung selbst erfolgt in einem separaten PR, erst
     /// nachdem bestätigt ist, dass keine produktiven Alt-WAL-Dateien mehr existieren.
-    // TODO(wiring): Facade-Anbindung in acta/src/builder.rs folgt in separatem Task
     pub async fn has_pending_legacy_wal_migration(&self) -> Result<bool> {
         Self::has_pending_legacy_wal_migration_path(&self.config.path).await
     }
@@ -373,7 +424,6 @@ impl LsmStorage {
     /// Dies ist der Migrationsmechanismus vor der endgültigen Entfernung des Legacy-Fallbacks
     /// (v17 Teil 4.1, Ziel P1). Die Entfernung selbst erfolgt in einem separaten PR, erst
     /// nachdem bestätigt ist, dass keine produktiven Alt-WAL-Dateien mehr existieren.
-    // TODO(wiring): Facade-Anbindung in acta/src/builder.rs folgt in separatem Task
     pub async fn migrate_legacy_wal_keys(
         config: &LsmConfig,
         clock: Arc<dyn acta_ports::Clock>,
@@ -382,7 +432,7 @@ impl LsmStorage {
             Ok(entries) => entries,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
             Err(e) => {
-                return Err(acta_core::ActaError::Storage(format!(
+                return Err(acta_types::ActaError::Storage(format!(
                     "Failed to read directory for legacy WAL migration: {e}"
                 )))
             }
@@ -394,24 +444,19 @@ impl LsmStorage {
             crate::lsm::recovery::write_salt_atomically(&salt_path, &buf).await?;
         }
 
-        let salt = tokio::fs::read(&salt_path).await.map_err(|e| {
-            acta_core::ActaError::Storage(format!(
+        let _salt = tokio::fs::read(&salt_path).await.map_err(|e| {
+            acta_types::ActaError::Storage(format!(
                 "SALT file read failed during migration: {e}"
             ))
         })?;
 
-        let key_manager = if let Some(passphrase) = &config.encryption_passphrase {
-            Some(Arc::new(crate::wal::KeyManager::try_new(
-                passphrase, &salt,
-            )?))
-        } else {
-            None
-        };
+        // D-05: Key material comes exclusively via KeyManager, no passphrase field in LsmConfig
+        let key_manager = None;
 
         let mut migrated_count = 0usize;
 
         while let Some(entry) = entries.next_entry().await.map_err(|e| {
-            acta_core::ActaError::Storage(format!(
+            acta_types::ActaError::Storage(format!(
                 "Failed to read directory entry for legacy WAL migration: {e}"
             ))
         })? {
@@ -441,5 +486,10 @@ impl LsmStorage {
         }
 
         Ok(migrated_count)
+    }
+
+    /// Returns the data directory path.
+    pub fn data_path(&self) -> &std::path::Path {
+        &self.config.path
     }
 }

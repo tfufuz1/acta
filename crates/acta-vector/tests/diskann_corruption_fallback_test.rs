@@ -1,10 +1,18 @@
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 // FILE-CONTEXT
 // ZWECK: Corruption detection and DiskAnnFallbackPolicy test (Pflichttest 2).
 // INVARIANTEN: Verifies that loading a corrupted/bit-flipped DiskANN file returns typed ActaError for FailFast, and logs error & transparently falls back to HNSW for UseHnswOnFailure.
-
 #![cfg(feature = "experimental-diskann")]
 
-use acta_core::{ActaError, DistanceMetric, DocId, VectorIndex};
+use acta_ports::VectorIndex;
+use acta_types::{ActaError, DistanceMetric, DocId};
 use acta_vector::diskann::{DiskAnnConfig, DiskAnnFallbackPolicy, DiskAnnIndex};
 
 #[tokio::test]
@@ -97,7 +105,7 @@ async fn test_corrupted_diskann_use_hnsw_fallback_policy() {
     );
 
     // Dynamic operations (e.g. insert, search) on the HNSW fallback must now work seamlessly
-    let tx = acta_core::TxId::new(1);
+    let tx = acta_types::TxId::new(1);
     let doc_id = DocId::from(30u64);
     let new_vec = vec![0.5f32; 8];
 

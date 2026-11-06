@@ -1,6 +1,10 @@
+//! # LSM-Haupttests (Ring 1)
+//!
+//! Modultests fuer den LSM-Speicherkern.
+
 pub use super::*;
 pub use crate::compaction::{CompactionConfig, CompactionEngine};
-pub use acta_core::TOMBSTONE_BIT;
+pub use acta_types::TOMBSTONE_BIT;
 pub use std::sync::Arc;
 pub use std::time::Duration;
 use tempfile::TempDir;
@@ -13,7 +17,6 @@ pub(crate) async fn test_storage() -> (LsmStorage, TempDir) {
         max_ram_mb: 64,
         tx_timeout: Duration::from_secs(60),
         compaction: CompactionConfig::default(),
-        encryption_passphrase: None,
         ..Default::default()
     };
     let storage = LsmStorage::new(config).await.expect("create storage");

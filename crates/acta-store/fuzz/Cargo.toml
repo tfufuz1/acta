@@ -15,7 +15,8 @@ arbitrary = { version = "1.4", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 tempfile = "3"
 bytes = "1"
-acta-core = { path = "../../acta-core" }
+acta-types = { path = "../../acta-types" }
+acta-ports = { path = "../../acta-ports" }
 acta-store = { path = ".." }
 
 [[bin]]

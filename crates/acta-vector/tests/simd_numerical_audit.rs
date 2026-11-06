@@ -1,8 +1,16 @@
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 // FILE-CONTEXT
 // ZWECK: Audit-Testsuite für numerische Korrektheit (SIMD vs Skalar vs f64-Referenz)
 // STAND: TS:2026-08-31T00:00:00Z
 
-use acta_core::DistanceMetric;
+use acta_types::DistanceMetric;
 use acta_vector::distance::*;
 
 /// Independent f64 reference implementation for Cosine Distance

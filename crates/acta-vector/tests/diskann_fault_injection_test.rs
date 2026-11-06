@@ -1,10 +1,18 @@
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 // FILE-CONTEXT
 // ZWECK: Fault-Injection Test for DiskANN rebuild failures (Pflichttest 1).
 // INVARIANTEN: Simulates interrupted/failed DiskANN rebuild mid-write and verifies that the previous functional index state remains valid, loadable, and searchable.
-
 #![cfg(feature = "experimental-diskann")]
 
-use acta_core::{DistanceMetric, DocId, VectorIndex};
+use acta_ports::VectorIndex;
+use acta_types::{DistanceMetric, DocId};
 use acta_vector::diskann::{DiskAnnConfig, DiskAnnIndex};
 
 #[tokio::test]

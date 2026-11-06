@@ -2,9 +2,10 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use acta_core::{Result, StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::compaction::CompactionConfig;
 use acta_store::{LsmConfig, LsmStorage, MergeOperator};
+use acta_types::{Result, TxId};
 use std::sync::Arc;
 use tempfile::TempDir;
 
@@ -14,10 +15,10 @@ struct U64SumMergeOperator;
 impl MergeOperator for U64SumMergeOperator {
     fn merge(&self, existing_val: &[u8], new_val: &[u8]) -> Result<Vec<u8>> {
         let a = u64::from_le_bytes(existing_val.try_into().map_err(|_| {
-            acta_core::ActaError::InvalidInput("invalid u64 bytes".into())
+            acta_types::ActaError::InvalidInput("invalid u64 bytes".into())
         })?);
         let b = u64::from_le_bytes(new_val.try_into().map_err(|_| {
-            acta_core::ActaError::InvalidInput("invalid u64 bytes".into())
+            acta_types::ActaError::InvalidInput("invalid u64 bytes".into())
         })?);
         Ok((a.wrapping_add(b)).to_le_bytes().to_vec())
     }

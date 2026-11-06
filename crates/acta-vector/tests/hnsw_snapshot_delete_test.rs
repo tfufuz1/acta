@@ -1,7 +1,16 @@
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 //! Regressionstest für AGT-INDEX-006: Snapshot-Isolation bei Soft-Delete.
 //! Sichert: search_at(seq) gibt Nodes zurück die NACH seq gelöscht wurden.
 
-use acta_core::{DocId, TxId, VectorIndex};
+use acta_ports::VectorIndex;
+use acta_types::{DocId, TxId};
 use acta_vector::{HnswConfig, HnswIndex};
 
 #[tokio::test]

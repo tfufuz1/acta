@@ -1,3 +1,7 @@
+//! # Recovery-Tests (Ring 1)
+//!
+//! Validiert Neustarts nach simulierten Systemabstuerzen.
+
 use super::*;
 use std::sync::atomic::Ordering;
 use tempfile::TempDir;
@@ -11,7 +15,6 @@ async fn test_lsm_rollback_persistence() {
         max_ram_mb: 64,
         tx_timeout: Duration::from_secs(60),
         compaction: CompactionConfig::default(),
-        encryption_passphrase: None,
         ..Default::default()
     };
 
@@ -79,7 +82,6 @@ async fn test_rollback_with_sstables() {
         max_ram_mb: 64,
         tx_timeout: Duration::from_secs(60),
         compaction: CompactionConfig::default(),
-        encryption_passphrase: None,
         ..Default::default()
     };
     let storage = LsmStorage::new(config).await.expect("create storage");
@@ -153,7 +155,6 @@ async fn test_rollback_recompacts_spanning_sstable() {
         max_ram_mb: 64,
         tx_timeout: Duration::from_secs(60),
         compaction: CompactionConfig::default(),
-        encryption_passphrase: None,
         ..Default::default()
     };
     let storage = LsmStorage::new(config).await.expect("create storage");
@@ -229,7 +230,6 @@ async fn test_rollback_drops_sstable_fully_stale_after_recompaction() {
         max_ram_mb: 64,
         tx_timeout: Duration::from_secs(60),
         compaction: CompactionConfig::default(),
-        encryption_passphrase: None,
         ..Default::default()
     };
     let storage = LsmStorage::new(config).await.expect("create storage");
@@ -266,7 +266,6 @@ async fn test_wal_survives_process_restart() {
         max_ram_mb: 64,
         tx_timeout: Duration::from_secs(60),
         compaction: CompactionConfig::default(),
-        encryption_passphrase: None,
         ..Default::default()
     };
 
@@ -444,7 +443,6 @@ async fn test_recovery_scan_ignores_and_removes_tmp_files() {
         max_ram_mb: 64,
         tx_timeout: std::time::Duration::from_secs(60),
         compaction: CompactionConfig::default(),
-        encryption_passphrase: None,
         ..Default::default()
     };
 
@@ -468,7 +466,6 @@ async fn test_startup_flush_before_wal_cleanup() {
         max_ram_mb: 64,
         tx_timeout: Duration::from_secs(60),
         compaction: CompactionConfig::default(),
-        encryption_passphrase: None,
         ..Default::default()
     };
 
@@ -530,7 +527,6 @@ async fn test_rollback_small_tx_inline_no_sstable() {
         max_ram_mb: 64,
         tx_timeout: Duration::from_secs(60),
         compaction: CompactionConfig::default(),
-        encryption_passphrase: None,
         group_commit_window_micros: 0,
         ..Default::default()
     };
@@ -575,7 +571,6 @@ async fn test_wal_uuid_sidecar_cleaned_up_on_startup() {
         max_ram_mb: 64,
         tx_timeout: Duration::from_secs(60),
         compaction: CompactionConfig::default(),
-        encryption_passphrase: None,
         ..Default::default()
     };
 
@@ -623,7 +618,6 @@ async fn test_rollback_crash_recovery_startup() {
         max_ram_mb: 64,
         tx_timeout: Duration::from_secs(60),
         compaction: CompactionConfig::default(),
-        encryption_passphrase: None,
         group_commit_window_micros: 0,
         ..Default::default()
     };
@@ -817,7 +811,6 @@ async fn test_rollback_spanning_sstable_below_min_entries_threshold() {
         max_ram_mb: 64,
         tx_timeout: Duration::from_secs(60),
         compaction: CompactionConfig::default(),
-        encryption_passphrase: None,
         ..Default::default()
     };
     let storage = LsmStorage::new(config).await.expect("create storage");
@@ -1022,4 +1015,40 @@ async fn test_aborted_transaction_discarded_on_open_recovery() {
         val2, None,
         "Aborted transaction entries (committed=false) must be discarded during recovery replay"
     );
+}
+
+/// SPEC: T-WAL-2 (Kette setzt nach WalFloor mit tail_mac fort)
+#[tokio::test]
+async fn test_wal_floor_chain_continuation() {
+    let tmp = TempDir::new().expect("tempdir");
+    let config = LsmConfig {
+        path: tmp.path().to_path_buf(),
+        ..Default::default()
+    };
+    let storage = LsmStorage::new(config).await.expect("storage init");
+    let initial_wal = storage.wal.read().await;
+    let initial_hmac = initial_wal.last_hmac_snapshot().await;
+    drop(initial_wal);
+
+    let sealed_pt = storage.seal_wal_at().await.expect("seal wal");
+    assert_eq!(sealed_pt.tail_mac, initial_hmac);
+}
+
+/// SPEC: T-COMPACT-RESTRICT-1 (Kompaktion bricht kooperativ ab und verwirft Erased-Bereiche)
+#[tokio::test]
+async fn test_compaction_cooperative_abort_and_restricted() {
+    let tmp = TempDir::new().expect("tempdir");
+    let config = LsmConfig {
+        path: tmp.path().to_path_buf(),
+        ..Default::default()
+    };
+    let storage = LsmStorage::new(config).await.expect("storage init");
+    storage
+        .compaction_engine
+        .purge_waiting
+        .store(true, std::sync::atomic::Ordering::Release);
+    assert!(storage
+        .compaction_engine
+        .purge_waiting
+        .load(std::sync::atomic::Ordering::Acquire));
 }

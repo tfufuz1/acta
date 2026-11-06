@@ -1,5 +1,10 @@
+//! # Wartungsoperationen (Ring 1)
+//!
+//! Behandelt periodische Dateisystembereinigungen und Metadaten-Updates.
+
 use super::super::engine::LsmStorage;
-use acta_core::{Result, StorageStats, TxId};
+use acta_ports::StorageStats;
+use acta_types::{Result, TxId};
 use std::sync::atomic::Ordering;
 
 pub(super) async fn rollback(storage: &LsmStorage, tx_id: TxId) -> Result<()> {

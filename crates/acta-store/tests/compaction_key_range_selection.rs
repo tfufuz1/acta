@@ -1,4 +1,4 @@
-use acta_core::ResourceTracker;
+use acta_ports::ResourceTracker;
 use acta_store::compaction::{CompactionConfig, CompactionEngine};
 use acta_store::sstable::{BlockCache, SstableBuilder, SstableReader};
 use std::sync::Arc;
@@ -64,10 +64,10 @@ async fn test_compaction_candidate_selection_prefers_overlapping_key_ranges() {
     };
     let engine = CompactionEngine::new(
         config,
-        Arc::new(acta_core::SnapshotRegistry::new()),
+        Arc::new(acta_mvcc::SnapshotRegistry::new()),
         cache,
         None,
-        Arc::new(ResourceTracker::new(acta_core::ResourceBudget {
+        Arc::new(ResourceTracker::new(acta_ports::ResourceBudget {
             memory_limit: 1024 * 1024 * 1024,
         })),
         None,

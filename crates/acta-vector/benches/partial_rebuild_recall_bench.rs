@@ -1,6 +1,15 @@
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 // FILE-CONTEXT: Criterion benchmark suite for F-02 Partial HNSW Rebuild recall regression curve across growing tombstone ratios.
 
-use acta_core::{DistanceMetric, DocId, TxId, VectorIndex};
+use acta_ports::VectorIndex;
+use acta_types::{DistanceMetric, DocId, TxId};
 use acta_vector::hnsw::{HnswConfig, HnswIndex};
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use rand::rngs::StdRng;

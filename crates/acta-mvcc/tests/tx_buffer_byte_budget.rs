@@ -1,8 +1,16 @@
+//! # Byte-Budget- und Speichergrenzen-Tests für den `TxBuffer`
+//!
+//! Stellt sicher, dass das Überschreiten des Byte-Budgets pro Transaktion und
+//! global verhindert wird und der Speicher nach Drain, Discard oder Reaping
+//! vollständig freigegeben wird.
+
 use acta_mvcc::tx_buffer::{IndexOp, TxBuffer, TxBufferConfig, STAGING_ENTRY_OVERHEAD_BYTES};
+use acta_testmacros::ctx_test;
 use acta_types::{ActaError, DocId, TxId};
 use std::time::Duration;
 
-#[test]
+// Prüft, dass das Überschreiten des Byte-Budgets einer Transaktion mit einem Fehler abgewiesen wird.
+#[ctx_test(id = "T-TXN-1")]
 fn tx_buffer_byte_budget_exceeded() {
     assert_eq!(STAGING_ENTRY_OVERHEAD_BYTES, 32);
 
@@ -38,7 +46,8 @@ fn tx_buffer_byte_budget_exceeded() {
     assert!(matches!(res2, Err(ActaError::Storage(_))));
 }
 
-#[test]
+// Prüft, dass der reservierte Byte-Speicher bei drain, discard und orphan reaping wieder freigegeben wird.
+#[ctx_test(id = "T-TXN-1")]
 fn tx_buffer_byte_budget_freed_on_drain_discard_reap() {
     let config = TxBufferConfig {
         max_tx_staged_bytes: 1024,

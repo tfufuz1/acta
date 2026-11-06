@@ -1,22 +1,11 @@
-# acta-simd
+Vektor-Distanzfunktionen (L2, Dot, Cosine) mit SIMD-Kernen und Skalar-Referenz.
 
-`acta-simd` ist eine Unsafe-Insel für SIMD-Distanzkernel und Laufzeit-Hardware-Dispatch (Ring 0).
+## Status
 
-## Zweck
+Ring 1. Ist-Zustand: vorhanden, 13/13 Lib-Tests in 3.0.0; u8-VNNI-Pfad zu entfernen. Soll-Zustand nach [`docs/SPEC.md`](../../docs/SPEC.md), Abschnitt 5.1 und 8.
 
-Stellt hochoptimierte Vektor-Distanzfunktionen (L2, Cosine, Dot Product) bereit. Generiert Hardware-Dispatch auf AVX2, AVX-512, NEON oder skalare Fallbacks.
+## Abhängigkeiten
 
-## Ring-Zugehörigkeit & Status
+Erlaubt laut SPEC 5.3: `types`.
 
-- **Ring:** Ring 0 (Unsafe-Insel)
-- **Status:** 🟢 Fertig
-- **Sicherheits-Invariante:** `#![allow(unsafe_code)]` — Isoliert in `acta-simd`, Safe Public API Boundary.
-
-## Öffentliche API-Übersicht
-
-- **Dispatch & Validation:** `compute_distance`, `validate_vector`, `compute_distance_trusted`
-- **Kernels:** `avx2`, `avx512`, `neon`, `scalar`
-
-## Architektur & Verweise
-
-Details zu den Unsafe-Inseln (§0.4) und SIMD-Distanzberechnungen finden sich in [`ARCHITECTURE.md`](../../ARCHITECTURE.md) (folgt in Kürze) sowie `README.md` §7.4.
+Das Crate ist Teil der Architekturprüfung (`acta-arch-tests`). Abhängigkeiten werden nicht von Hand gepflegt, sondern gegen die Matrix geprüft (AR-1, AR-11).

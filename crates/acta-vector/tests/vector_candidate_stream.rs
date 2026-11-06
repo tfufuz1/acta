@@ -1,7 +1,13 @@
-use acta_core::{
-    ActaError, DistanceMetric, DocId, Result, ScoredDocument, TxId, VectorIndex,
-    VectorIndexStats,
-};
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
+use acta_ports::{VectorIndex, VectorIndexStats};
+use acta_types::{ActaError, DistanceMetric, DocId, Result, ScoredDocument, TxId};
 use acta_vector::hnsw::{HnswConfig, HnswIndex};
 use acta_vector::{VectorCandidateStream, DEFAULT_VECTOR_STREAM_BATCH_SIZE};
 use rand::Rng;

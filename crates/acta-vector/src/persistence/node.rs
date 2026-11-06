@@ -2,7 +2,7 @@
 // ZWECK: Persistenz-Schicht für HNSW-Dateiserialisierung (`.hnsw`) - NodeRecord-Format.
 // INVARIANTEN: Zero-Panic bei Deserialisierung.
 
-use acta_core::{ActaError, Result};
+use acta_types::{ActaError, Result};
 
 /// Represents a node's metadata in the flat file.
 #[derive(Debug, Clone, Copy)]

@@ -1,6 +1,14 @@
-// Testpflicht AK-12 (docs/specs/CONTEXTRA_SPEC_v2.md / Spec §15.2)
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
+// Testpflicht AK-12 (docs/specs/ACTA_SPEC_v2.md / Spec §15.2)
 
-use acta_core::DistanceMetric;
+use acta_types::DistanceMetric;
 use acta_vector::hnsw::Sq8Bias;
 use acta_vector::quantize::ScalarQuantizer;
 

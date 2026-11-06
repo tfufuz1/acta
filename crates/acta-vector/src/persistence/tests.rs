@@ -2,7 +2,7 @@
 // ZWECK: Unit-Tests für HNSW Persistenz-Schicht.
 
 use super::*;
-use acta_core::{ActaError, Result};
+use acta_types::{ActaError, Result};
 
 #[test]
 fn test_hnsw_header_roundtrip_and_errors() -> Result<()> {
@@ -50,9 +50,10 @@ fn test_node_record_roundtrip_and_errors() -> Result<()> {
 }
 
 #[tokio::test]
-async fn test_mmap_index_boundary_checks() -> acta_core::Result<()> {
+async fn test_buffer_index_boundary_checks() -> acta_types::Result<()> {
     use crate::hnsw::{HnswConfig, HnswIndex};
-    use acta_core::{DistanceMetric, DocId, TxId, VectorIndex};
+    use acta_ports::VectorIndex;
+    use acta_types::{DistanceMetric, DocId, TxId};
 
     let temp_dir = tempfile::tempdir().map_err(|e| ActaError::Storage(e.to_string()))?;
     let path = temp_dir.path().join("bounds_test.hnsw");
@@ -71,24 +72,25 @@ async fn test_mmap_index_boundary_checks() -> acta_core::Result<()> {
     index.commit(tx).await?;
     index.save(&path).await?;
 
-    let mmap_index = MmapIndex::open(&path)?;
+    let buffer_index = BufferIndex::open(&path)?;
 
-    assert!(mmap_index.get_node_record(99999).is_err());
+    assert!(buffer_index.get_node_record(99999).is_err());
 
-    let rec = mmap_index.get_node_record(0)?;
-    let connections = mmap_index.get_connections(&rec, 100)?;
+    let rec = buffer_index.get_node_record(0)?;
+    let connections = buffer_index.get_connections(&rec, 100)?;
     assert!(connections.is_empty());
 
-    let vec_bytes = mmap_index.get_vector(&rec)?;
+    let vec_bytes = buffer_index.get_vector(&rec)?;
     assert_eq!(vec_bytes.len(), 4 * 4);
 
     Ok(())
 }
 
 #[tokio::test]
-async fn test_mmap_open_async() -> acta_core::Result<()> {
+async fn test_buffer_open_async() -> acta_types::Result<()> {
     use crate::hnsw::{HnswConfig, HnswIndex};
-    use acta_core::{DistanceMetric, DocId, TxId, VectorIndex};
+    use acta_ports::VectorIndex;
+    use acta_types::{DistanceMetric, DocId, TxId};
 
     let temp_dir = tempfile::tempdir().map_err(|e| ActaError::Storage(e.to_string()))?;
     let path = temp_dir.path().join("test_async.hnsw");
@@ -114,11 +116,11 @@ async fn test_mmap_open_async() -> acta_core::Result<()> {
 
     index.save(&path).await?;
 
-    let mmap_index = HnswIndex::try_new(config)?;
-    mmap_index.load_mmap(&path).await?;
+    let buffer_index = HnswIndex::try_new(config)?;
+    buffer_index.load_buffer(&path).await?;
 
     let query = vec![50.1, 100.2, 150.3, 200.4];
-    let search_results = mmap_index.search(&query, 5).await?;
+    let search_results = buffer_index.search(&query, 5).await?;
     assert_eq!(search_results.len(), 5);
 
     let mut brute_force: Vec<(DocId, f32)> = vectors
@@ -143,8 +145,8 @@ async fn test_mmap_open_async() -> acta_core::Result<()> {
 }
 
 #[test]
-fn test_mmap_index_error_paths() {
-    let res = MmapIndex::open("non_existent_path_acta_test.hnsw");
+fn test_buffer_index_error_paths() {
+    let res = BufferIndex::open("non_existent_path_acta_test.hnsw");
     assert!(res.is_err());
 
     let short_bytes = vec![0u8; 10];
@@ -166,7 +168,7 @@ fn test_open_rejects_invalid_magic() -> Result<()> {
     bytes[0..4].copy_from_slice(&0xDEADBEEFu32.to_le_bytes());
     std::fs::write(&path, &bytes).map_err(|e| ActaError::Storage(e.to_string()))?;
 
-    let res = MmapIndex::open(&path);
+    let res = BufferIndex::open(&path);
     assert!(res.is_err(), "Expected error for invalid magic");
     if let Err(ActaError::Storage(msg)) = res {
         assert!(
@@ -190,7 +192,7 @@ fn test_open_rejects_unsupported_version() -> Result<()> {
     bytes[4..6].copy_from_slice(&unsupported_version.to_le_bytes());
     std::fs::write(&path, &bytes).map_err(|e| ActaError::Storage(e.to_string()))?;
 
-    let res = MmapIndex::open(&path);
+    let res = BufferIndex::open(&path);
     assert!(res.is_err(), "Expected error for unsupported version");
     if let Err(ActaError::Storage(msg)) = res {
         assert!(
@@ -250,11 +252,11 @@ async fn test_v1_legacy_migration_load_degraded_fallback() -> Result<()> {
         ..Default::default()
     };
     let index = HnswIndex::try_new(config)?;
-    index.load_mmap(&path).await?;
+    index.load_buffer(&path).await?;
 
     let q = index
         .quantizer()
-        .expect("Quantizer must be populated on mmap load");
+        .expect("Quantizer must be populated on buffer load");
     assert_eq!(q.mins(), &[0.0, 0.0]);
     assert_eq!(q.maxes(), &[1.0, 1.0]);
 
@@ -264,7 +266,8 @@ async fn test_v1_legacy_migration_load_degraded_fallback() -> Result<()> {
 #[tokio::test]
 async fn test_v2_save_load_roundtrip_preserves_per_dim_calibration() -> Result<()> {
     use crate::hnsw::{HnswConfig, HnswIndex};
-    use acta_core::{DocId, TxId, VectorIndex};
+    use acta_ports::VectorIndex;
+    use acta_types::{DocId, TxId};
 
     let temp_dir = tempfile::tempdir().map_err(|e| ActaError::Storage(e.to_string()))?;
     let path = temp_dir.path().join("v2_roundtrip.hnsw");
@@ -287,7 +290,7 @@ async fn test_v2_save_load_roundtrip_preserves_per_dim_calibration() -> Result<(
     index.save(&path).await?;
 
     let loaded_index = HnswIndex::try_new(config)?;
-    loaded_index.load_mmap(&path).await?;
+    loaded_index.load_buffer(&path).await?;
 
     let q = loaded_index
         .quantizer()
@@ -324,7 +327,7 @@ fn test_open_rejects_truncated_header() -> Result<()> {
     let bytes = header.to_bytes();
     std::fs::write(&path, &bytes[..20]).map_err(|e| ActaError::Storage(e.to_string()))?;
 
-    let res = MmapIndex::open(&path);
+    let res = BufferIndex::open(&path);
     assert!(res.is_err(), "Expected error for truncated header");
     if let Err(ActaError::Storage(msg)) = res {
         assert!(
@@ -366,8 +369,8 @@ fn test_get_connections_rejects_out_of_bounds_offset() -> Result<()> {
     file_bytes.extend_from_slice(&record.to_bytes());
     std::fs::write(&path, &file_bytes).map_err(|e| ActaError::Storage(e.to_string()))?;
 
-    let mmap_index = MmapIndex::open(&path)?;
-    let res = mmap_index.get_connections(&record, 0);
+    let buffer_index = BufferIndex::open(&path)?;
+    let res = buffer_index.get_connections(&record, 0);
     assert!(
         res.is_err(),
         "Expected error for out-of-bounds connections_offset"
@@ -411,10 +414,10 @@ fn test_get_vector_rejects_out_of_bounds_offset() -> Result<()> {
     file_bytes.extend_from_slice(&record.to_bytes());
     std::fs::write(&path, &file_bytes).map_err(|e| ActaError::Storage(e.to_string()))?;
 
-    let mmap_index = MmapIndex::open(&path)?;
+    let buffer_index = BufferIndex::open(&path)?;
     let mut bad_record = record;
     bad_record.vector_offset = 9999;
-    let res = mmap_index.get_vector(&bad_record);
+    let res = buffer_index.get_vector(&bad_record);
     assert!(
         res.is_err(),
         "Expected error for out-of-bounds vector_offset"
@@ -461,8 +464,8 @@ fn test_get_connections_rejects_absurd_length_field() -> Result<()> {
     file_bytes.extend_from_slice(&u32::MAX.to_le_bytes());
     std::fs::write(&path, &file_bytes).map_err(|e| ActaError::Storage(e.to_string()))?;
 
-    let mmap_index = MmapIndex::open(&path)?;
-    let res = mmap_index.get_connections(&record, 0);
+    let buffer_index = BufferIndex::open(&path)?;
+    let res = buffer_index.get_connections(&record, 0);
     assert!(res.is_err(), "Expected error for absurd length field");
     if let Err(ActaError::Storage(msg)) = res {
         assert!(

@@ -1,7 +1,16 @@
-//! Serializable DTO representation of `ActaError` for IPC and FFI boundaries (ADR-028).
+//! Serialisierbare DTO-Repräsentation von `ActaError` für IPC- und FFI-Schnittstellen (ADR-028).
+//!
+//! # Zweck & Architektur-Rolle: Ring 0
+//!
+//! Bei der Übertragung von Fehlern über FFI-Grenzen (z. B. zu Python via FFI-Schnittstellen oder
+//! Desktop/Web-Frontends via IPC) gehen bei einfachen String-Repräsentationen die Typinformationen
+//! und strukturierte Felder verloren.
+//!
+//! Dieses Modul stellt mit `ActaErrorDto` ein Data-Transfer-Object bereit, das:
+//! - Den Fehlertyp (`kind`) als stabilen String erhält,
+//! - Die menschenlesbare Fehlermeldung (`message`) transportiert,
+//! - Spezifische Strukturdaten (`details`, z. B. Byte-Offsets oder Block-IDs) als JSON-Objekt abbildet.
 
-// FILE-CONTEXT
-// STAND: 2026-08-30T21:51:46Z (SESSION: a43b7682)
 // ZWECK: Serialisierbares Error-DTO für IPC/FFI-Schichten ohne Typverlust (ADR-028).
 // INVARIANTEN: Behält error kind, message und strukturierte JSON details verlustfrei über FFI.
 // HOTSPOTS: 20-80
@@ -83,6 +92,10 @@ impl From<&str> for ActaErrorDto {
     }
 }
 
+// Ablauf der Konvertierung von &ActaError in ActaErrorDto:
+// 1. Jede Variante von ActaError wird exakt gematcht.
+// 2. Einfache Fehlervarianten belegen kind und message.
+// 3. Strukturierte Fehlervarianten extrahieren Attribute in ein JSON-Objekt unter details.
 impl From<&ActaError> for ActaErrorDto {
     fn from(err: &ActaError) -> Self {
         // NOTE: Strictly no catch-all `_ => ...` wildcard arm in this match expression.
@@ -536,13 +549,13 @@ mod tests {
         };
         let dto = ActaErrorDto::from(&err);
         assert_eq!(dto.kind, "WalCorruption");
-        let details = dto.details.as_ref().expect("details should exist"); // unwrap allowed
+        let details = dto.details.as_ref().expect("details should exist"); // unwrap allowed // #[cfg(test)]
         assert_eq!(details["offset"], 4096);
         assert_eq!(details["reason"], "corrupted block header");
 
-        let json_str = serde_json::to_string(&dto).expect("serde serialize"); // unwrap allowed
+        let json_str = serde_json::to_string(&dto).expect("serde serialize"); // unwrap allowed // #[cfg(test)]
         let deser_dto: ActaErrorDto =
-            serde_json::from_str(&json_str).expect("serde deserialize"); // unwrap allowed
+            serde_json::from_str(&json_str).expect("serde deserialize"); // unwrap allowed // #[cfg(test)]
         assert_eq!(dto, deser_dto);
     }
 

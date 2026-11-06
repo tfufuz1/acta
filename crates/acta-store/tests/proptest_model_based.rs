@@ -1,5 +1,6 @@
-use acta_core::{StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
+use acta_types::TxId;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use std::collections::BTreeMap;
@@ -8,7 +9,7 @@ use tempfile::TempDir;
 
 #[tokio::test]
 #[allow(clippy::unwrap_used)]
-async fn test_failing_proptest_sequence() -> acta_core::Result<()> {
+async fn test_failing_proptest_sequence() -> acta_types::Result<()> {
     let tmp = TempDir::new().unwrap();
     let config = LsmConfig {
         path: tmp.path().to_path_buf(),

@@ -6,9 +6,10 @@
 
 mod support;
 
-use acta_core::{StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
 use acta_testkit::ReferenceModel;
+use acta_types::TxId;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use std::collections::HashMap;

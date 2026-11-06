@@ -1,8 +1,11 @@
+//! # MemTable-Flush-Mechanismus (Ring 1)
+//!
+//! Schreibt volle MemTables als neue L0-SSTables asynchron auf Platte.
+
 use super::*;
-use acta_core::Result;
+use acta_types::Result;
 
 impl LsmStorage {
-    // TODO(wiring): Facade-Anbindung in acta/src/builder.rs folgt in separatem Task
     pub async fn force_flush(&self) -> Result<()> {
         self.flush().await
     }

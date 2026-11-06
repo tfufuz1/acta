@@ -1,4 +1,11 @@
-#![allow(unexpected_cfgs)]
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 
 //! Loom-basierter Nebenläufigkeitsbeweis für AGT-INDEX-b2c3d4e5.
 //! Ausführung: RUSTFLAGS="--cfg loom" cargo test -p acta-index -- loom
@@ -8,7 +15,8 @@
 
 #[cfg(loom)]
 mod loom_tests {
-    use acta_core::{DocId, TxId, VectorIndex};
+    use acta_ports::VectorIndex;
+    use acta_types::{DocId, TxId};
     use acta_vector::{HnswConfig, HnswIndex};
     use loom::sync::Arc;
     use loom::thread;
@@ -83,7 +91,8 @@ mod loom_tests {
 #[cfg(not(loom))]
 #[cfg(test)]
 mod normal_tests {
-    use acta_core::{DocId, TxId, VectorIndex};
+    use acta_ports::VectorIndex;
+    use acta_types::{DocId, TxId};
     use acta_vector::{HnswConfig, HnswIndex};
     use std::sync::Arc;
 
@@ -116,7 +125,7 @@ mod normal_tests {
                 let vec = vec![i as f32 * 10.0, i as f32 * -5.0, 1.0, 2.0];
                 index_clone.insert(tx, doc_id, &vec).await?;
                 index_clone.commit(tx).await?;
-                Ok::<(), acta_core::ActaError>(())
+                Ok::<(), acta_types::ActaError>(())
             }));
         }
 

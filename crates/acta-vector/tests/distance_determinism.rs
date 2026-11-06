@@ -1,4 +1,12 @@
-use acta_core::DistanceMetric;
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
+use acta_types::DistanceMetric;
 use acta_vector::distance::{
     compute_distance, cosine_distance_scalar, dot_product_scalar, euclidean_distance_scalar,
 };

@@ -1,8 +1,16 @@
+//! # Regressionstests für Befund B-16 (Kapazitätserschöpfung und Coarsening)
+//!
+//! Verifiziert, dass das Erreichen von `DEFAULT_MAX_TRACKED_COMMIT_KEYS` nicht mehr
+//! zu einem Totalausfall führt, sondern ältere Buckets konservativ vergröbert werden,
+//! während 0 % False Negatives garantiert bleiben.
+
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use acta_mvcc::{ReadSet, SequenceLogSsiValidator, SsiValidator, TxId};
+use acta_testmacros::ctx_test;
 
-#[test]
+// Prüft, dass das Erreichen der maximalen Schlüsselkapazität durch Coarsening gelöst wird und nicht blockiert.
+#[ctx_test(id = "T-TXN-1")]
 fn test_b16_reproduction_capacity_total_outage_resolved() {
     let max_keys = 100;
     let validator = SequenceLogSsiValidator::new_with_bounds(max_keys);
@@ -10,7 +18,7 @@ fn test_b16_reproduction_capacity_total_outage_resolved() {
     // Fill the register to capacity (100 keys committed across sequence numbers 1..=100)
     for i in 1..=max_keys {
         let key = format!("user:{i:04}");
-        validator.record_commit_key(key.as_bytes(), i as u64);
+        validator.record_commit_key(key.as_bytes(), u64::try_from(i).expect("valid u64"));
     }
 
     // Now attempt a transaction that reads key "unrelated:key" at snapshot_seq 200 (> all commit seqs 1..=100).
@@ -27,7 +35,8 @@ fn test_b16_reproduction_capacity_total_outage_resolved() {
     );
 }
 
-#[test]
+// Prüft, dass vergröberte Buckets echte Schreibkonflikte weiterhin zuverlässig (ohne False Negatives) abfangen.
+#[ctx_test(id = "T-TXN-1")]
 fn test_b16_coarsening_prevents_false_negatives() {
     let max_keys = 10;
     let validator = SequenceLogSsiValidator::new_with_bounds(max_keys);
@@ -62,31 +71,36 @@ fn test_b16_coarsening_prevents_false_negatives() {
     assert!(validator.validate(tx_ok, &rs_ok).is_ok());
 }
 
-#[test]
+// Prüft, dass langlaufende gepinnte Snapshots, die das Pruning behindern, als Diagnosealarm erkannt werden.
+#[ctx_test(id = "T-SNAP-1")]
 fn test_long_lived_snapshot_pin_blocker_alarm() {
     use acta_mvcc::SnapshotRegistry;
+    use acta_testkit::ManualClock;
     use std::sync::Arc;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
-    let registry = Arc::new(SnapshotRegistry::new());
-    let now = Instant::now();
-    let past_350s = now.checked_sub(Duration::from_secs(350)).unwrap_or(now);
+    let clock = Arc::new(ManualClock::new(400_000_000_000));
+    let registry = Arc::new(SnapshotRegistry::with_clock(clock.clone()));
 
-    // Register a snapshot guard at past_350s (350s ago > DEFAULT_MAX_PIN_DURATION of 300s)
-    let _guard = registry.register_at(42, past_350s);
+    let now_nanos = clock.now_nanos();
+    let past_350s_nanos = now_nanos.saturating_sub(350_000_000_000);
 
-    let validator =
-        SequenceLogSsiValidator::new_with_bounds(10).with_snapshot_registry(registry.clone());
+    // Register a snapshot guard at 350s ago (> DEFAULT_MAX_PIN_DURATION of 300s)
+    let _guard = registry.register_at(42, past_350s_nanos);
+
+    let validator = SequenceLogSsiValidator::new_with_bounds(10)
+        .with_clock(clock.clone())
+        .with_snapshot_registry(registry.clone());
 
     // Record keys to trigger coarsening check / diagnostic check
     for i in 1..=10 {
         let key = format!("data:{i:02}");
-        validator.record_commit_key(key.as_bytes(), 50 + i as u64);
+        validator.record_commit_key(key.as_bytes(), 50 + u64::try_from(i).expect("valid u64"));
     }
 
-    // Query pruning blocker diagnostics at `now`
+    // Query pruning blocker diagnostics
     let blocker = validator
-        .diagnose_pruning_blocker_at(now)
+        .diagnose_pruning_blocker_at(now_nanos)
         .expect("pruning blocker info must be present");
 
     assert_eq!(blocker.longest_active_snapshot_seq, Some(42));
@@ -97,7 +111,8 @@ fn test_long_lived_snapshot_pin_blocker_alarm() {
     );
 }
 
-#[test]
+// Prüft, dass das Fail-Closed-Verhalten für Lese-Snapshots älter als pruned_through auch nach Coarsening greift.
+#[ctx_test(id = "T-SNAP-1")]
 fn test_fail_closed_snapshot_pruned_still_enforced_after_coarsening() {
     let validator = SequenceLogSsiValidator::new_with_bounds(10);
 
@@ -108,6 +123,7 @@ fn test_fail_closed_snapshot_pruned_still_enforced_after_coarsening() {
     }
 
     // Prune up to sequence 15
+    #[allow(deprecated)]
     validator.prune_through(15);
     assert_eq!(validator.pruned_through(), 15);
 

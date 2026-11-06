@@ -2,9 +2,9 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use acta_core::{ActaError, TxId};
 use acta_ports::StorageEngine;
 use acta_store::{LsmConfig, LsmStorage};
+use acta_types::{ActaError, TxId};
 use std::sync::Arc;
 use tempfile::TempDir;
 

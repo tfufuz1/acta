@@ -1,11 +1,36 @@
-use acta_core::{ActaError, Result};
-#[cfg(feature = "wal-integrity")]
-use acta_crypto::wal_crypto::{IntegrityVerifier, WalEntrySnapshot};
+//! # WAL Replay & Wiederherstellung (Ring 1)
+//!
+//! Rekonstruiert den Zustand der MemTable beim Hochfahren des Stores aus dem WAL.
+//!
+//! ## Replay- und Tail-Toleranz-Policy (Befund K3 / T-WAL-1 / SPEC §8.8)
+//!
+//! Das Write-Ahead-Log unterscheidet strikt zwischen zwei Fehlerklassen während des Replays:
+//!
+//! 1. **Unvollständige Append-Operationen am Dateiende (Torn Writes / Crash-Recovery):**
+//!    Erreicht das Replay das physische Dateiende (`pos >= file_size`), wird ein partieller
+//!    Header oder ein unvollständig geschriebener Frame als Crash-Artefakt interpretiert und
+//!    über den Open-Heal-Mechanismus toleriert.
+//!    - Ein **AEAD-Entschlüsselungsfehler** direkt am Dateiende (`pos >= file_size`) wird
+//!      als abgerissener Schreibvorgang (z. B. unvollständiger Ciphertext oder Nonce-Block
+//!      nach plötzlichem Stromausfall) toleriert (`tracing::error!`), sodass der Store
+//!      auf den letzten intakten Commit-Zustand zurückrollt und den Rest abschneidet.
+//!
+//! 2. **Korruption in authentifizierten Chunks (Fail-Closed-Invariante):**
+//!    Wurde ein AEAD-verschlüsselter Frame erfolgreich authentifiziert und entschlüsselt,
+//!    handelt es sich um kryptografisch verifizierte Nutzlast.
+//!    - Schlägt die **Deserialisierung** (`WalEntry::from_bytes_classified`) innerhalb eines
+//!      solchen erfolgreich entschlüsselten Batches fehl, handelt es sich **niemals** um einen
+//!      harmlosen Tail-Abriss, sondern um eine echte Datenkorruption oder Manipulation.
+//!    - In diesem Fall wird der Vorgang ausnahmslos mit `ActaError::wal_corruption`
+//!      hart abgebrochen (Fail-Closed).
+
+use super::verifier::{IntegrityVerifier, WalEntrySnapshot};
+use acta_types::{ActaError, Result};
 use std::path::PathBuf;
 
+use super::WalOp;
 use super::{
-    legacy_integrity_key, Wal, WalEntry, WalOp, WalParseError, WalVersion, MAX_WAL_ENTRY_SIZE,
-    WAL_V2_HEADER, WAL_V3_HEADER,
+    Wal, WalEntry, WalParseError, WalVersion, MAX_WAL_ENTRY_SIZE, WAL_V2_HEADER, WAL_V3_HEADER,
 };
 
 pub type WalSeq = u64;
@@ -54,8 +79,8 @@ impl Wal {
         }
     }
 
-    /// Replays the WAL using memory mapping (`memmap2`) for zero-copy entry decoding.
-    /// Falls back to stream replay if mmap or parsing fails.
+    /// Replays the WAL into memory for entry decoding.
+    /// Falls back to stream replay if buffer reading or parsing fails.
     pub async fn replay(&self) -> Result<Vec<(u64, WalEntry, u64)>> {
         self.replay_with_sink(&NoopReplayProgressSink).await
     }
@@ -65,13 +90,8 @@ impl Wal {
         &self,
         sink: &S,
     ) -> Result<Vec<(u64, WalEntry, u64)>> {
-        match self.replay_mmap_with_sink(sink).await {
-            Ok((entries, _)) => Ok(entries),
-            Err(e) => {
-                tracing::warn!("WAL mmap replay failed ({e}), falling back to stream reader");
-                self.replay_stream().await
-            }
-        }
+        let (entries, _) = self.replay_buffer_with_sink(sink).await?;
+        Ok(entries)
     }
 
     /// Replays the WAL using the stream reader (`BufReader`).
@@ -105,98 +125,81 @@ impl Wal {
         &self,
         file_size: u64,
     ) -> Result<(Vec<(u64, WalEntry, u64)>, WalVersion)> {
-        self.replay_mmap_with_size_and_version(file_size).await
+        self.replay_buffer_with_size_and_version(file_size).await
     }
 
     #[allow(clippy::type_complexity)]
-    async fn replay_mmap_with_size_and_version(
+    async fn replay_buffer_with_size_and_version(
         &self,
-        _file_size: u64,
+        file_size: u64,
     ) -> Result<(Vec<(u64, WalEntry, u64)>, WalVersion)> {
-        match self.replay_mmap().await {
+        match self.replay_buffer().await {
             Ok(res) => Ok(res),
             Err(e) => {
                 tracing::warn!(
-                    "WAL mmap replay failed for {:?} ({}), falling back to stream reader",
+                    "WAL replay failed for {:?} ({}), falling back to stream reader",
                     self.path,
                     e
                 );
-                let entries = self.replay_stream().await?;
-                Ok((entries, WalVersion::V3))
+                let mut entries = Vec::new();
+                let version = self
+                    .scan_entries_with_callback(file_size, |seq, entry, pos| {
+                        entries.push((seq, entry, pos));
+                        true
+                    })
+                    .await?;
+                Ok((entries, version))
             }
         }
     }
 
-    /// Replays the WAL using zero-copy memory mapping (`mmap`).
+    /// Replays the WAL.
     /// Returns all valid entries with sequence numbers, entries, end offsets, and detected WAL version.
     #[allow(clippy::type_complexity)]
-    pub async fn replay_mmap(&self) -> Result<(Vec<(u64, WalEntry, u64)>, WalVersion)> {
-        self.replay_mmap_with_sink(&NoopReplayProgressSink).await
+    pub async fn replay_buffer(&self) -> Result<(Vec<(u64, WalEntry, u64)>, WalVersion)> {
+        self.replay_buffer_with_sink(&NoopReplayProgressSink).await
     }
 
-    /// Replays the WAL using zero-copy memory mapping (`mmap`) with progress callback.
-    /// Falls back to stream replay if mmap or parsing fails.
+    /// Replays the WAL with progress callback.
     #[allow(clippy::type_complexity)]
-    pub async fn replay_mmap_with_sink<S: ReplayProgressSink>(
+    pub async fn replay_buffer_with_sink<S: ReplayProgressSink>(
         &self,
         sink: &S,
     ) -> Result<(Vec<(u64, WalEntry, u64)>, WalVersion)> {
-        let mmap_res = (|| -> Result<(Vec<(u64, WalEntry, u64)>, WalVersion)> {
-            let std_file = std::fs::File::open(&self.path).map_err(|e| {
-                ActaError::Storage(format!("Failed to open WAL for mmap: {e}"))
-            })?;
-            let metadata = std_file.metadata().map_err(|e| {
-                ActaError::Storage(format!("Failed to stat WAL for mmap: {e}"))
-            })?;
-            let file_size = metadata.len();
+        // Übergang bis WP-1.4: Lesen über Vfs::read_at
+        let buffer = tokio::fs::read(&self.path)
+            .await
+            .map_err(|_| ActaError::Storage("Failed to read WAL file".into()))?;
+        let file_size = buffer.len() as u64;
 
-            if file_size == 0 {
-                return Ok((Vec::new(), WalVersion::V1));
-            }
-
-            let mmap = acta_sys::mmap_readonly(&std_file)
-                .map_err(|e| ActaError::Storage(format!("WAL mmap failed: {e}")))?;
-
-            self.parse_mmap_slice_with_sink(&mmap, file_size, sink)
-        })();
-
-        match mmap_res {
-            Ok(res) => Ok(res),
-            Err(e) => {
-                tracing::warn!(
-                    path = %self.path.display(),
-                    error = %e,
-                    "WAL mmap replay failed, falling back to stream reader"
-                );
-                let entries = self.replay_stream().await?;
-                for (seq, _, _) in &entries {
-                    sink.on_entry_replayed(*seq, None);
-                }
-                Ok((entries, WalVersion::V3))
-            }
+        if file_size == 0 {
+            return Ok((Vec::new(), WalVersion::V1));
         }
+
+        self.parse_buffer_slice_with_sink(&buffer, file_size, sink)
     }
 
     #[allow(dead_code, clippy::type_complexity)]
-    pub(crate) fn parse_mmap_slice(
+    pub(crate) fn parse_buffer_slice(
         &self,
-        mmap: &[u8],
+        slice: &[u8],
         file_size: u64,
     ) -> Result<(Vec<(u64, WalEntry, u64)>, WalVersion)> {
-        self.parse_mmap_slice_with_sink(mmap, file_size, &NoopReplayProgressSink)
+        self.parse_buffer_slice_with_sink(slice, file_size, &NoopReplayProgressSink)
     }
 
     #[allow(clippy::type_complexity)]
-    pub(crate) fn parse_mmap_slice_with_sink<S: ReplayProgressSink>(
+    pub(crate) fn parse_buffer_slice_with_sink<S: ReplayProgressSink>(
         &self,
-        mmap: &[u8],
+        slice: &[u8],
         file_size: u64,
         sink: &S,
     ) -> Result<(Vec<(u64, WalEntry, u64)>, WalVersion)> {
-        let slice_len = (file_size as usize).min(mmap.len());
-        let slice = mmap
+        let file_size_usize = usize::try_from(file_size).unwrap_or(usize::MAX);
+        let slice_len = file_size_usize.min(slice.len());
+        let slice = slice
             .get(..slice_len)
-            .ok_or_else(|| ActaError::wal_corruption(0, "Mmap slice bounds exceeded"))?;
+            .ok_or_else(|| ActaError::wal_corruption(0, "Slice bounds exceeded"))?;
         let mut entries = Vec::new();
         let version = self.scan_entries_from_slice(slice, file_size, |seq, entry, pos| {
             sink.on_entry_replayed(seq, None);
@@ -206,11 +209,15 @@ impl Wal {
         Ok((entries, version))
     }
 
-    /// Scans the WAL using read-only memory mapping (`memmap2`) for zero-copy entry parsing.
+    /// Scans the WAL using slice decoding.
     ///
-    /// If mmap mapping or slice scanning encounters any error, it logs a warning (`tracing::warn!`)
+    /// If slice reading or scanning encounters any error, it logs a warning (`tracing::warn!`)
     /// and automatically falls back to stream-based scanning (`scan_entries_with_callback`).
-    pub async fn scan_entries_mmap<F>(&self, file_size: u64, mut callback: F) -> Result<WalVersion>
+    pub async fn scan_entries_buffer<F>(
+        &self,
+        file_size: u64,
+        mut callback: F,
+    ) -> Result<WalVersion>
     where
         F: FnMut(u64, WalEntry, u64) -> bool,
     {
@@ -218,31 +225,28 @@ impl Wal {
             return Ok(WalVersion::V1);
         }
 
+        // Übergang bis WP-1.4: Lesen über Vfs::read_at
         #[allow(clippy::type_complexity)]
-        let mmap_res = (|| -> Result<(WalVersion, Vec<(u64, WalEntry, u64)>)> {
-            let std_file = std::fs::File::open(&self.path).map_err(|e| {
-                ActaError::Storage(format!("Failed to open WAL file for mmap: {e}"))
-            })?;
-            let mmap = acta_sys::mmap_readonly(&std_file).map_err(|e| {
-                ActaError::Storage(format!(
-                    "Failed to mmap WAL file {}: {e}",
-                    self.path.display()
-                ))
-            })?;
+        let read_res: Result<(WalVersion, Vec<(u64, WalEntry, u64)>)> = async {
+            let buffer = tokio::fs::read(&self.path)
+                .await
+                .map_err(|_| ActaError::Storage("Failed to read WAL file".into()))?;
 
-            let slice_len = (file_size as usize).min(mmap.len());
-            let slice = mmap
+            let file_size_usize = usize::try_from(file_size).unwrap_or(usize::MAX);
+            let slice_len = file_size_usize.min(buffer.len());
+            let slice = buffer
                 .get(..slice_len)
-                .ok_or_else(|| ActaError::wal_corruption(0, "Mmap slice bounds exceeded"))?;
+                .ok_or_else(|| ActaError::wal_corruption(0, "Slice bounds exceeded"))?;
             let mut buffered_entries = Vec::new();
             let version = self.scan_entries_from_slice(slice, file_size, |seq, entry, pos| {
                 buffered_entries.push((seq, entry, pos));
                 true
             })?;
             Ok((version, buffered_entries))
-        })();
+        }
+        .await;
 
-        match mmap_res {
+        match read_res {
             Ok((version, buffered_entries)) => {
                 for (seq, entry, pos) in buffered_entries {
                     if !callback(seq, entry, pos) {
@@ -254,14 +258,13 @@ impl Wal {
             Err(e) => {
                 tracing::warn!(
                     error = ?e,
-                    "scan_entries_mmap: HMAC/integrity verify error during mmap scan, falling back to stream"
+                    "scan_entries_buffer: HMAC/integrity verify error during scan, falling back to stream"
                 );
                 self.scan_entries_with_callback(file_size, callback).await
             }
         }
     }
 
-    #[cfg(feature = "wal-integrity")]
     #[allow(deprecated)]
     fn verify_entry_snapshot(
         &self,
@@ -269,59 +272,16 @@ impl Wal {
         version: WalVersion,
         chunk_start_pos: u64,
         verifier: &mut IntegrityVerifier,
-        using_legacy_key: &mut bool,
+        _using_legacy_key: &mut bool,
     ) -> Result<()> {
-        let verify_res = match version {
+        // D-05: Kein Legacy-Key-Fallback. WAL-Integrität ist nicht abschwächbar.
+        match version {
             WalVersion::V3 => verifier.verify_and_update_v3(snapshot, chunk_start_pos),
             WalVersion::V2 => verifier.verify_and_update_v2(snapshot, chunk_start_pos),
             WalVersion::V1 => {
                 verifier.skip_hmac_verify_legacy(snapshot);
                 Ok(())
             }
-        };
-
-        if let Err(e) = verify_res {
-            if !*using_legacy_key
-                && self
-                    .allow_legacy_integrity_key_fallback
-                    .load(std::sync::atomic::Ordering::SeqCst)
-            {
-                let legacy_key = legacy_integrity_key()?;
-                let mut legacy_verifier = IntegrityVerifier::new(&legacy_key);
-                legacy_verifier.set_last_hmac(verifier.last_hmac_snapshot());
-                let legacy_res = match version {
-                    WalVersion::V3 => {
-                        legacy_verifier.verify_and_update_v3(snapshot, chunk_start_pos)
-                    }
-                    WalVersion::V2 => {
-                        legacy_verifier.verify_and_update_v2(snapshot, chunk_start_pos)
-                    }
-                    WalVersion::V1 => {
-                        legacy_verifier.skip_hmac_verify_legacy(snapshot);
-                        Ok(())
-                    }
-                };
-                if legacy_res.is_ok() {
-                    tracing::warn!(
-                        target: "acta_store::wal::legacy_fallback",
-                        wal_path = %self.path.display(),
-                        event = "legacy_integrity_key_fallback_used",
-                        "Legacy-WAL-Integritätsschlüssel aktiv für Segment {} — dieses Segment hat keine reale Manipulationssicherheit, da der Rückfallschlüssel öffentlich im Quellcode liegt.",
-                        self.path.display()
-                    );
-                    *verifier = legacy_verifier;
-                    *using_legacy_key = true;
-                    self.legacy_key_used
-                        .store(true, std::sync::atomic::Ordering::SeqCst);
-                    Ok(())
-                } else {
-                    Err(e.into())
-                }
-            } else {
-                Err(e.into())
-            }
-        } else {
-            Ok(())
         }
     }
 
@@ -343,9 +303,7 @@ impl Wal {
             return Ok(version);
         }
 
-        #[cfg(feature = "wal-integrity")]
         let integrity_key = self.get_integrity_key()?;
-        #[cfg(feature = "wal-integrity")]
         let mut verifier = IntegrityVerifier::new(&integrity_key);
         let mut using_legacy_key = false;
 
@@ -377,7 +335,11 @@ impl Wal {
                 break;
             }
 
-            let len_bytes_slice = match slice.get(pos as usize..pos as usize + 4) {
+            let pos_usize = match usize::try_from(pos) {
+                Ok(u) => u,
+                Err(_) => break,
+            };
+            let len_bytes_slice = match slice.get(pos_usize..pos_usize.saturating_add(4)) {
                 Some(s) => s,
                 None => {
                     tracing::warn!(
@@ -418,7 +380,9 @@ impl Wal {
                 ));
             }
 
-            if pos + 4 + len as u64 > file_size || (pos + 4 + len as u64) as usize > slice.len() {
+            let entry_end_pos = pos + 4 + len as u64;
+            let entry_end_usize = usize::try_from(entry_end_pos).unwrap_or(usize::MAX);
+            if entry_end_pos > file_size || entry_end_usize > slice.len() {
                 if entries_count == 0 && file_size > 64 {
                     return Err(ActaError::wal_corruption(
                         pos,
@@ -432,7 +396,9 @@ impl Wal {
                 break;
             }
 
-            let entry_data_raw = match slice.get(pos as usize + 4..pos as usize + 4 + len) {
+            let entry_data_raw = match slice
+                .get(pos_usize.saturating_add(4)..pos_usize.saturating_add(4).saturating_add(len))
+            {
                 Some(data) => data,
                 None => {
                     tracing::warn!(
@@ -445,7 +411,6 @@ impl Wal {
             let chunk_start_pos = pos;
             pos += (4 + len) as u64;
 
-            #[cfg(feature = "wal-integrity")]
             {
                 if matches!(version, WalVersion::V2 | WalVersion::V3) && self.key_manager.is_some()
                 {
@@ -583,7 +548,7 @@ impl Wal {
                         }
                     }
                 } else {
-                    let decrypted_data;
+                    let decrypted_data: Vec<u8>;
                     let entry_data = if let Some(km) = &self.key_manager {
                         if entry_data_raw.len() < 12 {
                             return Err(ActaError::Storage(
@@ -635,7 +600,7 @@ impl Wal {
                                 }
                             }
                         };
-                        &decrypted_data
+                        decrypted_data.as_slice()
                     } else {
                         entry_data_raw
                     };
@@ -692,30 +657,6 @@ impl Wal {
                     }
                 }
             }
-
-            #[cfg(not(feature = "wal-integrity"))]
-            {
-                let entry = match WalEntry::from_bytes_classified(entry_data_raw) {
-                    Ok(e) => e,
-                    Err(parse_err) => {
-                        if let Some(err) = Self::handle_wal_entry_parse_error(
-                            parse_err,
-                            chunk_start_pos,
-                            pos,
-                            file_size,
-                        ) {
-                            return Err(err);
-                        }
-                        break;
-                    }
-                };
-
-                entries_count += 1;
-                let seq = entry.seq_no;
-                if !callback(seq, entry, pos) {
-                    break 'scan_loop;
-                }
-            }
         }
 
         Ok(version)
@@ -765,4 +706,85 @@ pub(crate) async fn recover_from_bak_if_present(wal_path: &std::path::Path) -> R
         }
     }
     Ok(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::wal::WalOp;
+    use acta_types::TxId;
+    use tempfile::tempdir;
+
+    /// T-ID: T-WAL-1
+    #[tokio::test]
+    async fn test_replay_buffer_and_scan_entries_match_replay() -> Result<()> {
+        let dir = tempdir().map_err(|e| ActaError::Storage(e.to_string()))?;
+        let wal_path = dir.path().join("test_replay_paths.wal");
+
+        let wal = Wal::open(&wal_path).await?;
+        let op1 = WalOp::Put {
+            tx_id: TxId::new(1),
+            key: b"key1".to_vec(),
+            value: b"val1".to_vec(),
+        };
+        let op2 = WalOp::Put {
+            tx_id: TxId::new(2),
+            key: b"key2".to_vec(),
+            value: b"val2".to_vec(),
+        };
+        let (batch1, _) = wal.prepare_batch(vec![(op1, 1)]).await?;
+        wal.append_batch(batch1).await?;
+        let (batch2, _) = wal.prepare_batch(vec![(op2, 2)]).await?;
+        wal.append_batch(batch2).await?;
+        drop(wal);
+
+        let wal_read = Wal::open_read_only(&wal_path, None).await?;
+        let entries_replay = wal_read.replay().await?;
+        let (entries_buf, _ver_buf) = wal_read.replay_buffer().await?;
+
+        assert_eq!(entries_replay.len(), 2);
+        assert_eq!(entries_replay.len(), entries_buf.len());
+        assert_eq!(entries_replay[0].0, entries_buf[0].0);
+        assert_eq!(entries_replay[1].0, entries_buf[1].0);
+        assert_eq!(entries_replay[0].1.seq_no, entries_buf[0].1.seq_no);
+        assert_eq!(entries_replay[1].1.seq_no, entries_buf[1].1.seq_no);
+
+        let mut scanned_entries = Vec::new();
+        let file_size = crate::wal::fs::metadata(&wal_path)
+            .await
+            .map_err(|e| ActaError::Storage(e.to_string()))?
+            .len();
+        let ver_scan = wal_read
+            .scan_entries_buffer(file_size, |seq, entry, pos| {
+                scanned_entries.push((seq, entry, pos));
+                true
+            })
+            .await?;
+
+        assert_eq!(ver_scan, WalVersion::V3);
+        assert_eq!(scanned_entries.len(), entries_replay.len());
+        assert_eq!(scanned_entries[0].0, entries_replay[0].0);
+        assert_eq!(scanned_entries[1].0, entries_replay[1].0);
+        assert_eq!(scanned_entries[0].1.seq_no, entries_replay[0].1.seq_no);
+        assert_eq!(scanned_entries[1].1.seq_no, entries_replay[1].1.seq_no);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_empty_file_replay_buffer_yields_empty_v1() -> Result<()> {
+        let dir = tempdir().map_err(|e| ActaError::Storage(e.to_string()))?;
+        let wal_path = dir.path().join("empty.wal");
+        tokio::fs::File::create(&wal_path)
+            .await
+            .map_err(|e| ActaError::Storage(e.to_string()))?;
+
+        let wal = Wal::open_read_only(&wal_path, None).await?;
+        let (entries, version) = wal.replay_buffer().await?;
+
+        assert!(entries.is_empty());
+        assert_eq!(version, WalVersion::V1);
+
+        Ok(())
+    }
 }

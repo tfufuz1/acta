@@ -1,9 +1,9 @@
-#![allow(unexpected_cfgs)]
 #![cfg(not(loom))]
 
-use acta_core::{StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::{CommittedBatch, LsmConfig, LsmStorage, WalObserver, WriteOrigin};
 use acta_testkit::ManualClock;
+use acta_types::TxId;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tempfile::TempDir;

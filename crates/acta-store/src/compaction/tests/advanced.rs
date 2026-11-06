@@ -1,9 +1,13 @@
+//! # Fortgeschrittene Kompaktierungstests (Ring 1)
+//!
+//! Prueft Multi-Level Merge, Tombstone Shadows und Snapshot Pinning.
+
 use super::*;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_compaction_stress_and_gc() {
     use crate::lsm::{LsmConfig, LsmStorage};
-    use acta_core::TxId;
+    use acta_types::TxId;
     use std::sync::atomic::{AtomicBool, Ordering};
 
     let tmp = TempDir::new().expect("temp dir"); // expect
@@ -25,7 +29,6 @@ async fn test_compaction_stress_and_gc() {
             adaptive_read_ratio_threshold: 0.70,
             ..CompactionConfig::default()
         },
-        encryption_passphrase: None,
         ..Default::default()
     };
 
@@ -154,8 +157,8 @@ async fn test_compaction_swap_maintains_shadowing_order_without_restart() {
         registry,
         Arc::clone(&bc),
         None,
-        Arc::new(acta_core::ResourceTracker::new(
-            acta_core::ResourceBudget {
+        Arc::new(acta_ports::ResourceTracker::new(
+            acta_ports::ResourceBudget {
                 memory_limit: 1024 * 1024,
             },
         )),
@@ -277,8 +280,8 @@ async fn test_phantom_data_after_partial_compaction() {
         registry,
         Arc::clone(&bc),
         None,
-        Arc::new(acta_core::ResourceTracker::new(
-            acta_core::ResourceBudget {
+        Arc::new(acta_ports::ResourceTracker::new(
+            acta_ports::ResourceBudget {
                 memory_limit: 1024 * 1024,
             },
         )),
@@ -405,8 +408,8 @@ async fn test_compaction_pressure_awareness() {
         registry,
         Arc::clone(&bc),
         None,
-        Arc::new(acta_core::ResourceTracker::new(
-            acta_core::ResourceBudget {
+        Arc::new(acta_ports::ResourceTracker::new(
+            acta_ports::ResourceBudget {
                 memory_limit: 1024 * 1024,
             },
         )),
@@ -532,8 +535,8 @@ async fn test_compaction_cancellation() {
         registry,
         bc,
         None,
-        Arc::new(acta_core::ResourceTracker::new(
-            acta_core::ResourceBudget {
+        Arc::new(acta_ports::ResourceTracker::new(
+            acta_ports::ResourceBudget {
                 memory_limit: 1024 * 1024,
             },
         )),
@@ -570,7 +573,7 @@ async fn test_compaction_cancellation() {
 #[tokio::test]
 async fn concurrent_flush_and_compact_is_safe() {
     use crate::lsm::{LsmConfig, LsmStorage};
-    use acta_core::traits::StorageEngine;
+    use acta_ports::StorageEngine;
 
     for _iteration in 0..10 {
         let tmp = tempfile::TempDir::new().unwrap(); // unwrap
@@ -592,7 +595,6 @@ async fn concurrent_flush_and_compact_is_safe() {
                 adaptive_read_ratio_threshold: 0.70,
                 ..CompactionConfig::default()
             },
-            encryption_passphrase: None,
             ..Default::default()
         };
 
@@ -600,7 +602,7 @@ async fn concurrent_flush_and_compact_is_safe() {
 
         // Insert initial data and flush to create SSTables
         for i in 0..10u64 {
-            let tx = acta_core::TxId::new(i + 1);
+            let tx = acta_types::TxId::new(i + 1);
             let key = format!("key-{:04}", i);
             let val = format!("val-{:04}", i);
             storage
@@ -612,7 +614,7 @@ async fn concurrent_flush_and_compact_is_safe() {
         storage.force_flush().await.expect("flush 1"); // expect
 
         for i in 10..20u64 {
-            let tx = acta_core::TxId::new(i + 1);
+            let tx = acta_types::TxId::new(i + 1);
             let key = format!("key-{:04}", i);
             let val = format!("val-{:04}", i);
             storage
@@ -625,7 +627,7 @@ async fn concurrent_flush_and_compact_is_safe() {
 
         // Write un-flushed memtable data for concurrent flush task
         for i in 20..30u64 {
-            let tx = acta_core::TxId::new(i + 1);
+            let tx = acta_types::TxId::new(i + 1);
             let key = format!("key-{:04}", i);
             let val = format!("val-{:04}", i);
             storage
@@ -678,8 +680,8 @@ async fn test_compaction_single_lock_candidate_selection_concurrency() {
         registry,
         Arc::clone(&bc),
         None,
-        Arc::new(acta_core::ResourceTracker::new(
-            acta_core::ResourceBudget {
+        Arc::new(acta_ports::ResourceTracker::new(
+            acta_ports::ResourceBudget {
                 memory_limit: 1024 * 1024,
             },
         )),
@@ -750,8 +752,8 @@ async fn test_mvcc_floor_version_retained_for_active_snapshot() {
         registry,
         Arc::clone(&bc),
         None,
-        Arc::new(acta_core::ResourceTracker::new(
-            acta_core::ResourceBudget {
+        Arc::new(acta_ports::ResourceTracker::new(
+            acta_ports::ResourceBudget {
                 memory_limit: 1024 * 1024,
             },
         )),
@@ -823,8 +825,8 @@ async fn test_chain_linkage_tier_grouping() {
         registry,
         Arc::clone(&bc),
         None,
-        Arc::new(acta_core::ResourceTracker::new(
-            acta_core::ResourceBudget {
+        Arc::new(acta_ports::ResourceTracker::new(
+            acta_ports::ResourceBudget {
                 memory_limit: 1024 * 1024,
             },
         )),
@@ -890,8 +892,8 @@ async fn test_compaction_concurrent_rollback_flush_no_panic() {
         registry,
         Arc::clone(&bc),
         None,
-        Arc::new(acta_core::ResourceTracker::new(
-            acta_core::ResourceBudget {
+        Arc::new(acta_ports::ResourceTracker::new(
+            acta_ports::ResourceBudget {
                 memory_limit: 1024 * 1024,
             },
         )),
@@ -965,7 +967,7 @@ async fn test_compaction_concurrent_rollback_flush_no_panic() {
 
 #[tokio::test]
 async fn test_tombstone_retention_floor_with_active_snapshot() {
-    use acta_core::TOMBSTONE_BIT;
+    use acta_types::TOMBSTONE_BIT;
 
     let tmp = TempDir::new().expect("temp dir");
     let bc = create_block_cache(1);
@@ -979,8 +981,8 @@ async fn test_tombstone_retention_floor_with_active_snapshot() {
     let mut config = CompactionConfig::default();
     config.min_sstables_per_tier = 2;
 
-    let budget = Arc::new(acta_core::ResourceTracker::new(
-        acta_core::ResourceBudget {
+    let budget = Arc::new(acta_ports::ResourceTracker::new(
+        acta_ports::ResourceBudget {
             memory_limit: 100 * 1024 * 1024,
         },
     ));

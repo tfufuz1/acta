@@ -1,0 +1,16 @@
+[package]
+name = "acta-arch-tests"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Architektur-, Ring-, Namens- und Lint-Tests."
+
+[package.metadata.acta]
+ring = "tooling"
+
+[dependencies]
+toml = { workspace = true }
+
+[lints]
+workspace = true

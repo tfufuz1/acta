@@ -1,58 +1,62 @@
-// FILE-CONTEXT
-// ZWECK: Acta cryptographic kernel - Layer 1 crate for AEAD block encryption, HKDF key derivation, and WAL integrity.
-// INVARIANTEN: Cryptographic primitives strictly isolated to this crate. All key operations zeroized on drop. Lock-free & I/O-free in src/.
-// NICHT-OFFENSICHTLICH: KeyManager uses AES-256-GCM-SIV with OsRng 8-byte random suffix + 4-byte prefix to prevent nonce-reuse key leakage.
-// HOTSPOTS: [1-25]
-// STAND: TS:2026-08-31T21:13:05Z (SESSION: 8427f167)
-
 #![forbid(unsafe_code)]
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+)]
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
-//! Cryptography module for Acta.
+//! Kryptoprimitive für Acta: AEAD, Argon2id, HKDF, HMAC, Ed25519, Tags.
 //!
-//! # Architektur
-//! Bietet Verschlüsselung und Integritätsschutz für WAL und SSTables.
-//! Nutzt AES-256-GCM-SIV für Datenverschlüsselung und HMAC-SHA256 für Integrität.
+//! Ring: Ring 1 (Krypto-Insel).
+//! Erlaubte Abhängigkeiten: `acta-types`, `acta-ports`.
+//! Referenz: SPEC Abschnitt 5.1, 5.3, 10 (Kryptographie), Anhang F (Formate).
 //!
-//! # Invarianten
-//! - Pro Datei wird ein eindeutiger Schlüssel abgeleitet (Nonce-Reuse Mitigation).
-//! - Passwörter werden via HKDF in Keys expandiert.
-//! - Absolut lock-frei und frei von synchronen/asynchronen I/O-Operationen.
+//! ## Schnittstellenvertrag für Tresor (`FileVault` / `erasure`)
+//!
+//! Gemäß SPEC 10.1, D-79, D-80, D-85 und F.3 stellt `acta-crypto` für `erasure`
+//! folgende zustandslose Operationen bereit:
+//! 1. `KeyHierarchy::fkmask(&self, id: [u8; 16]) -> [u8; 32]`:
+//!    Maskierungsschlüssel für F-Slots im Tresor via HKDF-Expand("ctx/fkmask/v1" ‖ file_id).
+//! 2. `KeyHierarchy::vault_mac(&self) -> VaultMacKey`:
+//!    Authentisierungsschlüssel für Tresor-Slots via HKDF-Expand(K_enc, "ctx/vault-mac/v1").
+//! 3. `derive_dek(unit: &UnitKey, a: &AncestorSalts, doc: DocTag) -> Dek`:
+//!    DEK-Ableitung nach D-79 mit Salt-Label `ctx/dek-salt/v2` und `doc_tag` (L-3).
 
-pub mod anti_tamper;
-pub mod audit_chain;
-pub mod crypto;
-pub mod deletion_proof;
-pub mod deletion_proof_typestate;
-pub mod ed25519_proof;
+pub mod aead;
+pub mod chain;
+pub mod dek;
 pub mod error;
+pub mod header;
+pub mod hierarchy;
 pub mod kdf;
-pub mod kv_cipher;
-pub mod kv_segment;
-pub mod kv_shredding;
-pub mod revocation_log;
-pub mod wal_completeness;
-pub mod wal_crypto;
+pub mod labels;
+pub mod secret;
+pub mod sign;
+pub mod tag;
 
-pub use audit_chain::{
-    compute_record_commitment, AuditChain, AuditChainEntry, AuditChainHeadSignature, DataClass,
-    EncryptedCommitmentSalt,
+pub use aead::{open_record, seal_record, unwrap_master, wrap_master, Block, BlockSealer, SlotAad};
+pub use chain::{
+    chain_next, ledger_mac, verify_chain_complete, verify_wal_chain_completeness, wal_mac,
 };
-pub use crypto::KeyManager as CryptoKey;
-pub use crypto::KeyManager;
-pub use deletion_proof::{
-    DeletionLayer, DeletionProof, DeletionProofKeyPair, DeletionScope, ExcludedScope,
-    LayerCleanupProof,
-};
-pub use ed25519_proof::{DeletionProofError, SignatureVersion};
+pub use dek::{derive_dek, AncestorSalts, Dek, DocTag, Salt};
 pub use error::{CryptoError, Result};
-pub use kdf::{derive_key_argon2id, KdfHeader, KdfParams};
-pub use kv_cipher::{EncryptedKvLayer, KvCipher, KvSegmentCipher, ModelFingerprint};
-pub use kv_segment::{
-    eviction_worker::{emergency_wipe, EvictionWorker},
-    segment::KvSegment,
-    store::TenantIsolatedKvStore,
-    CURRENT_KV_KEY_DERIVATION_VERSION,
+pub use header::{
+    Header, HeaderSlot, HEADER_ALG_IDS, HEADER_FORMAT_VERSION, HEADER_KIND, HEADER_MAGIC,
+    HEADER_SIZE,
 };
-pub use kv_shredding::{derive_subkey, KeyRegistry, SubKey, DEFAULT_SHRED_KEY_GROUP_SIZE};
-pub use revocation_log::{RevocationEntry, RevocationLog, RevocationTarget};
-pub use wal_completeness::verify_wal_chain_completeness;
+pub use hierarchy::{
+    CommitKey, EncKey, FileKey, FileKind, HdrKey, IdxKey, KeyHierarchy, LedgerKey, MasterKey,
+    SignSeed, UnitKey, VaultMacKey, WalKey,
+};
+pub use kdf::{
+    derive_kek, hkdf_expand, KdfParams, MAX_M_KIB, MAX_P, MAX_T, MIN_M_KIB, MIN_P,
+    MIN_PASSPHRASE_LEN, MIN_T,
+};
+pub use labels::{
+    COLL_TAG, COMMIT, DEK, DEK_SALT, DOC_TAG, ENC, FILE, FKMASK, HDR, IDX, LEDGER, NAME_TAG,
+    REC_AAD, REPORT_PREFIX, SIGN, SLOT_AAD, SUBJECT_TAG, TBIND_AAD, TENANT_TAG, TERM_TAG, UNIT,
+    VAULT_MAC, WAL,
+};
+pub use secret::{Secret, SecretKey};
+pub use sign::{sign_report, verify_report, DerivedReportSigner};
+pub use tag::{tag, TagPreimage};

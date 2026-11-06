@@ -1,3 +1,22 @@
+// Begründung: Integrationstest-Fixtures und Assertions dürfen Test-Unwraps, Indizierung und Test-Zeitgeber verwenden.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::disallowed_methods,
+    clippy::disallowed_types,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::unnecessary_cast,
+    clippy::type_complexity
+)]
+
+//! Testsuite `domain_vocab_quality.rs` für acta-text.
+//!
+//! # Ring-Zuordnung
+//! Ring LAB / Testbereich.
+
 // FILE-CONTEXT: Qualitaetstest fuer domaenenspezifische Vokabulare (Medizin & Recht).
 // ZWECK: Verifiziert Invarianten (keine Duplikate, Kleinschreibung, Disjunktheit, Mindestgroessen, exakte Sortierung) und Zerlegungsverhalten.
 
@@ -17,6 +36,8 @@ const MIN_LEGAL_PROTECTED: usize = 100;
 const MIN_MEDICAL_STEMS: usize = 2000;
 const MIN_MEDICAL_PROTECTED: usize = 100;
 
+// ANCHOR[acta-text:TEST-159]
+// Testfall `test_no_duplicates_and_valid_formatting`: Prüft das Verhalten und Invarianten der Textverarbeitung.
 #[test]
 fn test_no_duplicates_and_valid_formatting() {
     let check_list = |name: &str, list: &[&str]| {
@@ -71,6 +92,8 @@ fn test_no_duplicates_and_valid_formatting() {
     check_list("LEGAL_PROTECTED_TERMS", *LEGAL_PROTECTED_TERMS);
 }
 
+// ANCHOR[acta-text:TEST-160]
+// Testfall `test_stems_and_protected_terms_disjoint`: Prüft das Verhalten und Invarianten der Textverarbeitung.
 #[test]
 fn test_stems_and_protected_terms_disjoint() {
     let medical = MedicalDomainVocabulary;
@@ -95,6 +118,8 @@ fn test_stems_and_protected_terms_disjoint() {
     );
 }
 
+// ANCHOR[acta-text:TEST-161]
+// Testfall `test_minimum_list_sizes`: Prüft das Verhalten und Invarianten der Textverarbeitung.
 #[test]
 fn test_minimum_list_sizes() {
     let medical = MedicalDomainVocabulary;
@@ -126,6 +151,8 @@ fn test_minimum_list_sizes() {
     );
 }
 
+// ANCHOR[acta-text:TEST-162]
+// Testfall `test_umlaut_normalization_consistency`: Prüft das Verhalten und Invarianten der Textverarbeitung.
 #[test]
 fn test_umlaut_normalization_consistency() {
     let medical = MedicalDomainVocabulary;
@@ -158,6 +185,8 @@ fn test_umlaut_normalization_consistency() {
     }
 }
 
+// ANCHOR[acta-text:TEST-163]
+// Testfall `test_no_empty_lines_in_raw_data_blocks`: Prüft das Verhalten und Invarianten der Textverarbeitung.
 #[test]
 fn test_no_empty_lines_in_raw_data_blocks() {
     let check_raw_file = |raw_data: &str, file_name: &str| {
@@ -187,6 +216,8 @@ fn test_no_empty_lines_in_raw_data_blocks() {
     check_raw_file(medical_raw, "medical_de.txt");
 }
 
+// ANCHOR[acta-text:TEST-164]
+// Testfall `test_domain_vocabulary_sample_term_recognition`: Prüft das Verhalten und Invarianten der Textverarbeitung.
 #[test]
 fn test_domain_vocabulary_sample_term_recognition() {
     let medical = MedicalDomainVocabulary;
@@ -245,6 +276,8 @@ fn test_domain_vocabulary_sample_term_recognition() {
     }
 }
 
+// ANCHOR[acta-text:TEST-165]
+// Testfall `test_domain_vocabulary_cold_start_loading_performance`: Prüft das Verhalten und Invarianten der Textverarbeitung.
 #[test]
 fn test_domain_vocabulary_cold_start_loading_performance() {
     let start = Instant::now();
@@ -275,6 +308,8 @@ fn test_domain_vocabulary_cold_start_loading_performance() {
     assert!(!med_stems.is_empty() && !med_prot.is_empty());
 }
 
+// ANCHOR[acta-text:TEST-166]
+// Testfall `test_compound_splitter_before_after_domain_expansion_comparison`: Prüft das Verhalten und Invarianten der Textverarbeitung.
 #[test]
 fn test_compound_splitter_before_after_domain_expansion_comparison() {
     // Vorher: Basis-Splitter ohne Domaenenvokabular (nur allgemeines KMU-Woerterbuch)
@@ -353,6 +388,8 @@ fn test_compound_splitter_before_after_domain_expansion_comparison() {
     }
 }
 
+// ANCHOR[acta-text:TEST-167]
+// Testfall `test_compound_splitter_sample_decomp`: Prüft das Verhalten und Invarianten der Textverarbeitung.
 #[test]
 fn test_compound_splitter_sample_decomp() {
     let splitter = GermanCompoundSplitter::new();

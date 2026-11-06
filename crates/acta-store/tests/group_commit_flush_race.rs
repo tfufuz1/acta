@@ -1,9 +1,10 @@
 #![cfg(feature = "fault-injection")]
 
 use bytes::Bytes;
-use acta_core::{StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::wal::{DELAY_APPEND_FOR_TX, DELAY_APPEND_MS, FAIL_APPEND_FOR_TX};
 use acta_store::{LsmConfig, LsmStorage};
+use acta_types::TxId;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;

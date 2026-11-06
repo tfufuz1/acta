@@ -21,7 +21,7 @@
 //! 5. Asymmetric Euclidean distance estimation:
 //!    $$d(q, x) = \sqrt{\max\left(0, \|q\|^2 + \|x\|^2 - 2 \langle q', \hat{x}' \rangle\right)}$$
 
-use acta_core::{ActaError, Result};
+use acta_types::{ActaError, Result};
 use serde::{Deserialize, Serialize};
 
 /// RaBitQ Quantizer with random orthogonal rotation and scalar metadata.

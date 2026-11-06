@@ -1,4 +1,11 @@
-//! Type-level tenant scope binding and enforcement primitives.
+//! Typbasierte Bindung und Durchsetzung von Mandantengrenzen (Tenant Scope Enforcement).
+//!
+//! # Zweck & Architektur-Rolle: Ring 0
+//!
+//! Strikte Mandantenisolation (Tenant Isolation) ist ein Kernprinzip von Acta.
+//! Dieses Modul stellt Typen bereit, die Daten untrennbar an eine Mandanten-ID (`TenantId`)
+//! koppeln, sodass ein Zugriff oder Entpacken auf Compile- und Laufzeitebene nur bei
+//! Übereinstimmung mit dem autorisierten Mandanten gelingt (Vermeidung von Datenlecks).
 
 use crate::TenantId;
 use thiserror::Error;
@@ -15,6 +22,9 @@ pub struct TenantScoped<T> {
 
 impl<T> TenantScoped<T> {
     /// Creates a new `TenantScoped` value bound to the specified `TenantId`.
+    ///
+    /// # Ablauf
+    /// Kapselt den Wert `value` zusammen mit `tenant_id` ohne Allokationen oder Nebeneffekte.
     #[inline]
     pub fn new(tenant_id: TenantId, value: T) -> Self {
         Self { tenant_id, value }
@@ -28,6 +38,11 @@ impl<T> TenantScoped<T> {
 
     /// Gibt den Wert nur zurück, wenn die aufrufende Seite die erwartete `TenantId` nennt —
     /// verhindert versehentliches Cross-Tenant-Leaking durch falsches Entpacken.
+    ///
+    /// # Ablauf
+    /// 1. Prüfen, ob `self.tenant_id == expected`.
+    /// 2. Bei Gleichheit: `Ok(self.value)` zurückgeben.
+    /// 3. Bei Ungleichheit: Fail-closed `Err(TenantScopeViolation::Mismatch)`.
     pub fn into_inner_checked(self, expected: &TenantId) -> Result<T, TenantScopeViolation> {
         if &self.tenant_id == expected {
             Ok(self.value)
@@ -40,6 +55,9 @@ impl<T> TenantScoped<T> {
     }
 
     /// Transforms the inner value `T` into `U` using `f` while preserving the bound `TenantId`.
+    ///
+    /// # Ablauf
+    /// Wendet `f(self.value)` an und erzeugt ein neues `TenantScoped<U>` mit identischer Mandanten-ID.
     pub fn map<U>(self, f: impl FnOnce(T) -> U) -> TenantScoped<U> {
         TenantScoped {
             tenant_id: self.tenant_id,
@@ -60,4 +78,22 @@ pub enum TenantScopeViolation {
         /// Actual `TenantId` bound to the value.
         actual: TenantId,
     },
+}
+
+/// Mandanten-Kontext für alle mandantenspezifischen Aufrufe (SPEC D-07, VETO-F10).
+#[derive(Clone, PartialEq, Eq, Hash, Debug, serde::Serialize, serde::Deserialize)]
+pub struct TenantContext {
+    tenant: crate::ids::TenantRef,
+}
+
+impl TenantContext {
+    /// Erzeugt einen neuen `TenantContext`.
+    pub fn new(tenant: crate::ids::TenantRef) -> Self {
+        Self { tenant }
+    }
+
+    /// Liefert die Mandanten-Referenz.
+    pub fn tenant(&self) -> &crate::ids::TenantRef {
+        &self.tenant
+    }
 }

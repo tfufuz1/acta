@@ -1,6 +1,10 @@
+//! # Tests fuer den WAL-Flusher (Ring 1)
+//!
+//! Prueft Flush-Backpressure, Batch-Grouping und Fehlerweitergabe.
+
 use super::*;
 use crate::wal::{PreparedBatch, WalConfig, WalEntry, WalOp};
-use acta_core::TxId;
+use acta_types::TxId;
 use tempfile::tempdir;
 
 #[tokio::test]
@@ -342,7 +346,6 @@ async fn test_wal_fsync_failure_poisons_handle() -> Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "encryption-at-rest")]
 #[tokio::test]
 async fn test_wal_rewrite_multi_frame_chunking_encrypted() -> Result<()> {
     let dir = tempdir()?;

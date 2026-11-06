@@ -1,5 +1,9 @@
 //! Domänenspezifische Vokabularpakete für die erweiterte Morphologie.
 //!
+//! # Ring-Zuordnung
+//! Ring 0 (Kern).
+//!
+//! # Zweck
 //! Lädt versionierte Wörterbücher aus den Crate-Ressourcendateien (`data/legal_de.txt`,
 //! `data/medical_de.txt`) über `include_str!` und stellt sie mit performantem
 //! In-Memory-Lookup (einmaliges Parsen via `OnceLock`) zur Verfügung.
@@ -11,11 +15,12 @@ pub use legal_de::LegalDomainVocabulary;
 pub use medical_de::MedicalDomainVocabulary;
 
 use crate::morphology::normalize_umlauts;
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
-/// Trait für domänenspezifische Vokabularpakete.
+// ANCHOR[acta-text:DOM-001]
+/// Trait für domänenspezifische Vokabularpakete (z. B. Recht und Medizin).
 pub trait DomainVocabulary: Send + Sync {
-    /// Domänenspezifische Komposita-Bausteine (Ergänzung, kein Ersatz für das KMU-Basiswörterbuch).
+    /// Domänenspezifische Komposita-Bausteine (Ergänzung zum KMU-Basiswörterbuch).
     fn compound_stems(&self) -> &'static [&'static str];
     /// Fachbegriffe, die NICHT als Stopwort behandelt werden dürfen, selbst wenn sie kurz/häufig sind
     /// (z. B. "Klage", "Akte" im juristischen Kontext).
@@ -66,7 +71,7 @@ pub(crate) fn parse_domain_resource(raw: &'static str) -> ParsedVocabulary {
     protected_vec.sort_unstable();
     protected_vec.dedup();
 
-    let protected_set: HashSet<&'static str> = protected_vec.iter().copied().collect();
+    let protected_set: BTreeSet<&'static str> = protected_vec.iter().copied().collect();
     stems_vec.retain(|stem| !protected_set.contains(stem));
 
     let static_stems: &'static [&'static str] = Box::leak(stems_vec.into_boxed_slice());
@@ -117,12 +122,16 @@ mod tests {
         );
     }
 
+    // ANCHOR[acta-text:TEST-DOM-001]
+    // Prüft Invarianten des juristischen Fachvokabulars (Mindestanzahl Stämme, Sortierung, Disjunktheit).
     #[test]
     fn test_legal_domain_vocabulary_invariants() {
         let legal = LegalDomainVocabulary;
         verify_vocabulary_invariants(&legal, "legal_de");
     }
 
+    // ANCHOR[acta-text:TEST-DOM-002]
+    // Prüft Invarianten des medizinischen Fachvokabulars (Mindestanzahl Stämme, Sortierung, Disjunktheit).
     #[test]
     fn test_medical_domain_vocabulary_invariants() {
         let medical = MedicalDomainVocabulary;

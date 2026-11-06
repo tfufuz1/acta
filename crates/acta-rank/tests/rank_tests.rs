@@ -1,325 +1,420 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-//! Comprehensive unit test suite for `acta-rank` crate modules.
+//! Unit-Tests für acta-rank.
 
-#[cfg(test)]
-mod tests {
-    use acta_rank::calibration::{IsotonicCalibrator, PlattScaler};
-    use acta_rank::drift::DriftDetector;
-    use acta_rank::fusion::{
-        reciprocal_rank_fusion, BoundedTopK, ProvenanceBuilder, SearchResult,
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+
+use acta_rank::{rrf_fuse, unseen_bound, Candidate, DocHandle, RankError, RrfScore, K_RRF};
+
+/// SPEC: T-RANK-1
+/// SPEC: T-RANK-1
+#[test]
+fn t_rank_1_empty_and_partial_lists() {
+    let empty: [Candidate; 0] = [];
+    let h1 = DocHandle {
+        cluster_tag: [1; 16],
+        doc_tag: [10; 16],
     };
-    use acta_types::ConfigFingerprint;
+    let single = [Candidate {
+        handle: h1,
+        chunk: 0,
+    }];
 
-    #[test]
-    fn test_rrf_k_zero_boundary() {
-        let prov = ProvenanceBuilder::new(0.0)
-            .vector(0.9, 1, 1.0)
-            .source_collection("col")
-            .index_type("hnsw")
-            .expected_total(1.0)
-            .build();
-        let contrib = prov
-            .signal_contributions
-            .get("vector")
-            .expect("vector contribution present");
-        assert_eq!(contrib.rrf_contribution, 1.0);
-    }
+    // Völlig leere Eingabe
+    let res = rrf_fuse(&[], 10).unwrap();
+    assert!(res.is_empty());
 
-    #[test]
-    fn test_rrf_dual_signal_higher_than_single_signal() {
-        let set1 = vec![SearchResult {
-            id: "doc_both".to_string(),
-            score: 0.99,
-            metadata: None,
-            matched_signals: vec![],
-            provenance: None,
-        }];
-        let set2 = vec![
-            SearchResult {
-                id: "doc_both".to_string(),
-                score: 0.95,
-                metadata: None,
-                matched_signals: vec![],
-                provenance: None,
+    // Leere Teillisten
+    let res = rrf_fuse(&[&empty, &empty], 10).unwrap();
+    assert!(res.is_empty());
+
+    // Teilweise leere Listen
+    let res = rrf_fuse(&[&empty, &single, &empty], 10).unwrap();
+    assert_eq!(res.len(), 1);
+    assert_eq!(res[0].handle, h1);
+    assert_eq!(res[0].chunk, 0);
+    let expected_score = (1u64 << 40) / (K_RRF as u64 + 1);
+    assert_eq!(res[0].score, RrfScore(expected_score));
+}
+
+/// SPEC: T-RANK-1
+/// SPEC: T-RANK-1
+#[test]
+fn t_rank_1_golden_ranking_deterministic() {
+    let doc_a = DocHandle {
+        cluster_tag: [0; 16],
+        doc_tag: [1; 16],
+    };
+    let doc_b = DocHandle {
+        cluster_tag: [0; 16],
+        doc_tag: [2; 16],
+    };
+    let doc_c = DocHandle {
+        cluster_tag: [0; 16],
+        doc_tag: [3; 16],
+    };
+
+    // Liste 1: [A, B]
+    let l1 = [
+        Candidate {
+            handle: doc_a,
+            chunk: 0,
+        },
+        Candidate {
+            handle: doc_b,
+            chunk: 0,
+        },
+    ];
+    // Liste 2: [B, C]
+    let l2 = [
+        Candidate {
+            handle: doc_b,
+            chunk: 0,
+        },
+        Candidate {
+            handle: doc_c,
+            chunk: 0,
+        },
+    ];
+
+    let lists: [&[Candidate]; 2] = [&l1, &l2];
+    let res = rrf_fuse(&lists, 3).unwrap();
+
+    assert_eq!(res.len(), 3);
+
+    // B kommt in beiden Listen vor: Rang 2 in l1 (1/62) + Rang 1 in l2 (1/61)
+    // A kommt nur in l1 vor: Rang 1 in l1 (1/61)
+    // C kommt nur in l2 vor: Rang 2 in l2 (1/62)
+    // Erwartete Reihenfolge: B (höchster Score), dann A (Rang 1 vs Rang 2), dann C
+    let score_b = (1u64 << 40) / 62 + (1u64 << 40) / 61;
+    let score_a = (1u64 << 40) / 61;
+    let score_c = (1u64 << 40) / 62;
+
+    assert_eq!(res[0].handle, doc_b);
+    assert_eq!(res[0].chunk, 0);
+    assert_eq!(res[0].score, RrfScore(score_b));
+
+    assert_eq!(res[1].handle, doc_a);
+    assert_eq!(res[1].chunk, 0);
+    assert_eq!(res[1].score, RrfScore(score_a));
+
+    assert_eq!(res[2].handle, doc_c);
+    assert_eq!(res[2].chunk, 0);
+    assert_eq!(res[2].score, RrfScore(score_c));
+}
+
+/// SPEC: T-RANK-1
+/// SPEC: T-RANK-1
+#[test]
+fn t_rank_1_tie_break_order_and_multi_list_sum() {
+    // Wenn zwei Dokumente exakt denselben Score haben, bricht doc_tag aufsteigend den Tie-Break,
+    // danach chunk aufsteigend, danach cluster_tag aufsteigend.
+    let handle_a = DocHandle {
+        cluster_tag: [2; 16],
+        doc_tag: [5; 16],
+    };
+    let handle_b = DocHandle {
+        cluster_tag: [1; 16],
+        doc_tag: [5; 16],
+    };
+    let handle_c = DocHandle {
+        cluster_tag: [0; 16],
+        doc_tag: [6; 16],
+    };
+
+    // Beide an Rang 1 in je einer separaten Liste
+    let l1 = [Candidate {
+        handle: handle_a,
+        chunk: 0,
+    }];
+    let l2 = [Candidate {
+        handle: handle_c,
+        chunk: 0,
+    }];
+    let l3 = [Candidate {
+        handle: handle_b,
+        chunk: 0,
+    }];
+
+    // Fusion von l1 und l2: handle_a und handle_c haben denselben Score (1/61).
+    // doc_tag [5; 16] < doc_tag [6; 16], also handle_a vor handle_c
+    let res = rrf_fuse(&[&l1, &l2], 10).unwrap();
+    assert_eq!(res[0].handle, handle_a);
+    assert_eq!(res[1].handle, handle_c);
+
+    // Fusion von l1 und l3: handle_a und handle_b haben dasselbe doc_tag [5; 16] und denselben chunk 0.
+    // cluster_tag [1; 16] < cluster_tag [2; 16], also handle_b vor handle_a
+    let res2 = rrf_fuse(&[&l1, &l3], 10).unwrap();
+    assert_eq!(res2[0].handle, handle_b);
+    assert_eq!(res2[1].handle, handle_a);
+}
+
+/// SPEC: T-LIMIT-1
+/// SPEC: T-LIMIT-1
+#[test]
+fn t_limit_1_input_validation_boundaries() {
+    // top = 0 -> leere Ausgabe
+    let h = DocHandle {
+        cluster_tag: [0; 16],
+        doc_tag: [1; 16],
+    };
+    let list = [Candidate {
+        handle: h,
+        chunk: 0,
+    }];
+    let res = rrf_fuse(&[&list], 0).unwrap();
+    assert!(res.is_empty());
+
+    // Liste mit mehr als 1.000 Einträgen -> Err(RankError::TooLarge)
+    let mut big_list = Vec::with_capacity(1001);
+    for i in 0..1001u32 {
+        let mut doc_tag = [0u8; 16];
+        doc_tag[..4].copy_from_slice(&i.to_be_bytes());
+        big_list.push(Candidate {
+            handle: DocHandle {
+                cluster_tag: [0; 16],
+                doc_tag,
             },
-            SearchResult {
-                id: "doc_single".to_string(),
-                score: 0.99,
-                metadata: None,
-                matched_signals: vec![],
-                provenance: None,
-            },
-        ];
-
-        let fused = reciprocal_rank_fusion(vec![set1, set2], 10);
-        assert_eq!(fused.len(), 2);
-        assert_eq!(fused[0].id, "doc_both");
-        assert_eq!(fused[1].id, "doc_single");
-        assert!(fused[0].score > fused[1].score);
+            chunk: 0,
+        });
     }
+    let err = rrf_fuse(&[&big_list], 10);
+    assert_eq!(err, Err(RankError::TooLarge));
 
-    #[test]
-    fn test_bounded_top_k() {
-        let mut top_k = BoundedTopK::new(2);
-        top_k.push(10i32);
-        top_k.push(20i32);
-        top_k.push(5i32);
-        let sorted = top_k.into_sorted_vec();
-        assert_eq!(sorted, vec![5, 10]);
-    }
+    // Exakt 1.000 Einträge -> OK
+    let boundary_list = &big_list[..1000];
+    let ok = rrf_fuse(&[boundary_list], 10);
+    assert!(ok.is_ok());
 
-    #[test]
-    fn test_isotonic_calibrator_warmup() {
-        let mut cal = IsotonicCalibrator::new(10, 100);
-        for i in 0..9 {
-            cal.record_outcome(i as f32 / 10.0, i > 4);
-        }
-        assert!(cal.calibrated_probability(0.5).is_none());
+    // Interne Duplikate innerhalb derselben Liste -> Err(RankError::Duplicate)
+    let dup_list = [
+        Candidate {
+            handle: h,
+            chunk: 0,
+        },
+        Candidate {
+            handle: h,
+            chunk: 0,
+        },
+    ];
+    let dup_err = rrf_fuse(&[&dup_list], 10);
+    assert_eq!(dup_err, Err(RankError::Duplicate));
+}
 
-        cal.record_outcome(0.9, true);
-        assert!(cal.calibrated_probability(0.5).is_some());
-    }
+/// SPEC: T-HYB-1
+/// SPEC: T-HYB-1
+#[test]
+fn t_hyb_1_unseen_bound_calculation() {
+    // Keine Listen -> Bound 0
+    let b0 = unseen_bound(&[]).unwrap();
+    assert_eq!(b0, RrfScore(0));
 
-    #[test]
-    fn test_isotonic_p8_invalidation() {
-        let mut cal = IsotonicCalibrator::new(5, 100);
-        for i in 0..10 {
-            cal.record_outcome(i as f32 / 10.0, i > 4);
-        }
-        let fp1 = ConfigFingerprint::new("model-1", "Q4", "prompt", 0.7);
-        cal.invalidate_on_config_change(fp1.clone());
-        assert_eq!(cal.observation_count(), 0);
+    // Zwei Listen mit Tiefe 10 und Tiefe 20:
+    // Formel: floor(2^40 / (60 + 10 + 1)) + floor(2^40 / (60 + 20 + 1))
+    // = floor(2^40 / 71) + floor(2^40 / 81)
+    let b = unseen_bound(&[10, 20]).unwrap();
+    let expected = (1u64 << 40) / 71 + (1u64 << 40) / 81;
+    assert_eq!(b, RrfScore(expected));
+}
 
-        cal.record_outcome(0.5, true);
-        cal.invalidate_on_config_change(fp1);
-        assert_eq!(cal.observation_count(), 1);
-    }
+/// SPEC: T-DOCREF-1
+/// SPEC: T-DOCREF-1
+#[test]
+fn t_docref_1_handle_identity() {
+    // Gleiche doc_tag mit anderem cluster_tag => verschiedene Einträge
+    let h1 = DocHandle {
+        cluster_tag: [1; 16],
+        doc_tag: [42; 16],
+    };
+    let h2 = DocHandle {
+        cluster_tag: [2; 16],
+        doc_tag: [42; 16],
+    };
+    let l1 = [Candidate {
+        handle: h1,
+        chunk: 0,
+    }];
+    let l2 = [Candidate {
+        handle: h2,
+        chunk: 0,
+    }];
 
-    #[test]
-    fn test_platt_scaler_fit_and_predict() {
-        let mut obs = Vec::new();
-        for i in -10..=10 {
-            let logit = i as f32 * 0.2;
-            obs.push((logit, logit > 0.0));
-        }
+    let res = rrf_fuse(&[&l1, &l2], 10).unwrap();
+    assert_eq!(res.len(), 2);
+    assert_eq!(res.first().map(|f| f.handle), Some(h1));
+    assert_eq!(res.get(1).map(|f| f.handle), Some(h2));
+}
 
-        let scaler = PlattScaler::fit(&obs);
-        assert!(scaler.is_fitted());
-        assert!(scaler.predict(1.0) > 0.7);
-        assert!(scaler.predict(-1.0) < 0.3);
-    }
+/// SPEC: T-RANK-1
+/// Golden-Test mit 4 festen Teillisten (z. B. Vektor, BM25, Filter-Teilliste 1, Filter-Teilliste 2).
+/// Überprüft bitgenaue Berechnung und deterministische Ordnung über 4 Listen.
+/// SPEC: T-RANK-1
+#[test]
+fn t_rank_1_golden_ranking_four_lists_exact() {
+    let d1 = DocHandle {
+        cluster_tag: [0; 16],
+        doc_tag: [1; 16],
+    };
+    let d2 = DocHandle {
+        cluster_tag: [0; 16],
+        doc_tag: [2; 16],
+    };
+    let d3 = DocHandle {
+        cluster_tag: [0; 16],
+        doc_tag: [3; 16],
+    };
+    let d4 = DocHandle {
+        cluster_tag: [0; 16],
+        doc_tag: [4; 16],
+    };
 
-    #[test]
-    fn test_drift_detector() {
-        let mut detector = DriftDetector::new(10, 0.1);
-        detector.set_baseline(0.5);
+    // 4 Listen
+    let l1 = [
+        Candidate {
+            handle: d1,
+            chunk: 0,
+        },
+        Candidate {
+            handle: d2,
+            chunk: 0,
+        },
+        Candidate {
+            handle: d3,
+            chunk: 0,
+        },
+    ];
+    let l2 = [
+        Candidate {
+            handle: d2,
+            chunk: 0,
+        },
+        Candidate {
+            handle: d4,
+            chunk: 0,
+        },
+    ];
+    let l3 = [
+        Candidate {
+            handle: d1,
+            chunk: 0,
+        },
+        Candidate {
+            handle: d3,
+            chunk: 0,
+        },
+        Candidate {
+            handle: d4,
+            chunk: 0,
+        },
+    ];
+    let l4 = [
+        Candidate {
+            handle: d2,
+            chunk: 0,
+        },
+        Candidate {
+            handle: d1,
+            chunk: 0,
+        },
+    ];
 
-        for _ in 0..10 {
-            detector.observe(0.51);
-        }
-        assert_eq!(detector.overall_drift_status(), "stabil");
+    // Scores berechnen:
+    // d1: l1: r1 (1/61), l3: r1 (1/61), l4: r2 (1/62)
+    let s1 = (1u64 << 40) / 61 + (1u64 << 40) / 61 + (1u64 << 40) / 62;
+    // d2: l1: r2 (1/62), l2: r1 (1/61), l4: r1 (1/61)
+    let s2 = (1u64 << 40) / 62 + (1u64 << 40) / 61 + (1u64 << 40) / 61;
+    // s1 == s2! Tie-Break: doc_tag [1; 16] < doc_tag [2; 16] -> d1 vor d2
+    assert_eq!(s1, s2);
 
-        for _ in 0..10 {
-            detector.observe(0.9);
-        }
-        assert_eq!(detector.overall_drift_status(), "kritisch");
-    }
+    // d3: l1: r3 (1/63), l3: r2 (1/62)
+    let s3 = (1u64 << 40) / 63 + (1u64 << 40) / 62;
+    // d4: l2: r2 (1/62), l3: r3 (1/63)
+    let s4 = (1u64 << 40) / 62 + (1u64 << 40) / 63;
+    // s3 == s4! Tie-Break: doc_tag [3; 16] < doc_tag [4; 16] -> d3 vor d4
+    assert_eq!(s3, s4);
 
-    #[test]
-    fn test_g_function_standalone_properties() {
-        use acta_rank::g;
+    let res = rrf_fuse(&[&l1, &l2, &l3, &l4], 4).unwrap();
+    assert_eq!(res.len(), 4);
+    assert_eq!(res[0].handle, d1);
+    assert_eq!(res[0].score, RrfScore(s1));
 
-        // (c) g(0) is exactly 0
-        assert_eq!(g(0.0), 0.0);
-        assert_eq!(g(-0.0), 0.0);
+    assert_eq!(res[1].handle, d2);
+    assert_eq!(res[1].score, RrfScore(s2));
 
-        // g(x) bounded towards 1 for x -> infinity
-        assert!((g(1000.0) - 1.0).abs() < 0.01);
-        assert!((g(1_000_000.0) - 1.0).abs() < 0.0001);
+    assert_eq!(res[2].handle, d3);
+    assert_eq!(res[2].score, RrfScore(s3));
 
-        // g(x) bounded towards -1 for x -> -infinity
-        assert!((g(-1000.0) - (-1.0)).abs() < 0.01);
+    assert_eq!(res[3].handle, d4);
+    assert_eq!(res[3].score, RrfScore(s4));
+}
 
-        // Non-finite float safety
-        assert_eq!(g(f32::NAN), 0.0);
-        assert_eq!(g(f32::INFINITY), 0.0);
-        assert_eq!(g(f32::NEG_INFINITY), 0.0);
-    }
+/// SPEC: T-HYB-2
+/// Treffer-Identität ist `(doc_tag, chunk)` (SPEC D-124).
+/// Die Fusion verändert sie nie, trennt unterschiedliche Chunks desselben Dokuments,
+/// und summiert identische `(handle, chunk)`-Kombinationen across Listen.
+/// SPEC: T-HYB-2
+#[test]
+fn t_hyb_2_hit_identity_doc_tag_chunk_preservation() {
+    let handle = DocHandle {
+        cluster_tag: [1; 16],
+        doc_tag: [10; 16],
+    };
+    let handle_other = DocHandle {
+        cluster_tag: [1; 16],
+        doc_tag: [20; 16],
+    };
 
-    #[test]
-    fn test_mrrf_determinism_baseline() {
-        use acta_rank::drift::DriftStatus;
-        use acta_rank::fusion::{
-            weighted_reciprocal_rank_fusion_mrrf, weighted_reciprocal_rank_fusion_with_options,
-            MetadataMergePriority, SearchResult, SignalCalibrationContext,
-        };
+    // 1. Unterschiedliche Chunks desselben Dokuments in derselben Liste sind erlaubt (kein Duplikat)
+    let c_chunk0 = Candidate { handle, chunk: 0 };
+    let c_chunk1 = Candidate { handle, chunk: 1 };
+    let list_same_doc = [c_chunk0, c_chunk1];
+    let res_same = rrf_fuse(&[&list_same_doc], 10).unwrap();
+    assert_eq!(res_same.len(), 2);
+    assert_eq!(res_same[0].handle, handle);
+    assert_eq!(res_same[0].chunk, 0);
+    assert_eq!(res_same[1].handle, handle);
+    assert_eq!(res_same[1].chunk, 1);
 
-        let res_a = vec![
-            SearchResult {
-                id: "doc1".to_string(),
-                score: 0.9,
-                metadata: None,
-                matched_signals: vec![],
-                provenance: None,
-            },
-            SearchResult {
-                id: "doc2".to_string(),
-                score: 0.8,
-                metadata: None,
-                matched_signals: vec![],
-                provenance: None,
-            },
-        ];
-        let res_b = vec![
-            SearchResult {
-                id: "doc2".to_string(),
-                score: 0.85,
-                metadata: None,
-                matched_signals: vec![],
-                provenance: None,
-            },
-            SearchResult {
-                id: "doc1".to_string(),
-                score: 0.75,
-                metadata: None,
-                matched_signals: vec![],
-                provenance: None,
-            },
-        ];
+    // 2. Unterschiedliche Chunks desselben Dokuments über zwei Listen summieren nicht
+    let l1 = [Candidate { handle, chunk: 0 }];
+    let l2 = [Candidate { handle, chunk: 1 }];
+    let res_diff_chunks = rrf_fuse(&[&l1, &l2], 10).unwrap();
+    assert_eq!(res_diff_chunks.len(), 2);
+    let s_single = (1u64 << 40) / 61;
+    assert_eq!(res_diff_chunks[0].score, RrfScore(s_single));
+    assert_eq!(res_diff_chunks[1].score, RrfScore(s_single));
+    // Tie-break nach chunk aufsteigend
+    assert_eq!(res_diff_chunks[0].chunk, 0);
+    assert_eq!(res_diff_chunks[1].chunk, 1);
 
-        let sets = vec![
-            ("signal_a".to_string(), res_a.clone(), 1.0),
-            ("signal_b".to_string(), res_b.clone(), 1.0),
-        ];
+    // 3. Identische (handle, chunk)-Paare über zwei Listen summieren ihren Score
+    let l3 = [Candidate { handle, chunk: 1 }];
+    let res_sum_chunk = rrf_fuse(&[&l2, &l3], 10).unwrap();
+    assert_eq!(res_sum_chunk.len(), 1);
+    assert_eq!(res_sum_chunk[0].handle, handle);
+    assert_eq!(res_sum_chunk[0].chunk, 1);
+    let s_sum = (1u64 << 40) / 61 + (1u64 << 40) / 61;
+    assert_eq!(res_sum_chunk[0].score, RrfScore(s_sum));
 
-        // Baseline standard weighted RRF
-        let standard_fused = weighted_reciprocal_rank_fusion_with_options(
-            sets.clone(),
-            10,
-            MetadataMergePriority::default(),
-            true,
-            None,
-        );
-
-        // mRRF with beta = 0.0
-        let mrrf_fused_beta0 = weighted_reciprocal_rank_fusion_mrrf(
-            sets.clone(),
-            10,
-            MetadataMergePriority::default(),
-            true,
-            None,
-            None,
-            0.0,
-        );
-
-        // mRRF with beta = 1.0 but uncalibrated/unstable signal context (so m_s defaults to 0)
-        let uncalibrated_ctxs = vec![
-            SignalCalibrationContext::new(
-                "signal_a",
-                false,
-                DriftStatus::Stable { mean_shift: 0.0 },
-            ),
-            SignalCalibrationContext::new(
-                "signal_b",
-                true,
-                DriftStatus::DriftDetected {
-                    mean_shift: 0.3,
-                    threshold: 0.1,
-                },
-            ),
-        ];
-        let mrrf_fused_uncalibrated = weighted_reciprocal_rank_fusion_mrrf(
-            sets,
-            10,
-            MetadataMergePriority::default(),
-            true,
-            None,
-            Some(&uncalibrated_ctxs),
-            1.0,
-        );
-
-        assert_eq!(standard_fused, mrrf_fused_beta0);
-        assert_eq!(standard_fused, mrrf_fused_uncalibrated);
-    }
-
-    #[test]
-    fn test_mrrf_margin_modulation_relative_weight_effect() {
-        use acta_rank::drift::DriftStatus;
-        use acta_rank::fusion::{
-            modulate_and_renormalize_weights, SearchResult, SignalCalibrationContext,
-        };
-
-        // Signal A: Close tie (m_s = 0.80 - 0.79 = 0.01)
-        let res_a = vec![
-            SearchResult {
-                id: "docA1".to_string(),
-                score: 0.80,
-                metadata: None,
-                matched_signals: vec![],
-                provenance: None,
-            },
-            SearchResult {
-                id: "docA2".to_string(),
-                score: 0.79,
-                metadata: None,
-                matched_signals: vec![],
-                provenance: None,
-            },
-        ];
-
-        // Signal B: Clear margin (m_s = 0.90 - 0.40 = 0.50)
-        let res_b = vec![
-            SearchResult {
-                id: "docB1".to_string(),
-                score: 0.90,
-                metadata: None,
-                matched_signals: vec![],
-                provenance: None,
-            },
-            SearchResult {
-                id: "docB2".to_string(),
-                score: 0.40,
-                metadata: None,
-                matched_signals: vec![],
-                provenance: None,
-            },
-        ];
-
-        let sets = vec![
-            ("signal_a".to_string(), res_a, 1.0),
-            ("signal_b".to_string(), res_b, 1.0),
-        ];
-
-        let contexts = vec![
-            SignalCalibrationContext::new(
-                "signal_a",
-                true,
-                DriftStatus::Stable { mean_shift: 0.0 },
-            ),
-            SignalCalibrationContext::new(
-                "signal_b",
-                true,
-                DriftStatus::Stable { mean_shift: 0.0 },
-            ),
-        ];
-
-        let beta = 1.0;
-        let modulated_weights = modulate_and_renormalize_weights(&sets, Some(&contexts), beta);
-
-        let w_a = modulated_weights[0];
-        let w_b = modulated_weights[1];
-
-        // Verify total weight sum is preserved (sum = 2.0, within [0.999, 1.001] factor)
-        let total_weight = w_a + w_b;
-        assert!(
-            (total_weight - 2.0).abs() < 0.001,
-            "Weight sum invariant violated: {total_weight}"
-        );
-
-        // Signal B has a much larger margin, so after modulation and renormalization, w_B > w_A
-        assert!(
-            w_b > w_a,
-            "Expected Signal B weight ({w_b}) to be strictly greater than Signal A weight ({w_a})"
-        );
-    }
+    // 4. Identitätserhaltung bei komplexem Ranking
+    let l_mix_a = [
+        Candidate {
+            handle: handle_other,
+            chunk: 5,
+        },
+        Candidate { handle, chunk: 42 },
+    ];
+    let l_mix_b = [
+        Candidate { handle, chunk: 42 },
+        Candidate {
+            handle: handle_other,
+            chunk: 5,
+        },
+    ];
+    let res_mix = rrf_fuse(&[&l_mix_a, &l_mix_b], 10).unwrap();
+    assert_eq!(res_mix.len(), 2);
+    // Beide haben denselben summierten Score: Rang 1 + Rang 2
+    // Tie-Break: doc_tag [10; 16] < doc_tag [20; 16], also `handle` vor `handle_other`
+    assert_eq!(res_mix[0].handle, handle);
+    assert_eq!(res_mix[0].chunk, 42);
+    assert_eq!(res_mix[1].handle, handle_other);
+    assert_eq!(res_mix[1].chunk, 5);
 }

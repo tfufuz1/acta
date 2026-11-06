@@ -1,3 +1,8 @@
+//! Testsuite `mock.rs` für acta-text.
+//!
+//! # Ring-Zuordnung
+//! Ring LAB / Testbereich.
+
 use acta_ports::{BoxFuture, StorageEngine};
 use acta_types::{Result, TxId};
 use parking_lot::RwLock;

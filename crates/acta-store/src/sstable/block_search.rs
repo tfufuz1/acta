@@ -1,4 +1,9 @@
-use acta_core::{ActaError, Result};
+//! # Binaersuche in SSTable-Bloecken (Ring 1)
+//!
+//! Stellt hochoptimierte Binaersuchroutinen ueber geordnete Schluessel-Offsets
+//! innerhalb eines SSTable-Datenblocks bereit.
+
+use acta_types::{ActaError, Result};
 
 /// Entry offset accessor supporting both 16-bit (legacy v0..v2) and 32-bit (v3+) block formats.
 pub fn get_entry_at_index(

@@ -1,5 +1,9 @@
+//! # Tests fuer Open-Heal im WAL (Ring 1)
+//!
+//! Prueft die automatische Kuerzung und Reparatur beschaedigter WAL-Dateien am Dateiende.
+
 use super::*;
-use acta_core::TxId;
+use acta_types::TxId;
 use tempfile::tempdir;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;

@@ -1,5 +1,6 @@
-use acta_core::{DocId, StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
+use acta_types::{DocId, TxId};
 use tempfile::tempdir;
 
 #[tokio::test]

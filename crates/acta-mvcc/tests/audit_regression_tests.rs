@@ -1,10 +1,19 @@
+//! # Audit-Regressions-Tests für `acta-mvcc`
+//!
+//! Stellt sicher, dass behobene Fehler aus Sicherheits- und Architektur-Audits
+//! nicht erneut auftreten:
+//! - Wiederherstellung früherer Commit-Historie durch `forget_from`.
+//! - Zuverlässiges Ausmaskieren des `TOMBSTONE_BIT` in allen Teilsystemen (`ReadSet`, `TxBuffer`, `SequenceLog`).
+
 use acta_mvcc::seq_log::{SeqLogEntry, SequenceLog};
 use acta_mvcc::ssi::{ReadSet, SequenceLogSsiValidator, SsiValidator};
 use acta_mvcc::tx_buffer::TxBuffer;
-use acta_mvcc::types::{TxId, TOMBSTONE_BIT};
 use acta_mvcc::ActaError;
+use acta_testmacros::ctx_test;
+use acta_types::{TxId, TOMBSTONE_BIT};
 
-#[test]
+// Prüft, dass forget_from nach einem Rollback vorherige Commit-Versionen desselben Schlüssels korrekt wiederherstellt.
+#[ctx_test(id = "T-RESTORE-3")]
 fn test_forget_from_restores_earlier_commit_history() {
     let validator = SequenceLogSsiValidator::new();
     let tx = TxId::new(1);
@@ -30,7 +39,8 @@ fn test_forget_from_restores_earlier_commit_history() {
     );
 }
 
-#[test]
+// Prüft, dass das gesetzte TOMBSTONE_BIT bei der ReadSet-Registrierung und Commit-Validierung korrekt ignoriert wird.
+#[ctx_test(id = "T-TXN-1")]
 fn test_tombstone_bit_masking_in_read_set_and_validator() {
     let validator = SequenceLogSsiValidator::new();
     let tx = TxId::new(2);
@@ -58,7 +68,8 @@ fn test_tombstone_bit_masking_in_read_set_and_validator() {
     );
 }
 
-#[test]
+// Prüft, dass das TOMBSTONE_BIT beim Transaktions-Read-Tracking im TxBuffer ausmaskiert wird.
+#[ctx_test(id = "T-TXN-1")]
 fn test_tombstone_bit_masking_in_tx_buffer() {
     let buffer = TxBuffer::<String>::new();
     let tx = TxId::new(3);
@@ -74,9 +85,10 @@ fn test_tombstone_bit_masking_in_tx_buffer() {
     );
 }
 
-#[test]
+// Prüft, dass SeqLogEntry::is_visible und SequenceLog-Methoden mit gesetztem TOMBSTONE_BIT fehlerfrei arbeiten.
+#[ctx_test(id = "T-TXN-1")]
 fn test_tombstone_bit_masking_in_seq_log() {
-    let doc_id = acta_mvcc::types::DocId::from(100);
+    let doc_id = acta_types::DocId::from(100);
 
     let entry = SeqLogEntry {
         doc_id,

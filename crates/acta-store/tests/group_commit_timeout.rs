@@ -7,9 +7,10 @@
 
 #![cfg(feature = "fault-injection")]
 
-use acta_core::{ActaError, StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
 use acta_store::wal::{DELAY_APPEND_FOR_TX, DELAY_APPEND_MS};
+use acta_types::{ActaError, TxId};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;

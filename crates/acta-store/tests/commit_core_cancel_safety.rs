@@ -1,5 +1,6 @@
-use acta_core::{StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
+use acta_types::TxId;
 use std::time::Duration;
 use tempfile::tempdir;
 use tokio::time::timeout;

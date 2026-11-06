@@ -24,11 +24,9 @@ fuzz_target!(|data: &[u8]| {
             return;
         }
 
-        let config = WalConfig {
-            allow_legacy_integrity_key_fallback: true,
-            min_wal_version: WalVersion::V1,
-            ..Default::default()
-        };
+        let mut config = WalConfig::default();
+        config.min_wal_version = WalVersion::V1;
+        let config = config.with_legacy_fallback(true);
 
         if let Ok(wal) = Wal::open_with_config(&wal_path, config).await {
             let _ = wal.replay().await;
@@ -36,7 +34,7 @@ fuzz_target!(|data: &[u8]| {
                 .await
                 .map(|m| m.len())
                 .unwrap_or(0);
-            let _ = wal.scan_entries_mmap(file_size, |_, _, _| true).await;
+            let _ = wal.scan_entries_buffer(file_size, |_, _, _| true).await;
         }
     });
 });

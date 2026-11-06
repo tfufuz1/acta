@@ -2,7 +2,8 @@
 
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
-use acta_core::{DistanceMetric, DocId, TxId, VectorIndex};
+use acta_types::{DistanceMetric, DocId, TxId};
+use acta_ports::VectorIndex;
 use acta_vector::hnsw::{HnswConfig, HnswIndex};
 use std::fs::OpenOptions;
 use std::io::{Seek, SeekFrom, Write};
@@ -126,7 +127,7 @@ fuzz_target!(|input: HnswPersistInput| {
         };
 
         // 8. Search on reloaded index if load succeeded - must not panic
-        if reloaded.load_mmap(&path).await.is_ok() {
+        if reloaded.load_buffer(&path).await.is_ok() {
             let query = vec![0.0f32; dim];
             let _ = reloaded.search(&query, 5).await;
         }

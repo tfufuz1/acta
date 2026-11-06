@@ -1,8 +1,17 @@
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 //! Integration tests for DiskAnnIndex::search_filtered via adaptive oversampling.
 
 #![cfg(feature = "experimental-diskann")]
 
-use acta_core::{ActaError, DistanceMetric, DocId, VectorIndex};
+use acta_ports::VectorIndex;
+use acta_types::{ActaError, DistanceMetric, DocId};
 use acta_vector::diskann::{DiskAnnConfig, DiskAnnIndex};
 
 async fn setup_test_index(num_vectors: usize) -> (DiskAnnIndex, Vec<Vec<f32>>, tempfile::TempDir) {
@@ -134,7 +143,7 @@ async fn test_diskann_search_filtered_highly_selective() {
 
     // Compute expected brute-force post-filter over full search
     let raw_all = index
-        .search(&query, acta_core::MAX_SEARCH_K)
+        .search(&query, acta_types::MAX_SEARCH_K)
         .await
         .expect("search all failed");
 

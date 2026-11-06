@@ -1,5 +1,9 @@
+//! # Tests fuer WAL Replay (Ring 1)
+//!
+//! Prueft deterministisches Replay ueber Sequenzgrenzen hinweg.
+
 use super::*;
-use acta_core::TxId;
+use acta_types::TxId;
 use tempfile::tempdir;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
@@ -325,13 +329,9 @@ async fn test_wal_legacy_key_fallback_migration() {
             key: b"legacy_key".to_vec(),
             value: b"legacy_val".to_vec(),
         };
-        let legacy_entry = WalEntry::try_new(
-            op,
-            1,
-            &Wal::legacy_integrity_key_for_test(),
-            [0u8; 32],
-        )
-        .expect("legacy entry"); // expect
+        let legacy_entry =
+            WalEntry::try_new(op, 1, &Wal::legacy_integrity_key_for_test(), [0u8; 32])
+                .expect("legacy entry"); // expect
 
         let mut wal_bytes = Vec::new();
         wal_bytes.extend_from_slice(&WAL_V3_HEADER);
@@ -349,19 +349,12 @@ async fn test_wal_legacy_key_fallback_migration() {
         "Opening legacy WAL without allow_legacy_integrity_key_fallback must fail"
     );
 
-    // Opening with explicit opt-in must succeed
-    let wal = Wal::open_for_legacy_migration(&wal_path, None)
-        .await
-        .expect("open legacy wal with fallback opt-in"); // expect
-    let entries = wal.replay().await.expect("replay legacy wal"); // expect
-    assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].1.seq_no, 1);
-    if let WalOp::Put { key, value, .. } = &entries[0].1.op {
-        assert_eq!(key, b"legacy_key");
-        assert_eq!(value, b"legacy_val");
-    } else {
-        panic!("Expected Put op");
-    }
+    // Under D-05: Legacy-fallback is eliminated / non-downgradable; opening with legacy key fails closed
+    let open_mig_res = Wal::open_for_legacy_migration(&wal_path, None).await;
+    assert!(
+        open_mig_res.is_err(),
+        "Opening with legacy key must fail closed under D-05"
+    );
 }
 
 #[tokio::test]
@@ -605,13 +598,8 @@ async fn test_wal_v1_auto_migration_on_min_version_v3() {
             key: b"mig_key".to_vec(),
             value: b"mig_val".to_vec(),
         };
-        let entry = WalEntry::try_new(
-            op,
-            1,
-            &Wal::legacy_integrity_key_for_test(),
-            [0u8; 32],
-        )
-        .expect("v1 entry"); // expect
+        let entry = WalEntry::try_new(op, 1, &Wal::legacy_integrity_key_for_test(), [0u8; 32])
+            .expect("v1 entry"); // expect
 
         let mut v1_bytes = Vec::new();
         // V1 WAL file has no MFW3 or MFW2 header prefix
@@ -698,13 +686,8 @@ async fn test_full_rewrite_crash_recovery_pipeline() {
         key: b"k_crash".to_vec(),
         value: b"v_crash".to_vec(),
     };
-    let entry = WalEntry::try_new(
-        op,
-        1,
-        &Wal::legacy_integrity_key_for_test(),
-        [0u8; 32],
-    )
-    .expect("v1 entry");
+    let entry = WalEntry::try_new(op, 1, &Wal::legacy_integrity_key_for_test(), [0u8; 32])
+        .expect("v1 entry");
     let v1_bytes = entry.to_bytes().expect("to_bytes");
     tokio::fs::write(&wal_path, &v1_bytes)
         .await
@@ -763,13 +746,8 @@ async fn test_v1_plaintext_rejected_when_key_manager_active() {
         key: b"unencrypted_key".to_vec(),
         value: b"unencrypted_val".to_vec(),
     };
-    let entry = WalEntry::try_new(
-        op,
-        1,
-        &Wal::legacy_integrity_key_for_test(),
-        [0u8; 32],
-    )
-    .expect("entry");
+    let entry =
+        WalEntry::try_new(op, 1, &Wal::legacy_integrity_key_for_test(), [0u8; 32]).expect("entry");
     let entry_bytes = entry.to_bytes().expect("to_bytes");
 
     // Write directly to file (bypassing Wal API)
@@ -1486,10 +1464,112 @@ async fn test_seq_no_near_u64_max_boundary() -> Result<()> {
     Ok(())
 }
 
+/// T-WAL-1: Toleranz von AEAD-Entschlüsselungsfehlern am Dateiende (Torn Write / Open-Heal).
 #[tokio::test]
-async fn test_mmap_slice_bounds_mismatch_no_panic() {
+async fn test_t_wal_1_aead_decryption_failure_tolerated_at_tail() -> Result<()> {
+    let dir = tempdir()?;
+    let wal_path = dir.path().join("t_wal_1_tail.wal");
+
+    let km = Arc::new(KeyManager::try_new(
+        "passphrase123",
+        b"salt123456789012345678901234567890",
+    )?);
+    let mut config = WalConfig::default();
+    config.key_manager = Some(km);
+
+    // 1. Zwei valide Einträge schreiben
+    {
+        let wal = Wal::open_with_config(&wal_path, config.clone()).await?;
+        for i in 1..=2 {
+            let op = WalOp::Put {
+                tx_id: TxId::new(i),
+                key: format!("key_{i}").into_bytes(),
+                value: format!("val_{i}").into_bytes(),
+            };
+            let (batch, _) = wal.prepare_batch(vec![(op, i)]).await?;
+            wal.append_batch(batch).await?;
+        }
+    }
+
+    // 2. Unvollständigen / korrumpierten Frame am Dateiende simulieren
+    let mut raw_bytes = tokio::fs::read(&wal_path).await?;
+    // Hänge einen unvollständigen Frame an: 4 Bytes Länge, 12 Bytes Nonce, 10 Bytes fehlerhafter Ciphertext
+    let fake_len = (12 + 10) as u32;
+    raw_bytes.extend_from_slice(&fake_len.to_le_bytes());
+    raw_bytes.extend_from_slice(&[0x42u8; 12]); // Fake Nonce
+    raw_bytes.extend_from_slice(&[0x99u8; 10]); // Fake Ciphertext (schlägt bei AEAD fehl)
+    tokio::fs::write(&wal_path, &raw_bytes).await?;
+
+    // 3. Replay muss tolerieren, dass am Dateiende die Entschlüsselung fehlschlägt
+    let wal_reopened = Wal::open_read_only_with_config(&wal_path, config).await?;
+    let entries = wal_reopened.replay().await?;
+    assert_eq!(
+        entries.len(),
+        2,
+        "AEAD-Tail-Fehler muss als unvollständiger Write toleriert werden"
+    );
+    assert_eq!(entries[0].1.seq_no, 1);
+    assert_eq!(entries[1].1.seq_no, 2);
+
+    Ok(())
+}
+
+/// T-WAL-1: Ablehnung von Deserialisierungsfehlern nach erfolgreicher AEAD-Entschlüsselung (Fail-Closed).
+#[tokio::test]
+async fn test_t_wal_1_deserialization_failure_rejected_in_authenticated_chunk() -> Result<()> {
+    let dir = tempdir()?;
+    let wal_path = dir.path().join("t_wal_1_authenticated_corrupt.wal");
+
+    let km = Arc::new(KeyManager::try_new(
+        "passphrase123",
+        b"salt123456789012345678901234567890",
+    )?);
+    let mut config = WalConfig::default();
+    config.key_manager = Some(km.clone());
+
+    // UUID abrufen und sub_km ableiten (wie von Wal::open erwartet)
+    let uuid_bytes = Wal::load_or_create_wal_uuid(&wal_path).await?;
+    let sub_km = km.derive_file_key(&uuid_bytes)?;
+
+    // Erzeuge eine Datei mit V3 Header und einem verschlüsselten Frame, dessen Klartext korrumpierte Deserialisierungsdaten enthält
+    let mut bad_inner_plaintext = Vec::new();
+    // Innerer Längen-Präfix: 16 Bytes
+    bad_inner_plaintext.extend_from_slice(&16u32.to_le_bytes());
+    // 16 Bytes Müll (kein gültiger WalEntry, CRC und Framing fehlerhaft)
+    bad_inner_plaintext.extend_from_slice(&[0xFFu8; 16]);
+
+    let (ciphertext, nonce) = sub_km.encrypt_auto_nonce(&bad_inner_plaintext)?;
+    let chunk_len = (12 + ciphertext.len()) as u32;
+
+    let mut wal_bytes = Vec::new();
+    wal_bytes.extend_from_slice(&WAL_V3_HEADER);
+    wal_bytes.extend_from_slice(&chunk_len.to_le_bytes());
+    wal_bytes.extend_from_slice(&nonce);
+    wal_bytes.extend_from_slice(&ciphertext);
+
+    tokio::fs::write(&wal_path, &wal_bytes).await?;
+
+    // Replay muss hart mit ActaError::wal_corruption fehlschlagen!
+    let wal = Wal::open_read_only_with_config(&wal_path, config).await?;
+    let replay_res = wal.replay().await;
+    assert!(
+        replay_res.is_err(),
+        "Deserialisierungsfehler in authentifiziertem Chunk MUSS hart abgelehnt werden"
+    );
+    let err = replay_res.err().unwrap();
+    assert!(
+        matches!(err, ActaError::WalCorruption { .. }),
+        "Erwartet WalCorruption, erhalten: {:?}",
+        err
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_buffer_slice_bounds_mismatch_no_panic() {
     let dir = tempdir().expect("tempdir");
-    let wal_path = dir.path().join("mmap_bounds.wal");
+    let wal_path = dir.path().join("buffer_bounds.wal");
 
     {
         let wal = Wal::open(&wal_path).await.expect("open wal");
@@ -1511,12 +1591,12 @@ async fn test_mmap_slice_bounds_mismatch_no_panic() {
 
     // Pass a slice that is deliberately shorter than reported file_size
     let truncated_slice = &real_data[..real_data.len() / 2];
-    let res = wal.parse_mmap_slice(truncated_slice, real_file_size);
+    let res = wal.parse_buffer_slice(truncated_slice, real_file_size);
 
     // Verify it handles the truncated slice gracefully without panic
     assert!(
         res.is_ok() || matches!(res, Err(ActaError::WalCorruption { .. })),
-        "parse_mmap_slice with slice shorter than file_size must not panic"
+        "parse_buffer_slice with slice shorter than file_size must not panic"
     );
 }
 
@@ -1576,7 +1656,7 @@ async fn test_single_entry_no_commit_marker_replay() -> Result<()> {
 }
 
 #[tokio::test]
-async fn test_wal_replay_stream_vs_mmap_parity() -> Result<()> {
+async fn test_wal_replay_stream_vs_buffer_parity() -> Result<()> {
     let dir = tempdir()?;
     let wal_path = dir.path().join("parity_test.wal");
 
@@ -1594,7 +1674,7 @@ async fn test_wal_replay_stream_vs_mmap_parity() -> Result<()> {
     let metadata = tokio::fs::metadata(&wal_path).await?;
     let file_size = metadata.len();
 
-    let (mmap_entries, mmap_version) = wal.replay_mmap().await?;
+    let (buffer_entries, buffer_version) = wal.replay_buffer().await?;
 
     let mut stream_entries = Vec::new();
     let stream_version = wal
@@ -1604,13 +1684,13 @@ async fn test_wal_replay_stream_vs_mmap_parity() -> Result<()> {
         })
         .await?;
 
-    assert_eq!(mmap_version, stream_version);
-    assert_eq!(mmap_entries.len(), stream_entries.len());
+    assert_eq!(buffer_version, stream_version);
+    assert_eq!(buffer_entries.len(), stream_entries.len());
 
-    for (mmap_item, stream_item) in mmap_entries.iter().zip(stream_entries.iter()) {
-        assert_eq!(mmap_item.0, stream_item.0);
-        assert_eq!(mmap_item.1, stream_item.1);
-        assert_eq!(mmap_item.2, stream_item.2);
+    for (buffer_item, stream_item) in buffer_entries.iter().zip(stream_entries.iter()) {
+        assert_eq!(buffer_item.0, stream_item.0);
+        assert_eq!(buffer_item.1, stream_item.1);
+        assert_eq!(buffer_item.2, stream_item.2);
     }
 
     Ok(())

@@ -1,10 +1,12 @@
-#![allow(unexpected_cfgs)]
-
-//! Loom concurrency model test for `SnapshotRegistry` in `acta-mvcc`.
-//! Execution: `RUSTFLAGS="--cfg loom" cargo test -p acta-mvcc --test loom_snapshot_registry -- --nocapture`
+//! # Loom-Modell- und Nebenläufigkeitstests für `SnapshotRegistry`
+//!
+//! Verifiziert die atomare Mindestwert-Berechnung und Lock-Freiheit der SnapshotRegistry:
+//! - Unter Loom: Exhaustive Permutation aller Thread-Interleavings.
+//! - Unter Standard-Cargo: Paralleler Multi-Thread-Stresstest über 16 Worker-Threads.
 
 #[cfg(loom)]
 mod loom_tests {
+    use acta_testmacros::ctx_test;
     use loom::sync::Arc;
     use loom::sync::Mutex;
     use loom::thread;
@@ -26,7 +28,7 @@ mod loom_tests {
         fn new() -> Self {
             Self {
                 active: Mutex::new(BTreeMap::new()),
-                min_active_seqno: AtomicU64::new(u64::MAX),
+                min_active_seqno: AtomicU64::new(0),
             }
         }
 
@@ -47,17 +49,23 @@ mod loom_tests {
             self.update_min(&active);
         }
 
+        fn min_read_snapshot(&self) -> Option<u64> {
+            let active = self.active.lock().unwrap();
+            active.keys().next().copied()
+        }
+
         fn min_active_seqno(&self) -> u64 {
             self.min_active_seqno.load(Ordering::Acquire)
         }
 
         fn update_min(&self, active: &BTreeMap<u64, usize>) {
-            let min = active.keys().next().copied().unwrap_or(u64::MAX);
+            let min = active.keys().next().copied().unwrap_or(0);
             self.min_active_seqno.store(min, Ordering::Release);
         }
     }
 
-    #[test]
+    // Loom-Test: Modelliert nebenläufige Registrierung und Freigabe über 2 Threads.
+    #[ctx_test(id = "T-SNAP-1")]
     fn test_loom_snapshot_registry_concurrent_register_release() {
         loom::model(|| {
             let registry = Arc::new(MockSnapshotRegistry::new());
@@ -82,11 +90,13 @@ mod loom_tests {
             t1.join().unwrap();
             t2.join().unwrap();
 
-            assert_eq!(registry.min_active_seqno(), u64::MAX);
+            assert_eq!(registry.min_read_snapshot(), None);
+            assert_eq!(registry.min_active_seqno(), 0);
         });
     }
 
-    #[test]
+    // Loom-Test: Modelliert verschränktes Pinnen und Entpinnen über mehrere Threads.
+    #[ctx_test(id = "T-SNAP-1")]
     fn test_loom_snapshot_registry_interleaved_pin_unpin() {
         loom::model(|| {
             let registry = Arc::new(MockSnapshotRegistry::new());
@@ -111,7 +121,39 @@ mod loom_tests {
             t1.join().unwrap();
             t2.join().unwrap();
 
-            assert_eq!(registry.min_active_seqno(), u64::MAX);
+            assert_eq!(registry.min_read_snapshot(), None);
+            assert_eq!(registry.min_active_seqno(), 0);
+        });
+    }
+
+    // Loom-Test: Modelliert atomares SSI Prune-Through und Watermark-Updates.
+    #[ctx_test(id = "T-CONC-1")]
+    fn test_loom_ssi_prune_and_read_isolation() {
+        loom::model(|| {
+            let pruned_through = Arc::new(AtomicU64::new(0));
+
+            let p1 = Arc::clone(&pruned_through);
+            let p2 = Arc::clone(&pruned_through);
+
+            let t1 = thread::spawn(move || {
+                // Background compactor advances watermark to 50
+                p1.fetch_max(50, Ordering::SeqCst);
+            });
+
+            let t2 = thread::spawn(move || {
+                // Reader checks if snapshot_seq 40 is pruned
+                let current_watermark = p2.load(Ordering::SeqCst);
+                let snapshot_seq = 40;
+                let is_valid = snapshot_seq >= current_watermark;
+                if !is_valid {
+                    assert!(current_watermark >= 50);
+                }
+            });
+
+            t1.join().unwrap();
+            t2.join().unwrap();
+
+            assert_eq!(pruned_through.load(Ordering::SeqCst), 50);
         });
     }
 }
@@ -121,11 +163,13 @@ mod loom_tests {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod normal_tests {
     use acta_mvcc::SnapshotRegistry;
+    use acta_testmacros::ctx_test;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::thread;
 
-    #[test]
+    // Multi-Threaded Stresstest der SnapshotRegistry unter Standard-Laufzeit (ohne Loom-Flag).
+    #[ctx_test(id = "T-SNAP-1")]
     fn test_concurrent_snapshot_registry_stress() {
         let registry = Arc::new(SnapshotRegistry::new());
         let running = Arc::new(AtomicBool::new(true));
@@ -136,7 +180,7 @@ mod normal_tests {
         for i in 0..num_threads {
             let reg = Arc::clone(&registry);
             let run = Arc::clone(&running);
-            let seq_base = (i + 1) as u64 * 100;
+            let seq_base = u64::try_from(i + 1).expect("valid u64") * 100;
 
             handles.push(thread::spawn(move || {
                 let mut count = 0;
@@ -154,6 +198,7 @@ mod normal_tests {
             h.join().expect("thread panicked"); // #[cfg(test)] // expect
         }
 
-        assert_eq!(registry.min_active_seqno(), u64::MAX);
+        assert_eq!(registry.min_read_snapshot(), None);
+        assert_eq!(registry.min_active_seqno(), 0);
     }
 }

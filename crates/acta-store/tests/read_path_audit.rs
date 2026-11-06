@@ -1,7 +1,8 @@
 use bytes::Bytes;
-use acta_core::{StorageEngine, TxId, TOMBSTONE_BIT};
+use acta_ports::StorageEngine;
 use acta_store::memtable::MemTable;
 use acta_store::{LsmConfig, LsmStorage};
+use acta_types::{TxId, TOMBSTONE_BIT};
 use std::collections::BTreeMap;
 use std::ops::Bound;
 use std::sync::Arc;
@@ -15,7 +16,6 @@ async fn test_storage() -> (LsmStorage, TempDir) {
         max_ram_mb: 64,
         tx_timeout: std::time::Duration::from_secs(60),
         compaction: Default::default(),
-        encryption_passphrase: None,
         ..Default::default()
     };
     let storage = LsmStorage::new(config).await.expect("create storage");

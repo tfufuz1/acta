@@ -1,3 +1,7 @@
+//! # Benchmark: MemTable-Operationen
+//!
+//! Misst Einfuege- und Suchzeiten in der In-Memory-MemTable.
+
 use bytes::Bytes;
 use acta_store::memtable::MemTable;
 use criterion::{criterion_group, criterion_main, Criterion};

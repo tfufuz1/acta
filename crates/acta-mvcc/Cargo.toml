@@ -7,10 +7,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "Multi-Version Concurrency Control (MVCC), sequence log, and transaction buffer for Acta"
+description = "Sequenzen, Snapshots und SSI-Validierung für Mehrversions-Nebenläufigkeit."
 
 [package.metadata.acta]
-ring = "0"
+ring = "2"
 
 [dependencies]
 acta-types = { workspace = true }
@@ -26,14 +26,33 @@ tracing = { workspace = true }
 loom = "0.7"
 
 [dev-dependencies]
+acta-testmacros = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
 proptest = "1.4"
 criterion = { workspace = true }
 loom = "0.7"
+acta-testkit = { workspace = true }
+serde_json = { workspace = true }
 
 [[bench]]
 name = "mvcc_bench"
 harness = false
+
+[[bench]]
+name = "bm_mvcc_ssi"
+harness = false
+
+[[bench]]
+name = "bm_mvcc_seq"
+harness = false
+
+[[test]]
+name = "mv_ssi_validation_test"
+path = "tests/mv_ssi_validation_test.rs"
+
+[[test]]
+name = "mv_audit_tests"
+path = "tests/mv_audit_tests.rs"
 
 [[test]]
 name = "ssi_write_skew"
@@ -58,3 +77,11 @@ path = "tests/campaign_cov_ssi_coarsening.rs"
 [[test]]
 name = "campaign_cov_tx_buffer_reap"
 path = "tests/campaign_cov_tx_buffer_reap.rs"
+
+[[test]]
+name = "isolation_tests"
+path = "tests/isolation_tests.rs"
+
+[[test]]
+name = "history_anomaly_checker"
+path = "tests/history_anomaly_checker.rs"

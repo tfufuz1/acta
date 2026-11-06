@@ -5,10 +5,10 @@
 //! These pending tests specify the target behavior defined in ADR-N12 and ADR-N13.
 //! They are ignored until the corresponding production implementations (H1, H2) are integrated.
 
-use acta_core::{ActaError, TxId};
 use acta_store::lsm::{LsmConfig, LsmStorage};
 use acta_store::manifest::{Manifest, ManifestEntry};
 use acta_store::wal::{Wal, WalOp};
+use acta_types::{ActaError, TxId};
 use tempfile::tempdir;
 use tokio::fs;
 

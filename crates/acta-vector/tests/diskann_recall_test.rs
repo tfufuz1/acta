@@ -1,10 +1,19 @@
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 //! Integration test for DiskANN Vamana graph build and Recall@10 accuracy (BEFUND 1).
 //! Verifies that DiskANN achieves Recall@10 >= 0.95 on synthetic dataset.
 //! Ground-truth top-10 neighbors are computed via an independent brute-force reference implementation.
 
 #![cfg(feature = "experimental-diskann")]
 
-use acta_core::{DistanceMetric, DocId, VectorIndex};
+use acta_ports::VectorIndex;
+use acta_types::{DistanceMetric, DocId};
 use acta_vector::diskann::{DiskAnnConfig, DiskAnnIndex};
 use rand::Rng;
 use std::collections::HashSet;
@@ -218,7 +227,7 @@ async fn test_diskann_incremental_vs_full_rebuild_recall_parity() {
 
     for i in base_vectors..(base_vectors + incremental_vectors) {
         inc_index
-            .insert(acta_core::TxId(1), all_ids[i], &all_vectors[i])
+            .insert(acta_types::TxId(1), all_ids[i], &all_vectors[i])
             .await
             .unwrap();
     }

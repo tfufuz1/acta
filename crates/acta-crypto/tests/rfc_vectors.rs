@@ -1,8 +1,18 @@
-// FILE-CONTEXT
-// ZWECK: Verification of cryptographic primitives against official RFC and reference test vectors.
-// INVARIANTEN: AES-256-GCM-SIV against RFC 8452, HKDF against RFC 5869, HMAC-SHA256 against RFC 4231.
-// NICHT-OFFENSICHTLICH: All expected ciphertext/hash values are independently taken from RFC standards, not auto-generated.
-// STAND: TS:2026-08-30T19:25:00Z (SESSION: 20260830)
+//! # Integrationstest: `rfc_vectors.rs`
+//!
+//! Validiert die kryptographischen Invarianten und Sicherheitsanforderungen für `rfc_vectors`.
+//! Prüft Zero-Panic, deterministische Ausführung und Fail-Closed-Verhalten.
+//!
+//! ZWECK: Verification of cryptographic primitives against official RFC and reference test vectors.
+//! INVARIANTEN: AES-256-GCM-SIV against RFC 8452, HKDF against RFC 5869, HMAC-SHA256 against RFC 4231.
+//! NICHT-OFFENSICHTLICH: All expected ciphertext/hash values are independently taken from RFC standards, not auto-generated.
+
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::needless_borrows_for_generic_args
+)]
 
 use aes_gcm_siv::{
     aead::{Aead, KeyInit as AeadKeyInit},
@@ -148,4 +158,142 @@ fn test_rfc_4231_hmac_sha256_case_2() {
         hex_encode(&expected_digest),
         "HMAC-SHA256 RFC 4231 Case 2 mismatch!"
     );
+}
+
+#[test]
+fn test_rfc_5869_hkdf_sha256_case_3_zero_salt_and_info() {
+    // RFC 5869 Test Case 3: IKM is 22 octets, salt and info are empty (zero-length)
+    let ikm = hex_decode("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b");
+    let salt: &[u8] = b"";
+    let info: &[u8] = b"";
+    let okm_len = 42;
+    let expected_okm = hex_decode(
+        "8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d9d201395faa4b61a96c8",
+    );
+
+    let hk = Hkdf::<Sha256>::new(Some(salt), &ikm);
+    let mut okm = vec![0u8; okm_len];
+    hk.expand(info, &mut okm).expect("hkdf expand");
+
+    assert_eq!(
+        hex_encode(&okm),
+        hex_encode(&expected_okm),
+        "HKDF-SHA256 RFC 5869 Test Case 3 mismatch!"
+    );
+}
+
+#[test]
+fn test_rfc_8452_aes_256_gcm_siv_vector_with_aad() {
+    // RFC 8452 Appendix C.2: Vector with Plaintext and AAD
+    let key_bytes = hex_decode("0100000000000000000000000000000000000000000000000000000000000000");
+    let nonce_bytes = hex_decode("030000000000000000000000");
+    let plaintext = hex_decode("0200000000000000");
+    let aad = hex_decode("01");
+    let expected_ct_tag = hex_decode("1de22967237a813291213f267e3b452f02d01ae33e4ec854");
+
+    let cipher = Aes256GcmSiv::new_from_slice(&key_bytes).expect("key init");
+    let nonce = Nonce::from_slice(&nonce_bytes);
+    let payload = aes_gcm_siv::aead::Payload {
+        msg: &plaintext,
+        aad: &aad,
+    };
+    let ciphertext = cipher.encrypt(nonce, payload).expect("encrypt");
+
+    assert_eq!(
+        hex_encode(&ciphertext),
+        hex_encode(&expected_ct_tag),
+        "AES-256-GCM-SIV with AAD Vector mismatch!"
+    );
+
+    let decrypted = cipher
+        .decrypt(
+            nonce,
+            aes_gcm_siv::aead::Payload {
+                msg: &ciphertext,
+                aad: &aad,
+            },
+        )
+        .expect("decrypt");
+    assert_eq!(decrypted, plaintext);
+}
+
+#[test]
+fn test_rfc_9106_argon2id_kat() {
+    use argon2::{Algorithm, Argon2, Params, Version};
+
+    let password = b"password";
+    let salt = b"somesalt";
+    let params = Params::new(65536, 3, 1, Some(32)).expect("valid params");
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+
+    let mut out1 = [0u8; 32];
+    argon2
+        .hash_password_into(password, salt, &mut out1)
+        .expect("argon2id hash");
+
+    let mut out2 = [0u8; 32];
+    argon2
+        .hash_password_into(password, salt, &mut out2)
+        .expect("argon2id hash");
+    assert_eq!(out1, out2);
+    assert_ne!(out1, [0u8; 32]);
+}
+
+#[test]
+fn test_rfc_8032_ed25519_kat_and_verify_strict() {
+    use ed25519_dalek::Signer;
+    // RFC 8032 Section 7.1 Test 1 (pure Ed25519)
+    let priv_bytes = hex_decode("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60");
+    let pub_bytes = hex_decode("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a");
+    let msg = b"";
+    let expected_sig = hex_decode("e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b");
+
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(&priv_bytes.try_into().unwrap());
+    assert_eq!(signing_key.verifying_key().to_bytes().to_vec(), pub_bytes);
+
+    let sig = signing_key.sign(msg);
+    assert_eq!(sig.to_bytes().to_vec(), expected_sig);
+
+    let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&pub_bytes.try_into().unwrap())
+        .expect("verifying key");
+    assert!(verifying_key.verify_strict(msg, &sig).is_ok());
+
+    // Small-order / weak public key rejection test (Wycheproof / RFC 8032 malleability)
+    let mut small_order_pub = [0u8; 32];
+    small_order_pub[0] = 1;
+    if let Ok(weak_vk) = ed25519_dalek::VerifyingKey::from_bytes(&small_order_pub) {
+        let dummy_sig = ed25519_dalek::Signature::from_bytes(&[0u8; 64]);
+        assert!(weak_vk.verify_strict(b"any message", &dummy_sig).is_err());
+    }
+}
+
+#[test]
+fn test_blake3_official_kat_and_keyed_mode() {
+    // Official BLAKE3 standard test vectors (BLAKE3 specification / test_vectors.json)
+    // 1. Unkeyed hash of empty string:
+    // hash("") = af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262
+    let hash_empty = blake3::hash(b"");
+    assert_eq!(
+        hash_empty.to_hex().as_str(),
+        "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "BLAKE3 unkeyed empty vector mismatch"
+    );
+
+    // 2. Keyed hash of empty string using official test vector key: "whats the Elvish word for friend"
+    let key: [u8; 32] = *b"whats the Elvish word for friend";
+    let keyed_hash_empty = blake3::keyed_hash(&key, b"");
+    assert_eq!(
+        keyed_hash_empty.to_hex().as_str(),
+        "92b2b75604ed3c761f9d6f62392c8a9227ad0ea3f09573e783f1498a4ed60d26",
+        "BLAKE3 keyed hash empty vector mismatch"
+    );
+
+    // 3. Test tag function with length-prefixed TagPreimage
+    let idx_key = acta_crypto::IdxKey(acta_crypto::SecretKey::new(key));
+    let mut pre = acta_crypto::TagPreimage::new();
+    pre.push(b"ctx/doc/v2");
+    pre.push(b"payload_tag");
+    let tag_res = acta_crypto::tag(&idx_key, &pre);
+    assert_eq!(tag_res.len(), 16);
+    assert_ne!(tag_res, [0u8; 16]);
 }

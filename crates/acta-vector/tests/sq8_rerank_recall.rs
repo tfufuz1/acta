@@ -1,7 +1,15 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::needless_range_loop)]
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 
-use acta_core::{DistanceMetric, DocId, TxId, VectorIndex};
 use acta_ports::SeededRng;
+use acta_ports::VectorIndex;
+use acta_types::{DistanceMetric, DocId, TxId};
 use acta_vector::hnsw::{HnswConfigBuilder, HnswIndex};
 use std::sync::Arc;
 
@@ -95,7 +103,6 @@ async fn test_sq8_rerank_recall_measurement() {
     let mut data_rng = SimpleRng::new(4242);
     let mut dataset = Vec::with_capacity(num_vecs);
     for i in 1..=num_vecs {
-        // Construct DocId using From<u64> to maintain compatibility across docid-128 and 64-bit modes
         let doc_id = DocId::from(i as u64);
         let vec = data_rng.next_unit_vector(dim);
         dataset.push((doc_id, vec));

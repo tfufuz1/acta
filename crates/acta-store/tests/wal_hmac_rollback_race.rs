@@ -6,9 +6,10 @@
 //! Verifies that `commit_mutex` serialization prevents race conditions between
 //! a failing transaction undergoing WAL HMAC rollback and a concurrent successful commit.
 
-use acta_core::{StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
 use acta_store::wal::FAIL_APPEND_FOR_TX;
+use acta_types::TxId;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tempfile::tempdir;

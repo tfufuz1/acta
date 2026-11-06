@@ -4,8 +4,9 @@
 //!
 //! Evaluates `PowerCutSimulation` defined in `rules/chaos_testing.md` and `TEST/MASTER_INTEGRATION_PLAN.md`.
 
-use acta_core::{ActaError, StorageEngine};
+use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
+use acta_types::ActaError;
 use rand::Rng;
 use std::collections::HashMap;
 use std::fs;

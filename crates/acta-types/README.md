@@ -1,23 +1,11 @@
-# acta-types
+Reine Datentypen: IDs, Tags, Schlüssel, Fehler, Löschtypen. Kein I/O.
 
-`acta-types` definiert die zentralen Domänentypen und Fehler-Enums für Acta (Ring 0).
+## Status
 
-## Zweck
+Ring 0. Kanonische Zieltypen nach [`docs/SPEC.md`](../../docs/SPEC.md), Abschnitt 5.1 und 8 sowie `docs/specs/01-acta-types.md`.
 
-Kannolischer Typen- und Fehlerkatalog des Gesamtsystems: Identifikatoren (`DocId`, `DocIdx`, `TxId`, `TenantId`), `ModelFingerprint`, `ActaError`, DTOs und Tombstone-Semantik. Besitzt keine Asynchronität und kein I/O.
+## Abhängigkeiten
 
-## Ring-Zugehörigkeit & Status
+Erlaubt laut SPEC 5.3: keine (Ring 0).
 
-- **Ring:** Ring 0 (Typen-Kern, kein `tokio`)
-- **Status:** 🟢 Fertig
-- **Sicherheits-Invariante:** `#![forbid(unsafe_code)]`
-
-## Öffentliche API-Übersicht
-
-- **Fehler & DTOs:** `ActaError`, `Result`, `ActaErrorDto`
-- **Fingerprints & Schema:** `ModelFingerprint`, `DocIdWidth`, `ManifestSchemaVersion`
-- **Tombstones & Types:** `SeqBitTombstone`, `TombstoneSemanticsCheck`, Identifikatoren
-
-## Architektur & Verweise
-
-Details zur Typenhierarchie finden sich in [`ARCHITECTURE.md`](../../ARCHITECTURE.md) (folgt in Kürze) und `README.md` §4.2.
+Das Crate ist Teil der Architekturprüfung (`acta-arch-tests`). Abhängigkeiten werden nicht von Hand gepflegt, sondern gegen die Matrix geprüft (AR-1, AR-11).

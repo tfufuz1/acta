@@ -1,7 +1,15 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::needless_range_loop)]
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 
-use acta_core::{DistanceMetric, DocId, TxId, VectorIndex};
 use acta_ports::SeededRng;
+use acta_ports::VectorIndex;
+use acta_types::{DistanceMetric, DocId, TxId};
 use acta_vector::acorn::FilteredIndex;
 use acta_vector::hnsw::{HnswConfigBuilder, HnswIndex};
 use std::sync::Arc;
@@ -108,8 +116,7 @@ async fn test_filtered_search_selectivity_recall() {
     println!("(Hinweis: Messung beinhaltet nur Index-/Speicherlatenz, ohne Embedding-Inferenz)");
 
     for (label, modulus, target_rem) in selectivities {
-        let predicate =
-            Arc::new(move |id: DocId| id.inner() % (modulus as u128) == target_rem as u128);
+        let predicate = Arc::new(move |id: DocId| (id.inner() as u64) % modulus == target_rem);
 
         let mut query_rng = SimpleRng::new(54321);
         let mut std_hits = 0;

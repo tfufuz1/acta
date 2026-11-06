@@ -1,7 +1,11 @@
+//! # Erweiterte SSTable-Leseoperationen (Ring 1)
+//!
+//! Stellt Scanner und Hilfsiteratoren fuer Snapshot-orientierte Abfragen bereit.
+
 use super::block_search::{binary_search_index_in_block, get_entry_at_index};
 use super::reader::{parse_block_trailer, SstableReader};
 use bytes::Bytes;
-use acta_core::{ActaError, Result};
+use acta_types::{ActaError, Result};
 
 impl SstableReader {
     /// Scans the SSTable for keys starting with the given prefix.
@@ -20,8 +24,14 @@ impl SstableReader {
         };
 
         // Rewind start_idx to the earliest block whose last_key >= prefix
-        while start_idx > 0 && self.index[start_idx - 1].0.as_ref() >= prefix {
-            start_idx -= 1;
+        while start_idx > 0 {
+            if let Some(prev) = self.index.get(start_idx - 1) {
+                if prev.0.as_ref() >= prefix {
+                    start_idx -= 1;
+                    continue;
+                }
+            }
+            break;
         }
 
         for idx in start_idx..self.index.len() {
@@ -163,47 +173,7 @@ impl SstableReader {
             return Ok(results);
         }
 
-        let mut start_idx = match start {
-            Bound::Included(s) | Bound::Excluded(s) => {
-                match self.index.binary_search_by(|(k, _)| k.as_ref().cmp(s)) {
-                    Ok(i) => i,
-                    Err(i) => i,
-                }
-            }
-            Bound::Unbounded => 0,
-        };
-
-        while start_idx > 0 {
-            let prev_last = self.index[start_idx - 1].0.as_ref();
-            let rewind = match start {
-                Bound::Included(s) => prev_last >= s,
-                Bound::Excluded(s) => prev_last >= s,
-                Bound::Unbounded => false,
-            };
-            if rewind {
-                start_idx -= 1;
-            } else {
-                break;
-            }
-        }
-
-        if start_idx >= self.index.len() {
-            return Ok(results);
-        }
-
-        for idx in start_idx..self.index.len() {
-            if idx > start_idx {
-                let prev_last = self.index[idx - 1].0.as_ref();
-                let past_end = match end {
-                    Bound::Included(e) => prev_last > e,
-                    Bound::Excluded(e) => prev_last >= e,
-                    Bound::Unbounded => false,
-                };
-                if past_end {
-                    break;
-                }
-            }
-
+        for idx in 0..self.index.len() {
             let offset = self
                 .index
                 .get(idx)

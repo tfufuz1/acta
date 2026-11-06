@@ -1,6 +1,9 @@
-use acta_core::{ActaError, Result, TxId};
-#[cfg(feature = "wal-integrity")]
-use acta_crypto::wal_crypto::WalHmac;
+//! # WAL-Frame-Kodierung (Ring 1)
+//!
+//! Kodiert und dekodiert WAL-Eintraege mit Laengenfeldern, Sequenznummern und Prüfsummen.
+
+use super::verifier::WalHmac;
+use acta_types::{ActaError, Result, TxId};
 
 use super::MAX_WAL_ENTRY_SIZE;
 
@@ -125,60 +128,13 @@ impl WalEntry {
         integrity_key: &[u8],
         prev_hmac: [u8; 32],
     ) -> Result<Self> {
-        let checksum = Self::compute_checksum(&op, seq_no, integrity_key, prev_hmac)?;
+        let checksum = Self::compute_checksum_v3(&op, seq_no, integrity_key, prev_hmac)?;
         Ok(Self {
             op,
             seq_no,
             checksum,
             prev_hmac,
         })
-    }
-
-    /// Computes default checksum (delegates to V3).
-    pub fn compute_checksum(
-        op: &WalOp,
-        seq_no: u64,
-        integrity_key: &[u8],
-        prev_hmac: [u8; 32],
-    ) -> Result<[u8; 32]> {
-        Self::compute_checksum_v3(op, seq_no, integrity_key, prev_hmac)
-    }
-
-    /// Legacy V2 checksum calculation (without tx_id and length-prefixes in HMAC).
-    pub fn compute_checksum_v2(
-        op: &WalOp,
-        seq_no: u64,
-        integrity_key: &[u8],
-        prev_hmac: [u8; 32],
-    ) -> Result<[u8; 32]> {
-        #[cfg(feature = "wal-integrity")]
-        {
-            let mut mac = WalHmac::new(integrity_key)?;
-
-            mac.update(&prev_hmac);
-            mac.update(&seq_no.to_le_bytes());
-            match op {
-                WalOp::Put { key, value, .. } => {
-                    mac.update(&[0u8]);
-                    mac.update(key);
-                    mac.update(value);
-                }
-                WalOp::Delete { key, .. } => {
-                    mac.update(&[1u8]);
-                    mac.update(key);
-                }
-                WalOp::TxEnd { committed, .. } => {
-                    mac.update(&[2u8]);
-                    mac.update(&[*committed as u8]);
-                }
-            }
-            Ok(mac.finalize())
-        }
-        #[cfg(not(feature = "wal-integrity"))]
-        {
-            let _ = (op, seq_no, integrity_key, prev_hmac);
-            Ok([0u8; 32])
-        }
     }
 
     /// Computes V3 checksum (includes tx_id and length prefixes for key/value).
@@ -188,43 +144,80 @@ impl WalEntry {
         integrity_key: &[u8],
         prev_hmac: [u8; 32],
     ) -> Result<[u8; 32]> {
-        #[cfg(feature = "wal-integrity")]
-        {
-            let mut mac = WalHmac::new(integrity_key)?;
+        let mut mac = WalHmac::new(integrity_key)?;
 
-            // Hash Chaining: binding to the previous entry
-            mac.update(&prev_hmac);
-            mac.update(&seq_no.to_le_bytes());
+        // Hash Chaining: binding to the previous entry
+        mac.update(&prev_hmac);
+        mac.update(&seq_no.to_le_bytes());
 
-            // tx_id MUST come before op_type
-            let tx_id_bytes = op.tx_id().inner().to_le_bytes();
-            mac.update(&tx_id_bytes);
+        // tx_id MUST come before op_type
+        let tx_id_bytes = op.tx_id().inner().to_le_bytes();
+        mac.update(&tx_id_bytes);
 
-            match op {
-                WalOp::Put { key, value, .. } => {
-                    mac.update(&[0u8]); // op type
-                    mac.update(&(key.len() as u32).to_le_bytes());
-                    mac.update(key);
-                    mac.update(&(value.len() as u32).to_le_bytes());
-                    mac.update(value);
-                }
-                WalOp::Delete { key, .. } => {
-                    mac.update(&[1u8]); // op type
-                    mac.update(&(key.len() as u32).to_le_bytes());
-                    mac.update(key);
-                }
-                WalOp::TxEnd { committed, .. } => {
-                    mac.update(&[2u8]); // op type
-                    mac.update(&[*committed as u8]);
-                }
+        match op {
+            WalOp::Put { key, value, .. } => {
+                mac.update(&[0u8]); // op type
+                let k_len = u32::try_from(key.len())
+                    .map_err(|_| ActaError::Serialization("Key length exceeds u32".into()))?;
+                mac.update(&k_len.to_le_bytes());
+                mac.update(key);
+                let v_len = u32::try_from(value.len()).map_err(|_| {
+                    ActaError::Serialization("Value length exceeds u32".into())
+                })?;
+                mac.update(&v_len.to_le_bytes());
+                mac.update(value);
             }
-            Ok(mac.finalize())
+            WalOp::Delete { key, .. } => {
+                mac.update(&[1u8]); // op type
+                let k_len = u32::try_from(key.len())
+                    .map_err(|_| ActaError::Serialization("Key length exceeds u32".into()))?;
+                mac.update(&k_len.to_le_bytes());
+                mac.update(key);
+            }
+            WalOp::TxEnd { committed, .. } => {
+                mac.update(&[2u8]); // op type
+                mac.update(&[*committed as u8]);
+            }
         }
-        #[cfg(not(feature = "wal-integrity"))]
-        {
-            let _ = (op, seq_no, integrity_key, prev_hmac);
-            Ok([0u8; 32])
+        Ok(mac.finalize())
+    }
+
+    /// Legacy V2 checksum calculation (without tx_id and length-prefixes in HMAC).
+    pub fn compute_checksum_v2(
+        op: &WalOp,
+        seq_no: u64,
+        integrity_key: &[u8],
+        prev_hmac: [u8; 32],
+    ) -> Result<[u8; 32]> {
+        let mut mac = WalHmac::new(integrity_key)?;
+
+        mac.update(&prev_hmac);
+        mac.update(&seq_no.to_le_bytes());
+        match op {
+            WalOp::Put { key, value, .. } => {
+                mac.update(&[0u8]);
+                mac.update(key);
+                mac.update(value);
+            }
+            WalOp::Delete { key, .. } => {
+                mac.update(&[1u8]);
+                mac.update(key);
+            }
+            WalOp::TxEnd { committed, .. } => {
+                mac.update(&[2u8]);
+                mac.update(&[*committed as u8]);
+            }
         }
+        Ok(mac.finalize())
+    }
+
+    pub fn compute_checksum(
+        op: &WalOp,
+        seq_no: u64,
+        integrity_key: &[u8],
+        prev_hmac: [u8; 32],
+    ) -> Result<[u8; 32]> {
+        Self::compute_checksum_v3(op, seq_no, integrity_key, prev_hmac)
     }
 
     /// Serializes the entry to bytes.
@@ -251,7 +244,9 @@ impl WalEntry {
                 total_payload_size, MAX_WAL_ENTRY_SIZE
             )));
         }
-        buf.extend_from_slice(&(total_payload_size as u32).to_le_bytes());
+        let total_payload_u32 = u32::try_from(total_payload_size)
+            .map_err(|_| ActaError::Serialization("Payload size exceeds u32".into()))?;
+        buf.extend_from_slice(&total_payload_u32.to_le_bytes());
 
         // 2. CRC32 Placeholder (we'll fill this at the end)
         let crc_offset = buf.len();
@@ -267,15 +262,22 @@ impl WalEntry {
             WalOp::Put { tx_id, key, value } => {
                 buf.push(0u8);
                 buf.extend_from_slice(&tx_id.inner().to_le_bytes());
-                buf.extend_from_slice(&(key.len() as u32).to_le_bytes());
+                let k_len = u32::try_from(key.len())
+                    .map_err(|_| ActaError::Serialization("Key length exceeds u32".into()))?;
+                buf.extend_from_slice(&k_len.to_le_bytes());
                 buf.extend_from_slice(key);
-                buf.extend_from_slice(&(value.len() as u32).to_le_bytes());
+                let v_len = u32::try_from(value.len()).map_err(|_| {
+                    ActaError::Serialization("Value length exceeds u32".into())
+                })?;
+                buf.extend_from_slice(&v_len.to_le_bytes());
                 buf.extend_from_slice(value);
             }
             WalOp::Delete { tx_id, key } => {
                 buf.push(1u8);
                 buf.extend_from_slice(&tx_id.inner().to_le_bytes());
-                buf.extend_from_slice(&(key.len() as u32).to_le_bytes());
+                let k_len = u32::try_from(key.len())
+                    .map_err(|_| ActaError::Serialization("Key length exceeds u32".into()))?;
+                buf.extend_from_slice(&k_len.to_le_bytes());
                 buf.extend_from_slice(key);
             }
             WalOp::TxEnd { tx_id, committed } => {
@@ -286,8 +288,14 @@ impl WalEntry {
         }
 
         // 4. Compute CRC32 over payload and fill placeholder
-        let crc = crc32fast::hash(&buf[payload_start..]);
-        buf[crc_offset..crc_offset + 4].copy_from_slice(&crc.to_le_bytes());
+        let payload_slice = buf
+            .get(payload_start..)
+            .ok_or_else(|| ActaError::Serialization("Payload start out of bounds".into()))?;
+        let crc = crc32fast::hash(payload_slice);
+        let crc_target = buf
+            .get_mut(crc_offset..crc_offset + 4)
+            .ok_or_else(|| ActaError::Serialization("CRC placeholder out of bounds".into()))?;
+        crc_target.copy_from_slice(&crc.to_le_bytes());
 
         Ok(buf)
     }

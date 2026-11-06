@@ -7,26 +7,25 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "HNSW vector index with SIMD distance computation for Acta"
+description = "HNSW-Vektorindex mit Arena, löschbaren Slots und verschlüsseltem Snapshot."
 
 [package.metadata.acta]
-ring = "0"
+ring = "2"
 
 [dependencies]
 acta-types = { workspace = true }
 acta-ports = { workspace = true }
-acta-core = { workspace = true }
 acta-crypto = { workspace = true }
 acta-simd = { workspace = true }
-acta-sys = { workspace = true }
 subtle = "2.6"
 ahash = { workspace = true }
 parking_lot = { workspace = true }
 rand = { workspace = true }
 roaring = { workspace = true }
 tracing = { workspace = true }
-memmap2 = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+zeroize = "1.8"
+blake3 = { workspace = true }
 
 [features]
 default = []
@@ -46,6 +45,7 @@ graph = []
 partial-index-rebuild = []
 
 [dev-dependencies]
+acta-testmacros = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
 criterion = "0.5"
 tempfile = "3"
@@ -104,7 +104,7 @@ name = "diskann_recall_test"
 required-features = ["experimental-diskann"]
 
 [[test]]
-name = "mmap_toctou_test"
+name = "toctou_test"
 required-features = ["experimental-diskann"]
 
 [[test]]

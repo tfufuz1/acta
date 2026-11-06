@@ -11,8 +11,8 @@
 )]
 
 use bytes::Bytes;
-use acta_core::{TxId, TOMBSTONE_BIT};
 use acta_store::memtable::{MemTable, RESERVED_PREFIXES};
+use acta_types::{TxId, TOMBSTONE_BIT};
 use proptest::prelude::*;
 use std::collections::BTreeMap;
 use std::ops::Bound;

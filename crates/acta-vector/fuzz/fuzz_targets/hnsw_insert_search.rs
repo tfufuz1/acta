@@ -2,7 +2,8 @@
 
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
-use acta_core::{DistanceMetric, DocId, TxId, VectorIndex};
+use acta_types::{DistanceMetric, DocId, TxId};
+use acta_ports::VectorIndex;
 use acta_vector::hnsw::{HnswConfig, HnswIndex};
 
 #[derive(Arbitrary, Debug)]

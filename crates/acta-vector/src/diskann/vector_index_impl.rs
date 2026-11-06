@@ -1,15 +1,14 @@
 // FILE-CONTEXT
 // ZWECK: DiskANN-Graphindex für Out-of-Core Approximate Nearest Neighbor Search (WP-4.3).
-// INVARIANTEN: Lock-Hierarchie: header -> mmap -> cache / quantizer / doc_ids; atomic rename + parent dir sync bei file persistence.
-// NICHT-OFFENSICHTLICH: Mmap für Vektor- & Graphlesezugriffe, ausgelagert an acta-sys::mmap_readonly.
+// INVARIANTEN: Lock-Hierarchie: header -> vfs_file -> cache / quantizer / doc_ids; atomic rename + parent dir sync bei file persistence.
+// NICHT-OFFENSICHTLICH: Positional VFS-Lesevorgänge über acta_ports::Vfs.
 // STAND: TS:2026-09-10T19:30:00Z (SESSION: a9d67eae)
 
 use super::format::compute_adaptive_flush_threshold;
 use super::types::DiskAnnIndex;
-use acta_core::{
-    ActaError, DocId, Result, ScoredDocument, TxId, VectorIndex, VectorIndexStats,
-};
+use acta_ports::{VectorIndex, VectorIndexStats};
 use acta_simd::validate_vector;
+use acta_types::{ActaError, DocId, Result, ScoredDocument, TxId};
 use std::sync::atomic::Ordering;
 
 impl VectorIndex for DiskAnnIndex {

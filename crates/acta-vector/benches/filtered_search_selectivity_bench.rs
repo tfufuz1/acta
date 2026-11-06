@@ -1,3 +1,11 @@
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 // FILE-CONTEXT
 // ZWECK: Criterion-Benchmark zur Messung des Recall-Abfalls und der Latenz von search_filtered_internal
 //        bei unterschiedlichen Prädikat-Selektivitätsstufen (50%, 20%, 5%, 1%) gegen Brute-Force Ground Truth.
@@ -19,7 +27,8 @@
 // Gemäß der Spike-vor-Neubau-Regel ist die Implementierung von Teil B (ACORN-Stil Graph-Augmentierung)
 // damit VOLLSTÄNDIG GERECHTFERTIGT und ERFORDERLICH.
 
-use acta_core::{DistanceMetric, DocId, ScoredDocument, VectorIndex};
+use acta_ports::VectorIndex;
+use acta_types::{DistanceMetric, DocId, ScoredDocument};
 use acta_vector::diskann::{DiskAnnConfig, DiskAnnIndex};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use rand::rngs::StdRng;

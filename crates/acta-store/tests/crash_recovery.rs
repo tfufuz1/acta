@@ -1,6 +1,7 @@
 // ANCHOR[TEST:STO-001] STATUS:DONE (TS:2026-09-18T00:00:00Z) (SESSION: a4f61283)
-use acta_core::{StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
+use acta_types::TxId;
 use tempfile::TempDir;
 
 #[tokio::test]

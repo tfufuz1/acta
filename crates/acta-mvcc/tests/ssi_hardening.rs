@@ -1,15 +1,20 @@
-//! Hardening and concurrency tests for Serializable Snapshot Isolation (SSI) pruning, limits, and watermarks.
+//! # Härtungs- und Concurrency-Tests für Serializable Snapshot Isolation (SSI)
+//!
+//! Prüft Pruning-Mechanik, atomares Validate-and-Record, Fail-Closed-Verhalten
+//! bei alten Snapshots und Shard-übergreifendes Wasserstand-Tracking.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use acta_mvcc::error::ActaError;
 use acta_mvcc::ssi::{ReadSet, SequenceLogSsiValidator, SsiValidator};
 use acta_mvcc::tx_buffer::TxBuffer;
-use acta_mvcc::types::TxId;
+use acta_testmacros::ctx_test;
+use acta_types::TxId;
 use std::sync::{Arc, Barrier};
 use std::time::Duration;
 
-#[test]
+// Prüft die strikte Atomarität von validate_and_record unter nebenläufiger Thread-Verschränkung.
+#[ctx_test(id = "T-TXN-1")]
 fn test_validate_and_record_atomicity() {
     for _ in 0..500 {
         let validator = SequenceLogSsiValidator::new();
@@ -49,7 +54,8 @@ fn test_validate_and_record_atomicity() {
     }
 }
 
-#[test]
+// Prüft die genaue Funktionsweise von prune_through und das Entfernen historischer Sequenzen.
+#[ctx_test(id = "T-TXN-1")]
 fn test_prune_through_mechanics() {
     let validator = SequenceLogSsiValidator::new();
     validator.record_commit_key(b"key1", 10);
@@ -59,21 +65,25 @@ fn test_prune_through_mechanics() {
     assert_eq!(validator.tracked_commit_keys(), 3);
     assert_eq!(validator.pruned_through(), 0);
 
+    #[allow(deprecated)]
     let removed = validator.prune_through(20);
     assert_eq!(removed, 2);
     assert_eq!(validator.tracked_commit_keys(), 1);
     assert_eq!(validator.pruned_through(), 20);
 
     // Monotonicity check: smaller bound does not lower watermark or remove entries
+    #[allow(deprecated)]
     let removed_2 = validator.prune_through(15);
     assert_eq!(removed_2, 0);
     assert_eq!(validator.pruned_through(), 20);
 }
 
-#[test]
+// Prüft das Fail-Closed-Verhalten: Transaktionen mit Snapshots älter als pruned_through werden deterministisch abgewiesen.
+#[ctx_test(id = "T-TXN-1")]
 fn test_fail_closed_validation() {
     let validator = SequenceLogSsiValidator::new();
     validator.record_commit_key(b"key1", 5);
+    #[allow(deprecated)]
     validator.prune_through(10);
 
     let mut old_rs = ReadSet::new();
@@ -96,7 +106,8 @@ fn test_fail_closed_validation() {
     assert!(res_valid.is_ok());
 }
 
-#[test]
+// Prüft die Ermittlung des kleinsten Lese-Snapshots über mehrere Shards hinweg.
+#[ctx_test(id = "T-SNAP-1")]
 fn test_min_read_snapshot_across_shards() {
     let buffer = TxBuffer::<String>::new_with_config(64, Duration::from_secs(30));
     assert_eq!(buffer.min_read_snapshot(), None);
@@ -119,7 +130,8 @@ fn test_min_read_snapshot_across_shards() {
     assert_eq!(buffer.min_read_snapshot(), None);
 }
 
-#[test]
+// Prüft die Durchsetzung von max_keys bei try_register_read und das Aktualisieren bestehender Schlüssel.
+#[ctx_test(id = "T-TXN-1")]
 fn test_try_register_read_limit_and_updates() {
     let buffer = TxBuffer::<String>::new();
     let tx = TxId::new(100);
@@ -146,7 +158,8 @@ fn test_try_register_read_limit_and_updates() {
 }
 
 proptest::proptest! {
-    #[test]
+    // Eigenschaftstest: Verifiziert, dass Bereinigungen unterhalb des Wasserstands die Validierung oberhalb unberührt lassen.
+#[ctx_test(id = "T-TXN-1")]
     fn prop_prune_equivalence_above_watermark(
         commits in proptest::collection::vec((proptest::collection::vec(0..255u8, 1..8), 1..100u64), 1..30),
         prune_bound in 1..50u64,
@@ -163,6 +176,7 @@ proptest::proptest! {
             val_pruned.record_commit_key(key, *seq);
         }
 
+        #[allow(deprecated)]
         val_pruned.prune_through(prune_bound);
 
         let mut rs = ReadSet::new();

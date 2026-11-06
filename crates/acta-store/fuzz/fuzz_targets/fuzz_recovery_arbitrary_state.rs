@@ -1,6 +1,6 @@
 #![no_main]
 
-use acta_core::StorageEngine;
+use acta_ports::StorageEngine;
 use acta_store::{LsmConfig, LsmStorage};
 use libfuzzer_sys::fuzz_target;
 use tempfile::tempdir;

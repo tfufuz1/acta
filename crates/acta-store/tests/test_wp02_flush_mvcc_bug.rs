@@ -4,12 +4,13 @@
 
 #![forbid(unsafe_code)]
 
-use acta_core::{StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
 use acta_testkit::ReferenceModel;
+use acta_types::TxId;
 
 #[tokio::test]
-async fn test_flush_loses_old_mvcc_versions_bug() -> acta_core::Result<()> {
+async fn test_flush_loses_old_mvcc_versions_bug() -> acta_types::Result<()> {
     let tmp = tempfile::TempDir::new().unwrap();
     let config = LsmConfig {
         path: tmp.path().to_path_buf(),

@@ -1,8 +1,17 @@
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 #![cfg(feature = "partial-index-rebuild")]
 
-use acta_core::{DistanceMetric, DocId, TxId, VectorIndex};
+use acta_ports::VectorIndex;
+use acta_types::{DistanceMetric, DocId, TxId};
 use acta_vector::hnsw::{HnswConfig, HnswIndex};
-use acta_vector::persistence::MmapIndex;
+use acta_vector::persistence::BufferIndex;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::collections::{HashMap, HashSet};
@@ -146,20 +155,20 @@ fn select_clustered_tombstones(vectors: &[Vec<f32>], fraction: f64) -> Vec<u64> 
     vec
 }
 
-/// Extrahiert die rohen Layer-0-Nachbarlisten für alle Knoten aus der MmapIndex-Dateistruktur.
+/// Extrahiert die rohen Layer-0-Nachbarlisten für alle Knoten aus der BufferIndex-Dateistruktur.
 async fn extract_raw_layer0_connections(
     index: &HnswIndex,
     save_path: &std::path::Path,
 ) -> HashMap<u64, Vec<u32>> {
     index.save(save_path).await.expect("save failed");
-    let mmap = MmapIndex::open(save_path).expect("MmapIndex open failed");
-    let node_count = mmap.header.node_count() as usize;
+    let buffer = BufferIndex::open(save_path).expect("BufferIndex open failed");
+    let node_count = buffer.header.node_count() as usize;
 
     let mut conn_map = HashMap::with_capacity(node_count);
     for idx in 0..node_count {
         let node_id = idx as u64;
-        let record = mmap.get_node_record(idx).expect("get_node_record failed");
-        let conns = mmap
+        let record = buffer.get_node_record(idx).expect("get_node_record failed");
+        let conns = buffer
             .get_connections(&record, 0)
             .expect("get_connections failed");
         conn_map.insert(node_id, conns);

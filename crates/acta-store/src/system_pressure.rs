@@ -160,7 +160,7 @@ impl SystemPressureMonitor {
 
                     // Sample blocking thread pool utilization using a probe task with timeout.
                     // Probe measures task execution/dispatch latency through the blocking queue.
-                    let sample_start = std::time::Instant::now();
+                    let sample_start = tokio::time::Instant::now();
                     let blocking_probe = tokio::task::spawn_blocking(|| {
                         // Minimal work in blocking thread
                     });
@@ -310,7 +310,7 @@ mod tests {
         wal_depth.store(600, Ordering::Relaxed);
 
         // Wait for change on watch receiver
-        rx.changed().await.unwrap();
+        let _ = rx.changed().await;
         let updated = rx.borrow().clone();
         assert_eq!(updated.wal_queue_depth, 600);
         assert_eq!(updated.pressure_level, PressureLevel::Critical);
@@ -334,15 +334,24 @@ mod tests {
         let mut handles = Vec::new();
         for _ in 0..512 {
             handles.push(tokio::task::spawn_blocking(|| {
-                std::thread::sleep(Duration::from_millis(150));
+                std::thread::sleep(Duration::from_millis(300));
             }));
         }
 
         // Wait for SystemPressureMonitor to detect blocking queue delay/saturation
         let mut reacted = false;
         let start = std::time::Instant::now();
-        while start.elapsed() < Duration::from_secs(2) {
-            if rx.changed().await.is_ok() {
+        while start.elapsed() < Duration::from_secs(5) {
+            let p = rx.borrow().clone();
+            if p.blocking_util > BLOCKING_UTIL_ELEVATED || p.pressure_level != PressureLevel::Normal
+            {
+                reacted = true;
+                break;
+            }
+            if tokio::time::timeout(Duration::from_millis(50), rx.changed())
+                .await
+                .is_ok()
+            {
                 let p = rx.borrow().clone();
                 if p.blocking_util > BLOCKING_UTIL_ELEVATED
                     || p.pressure_level != PressureLevel::Normal

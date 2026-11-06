@@ -1,0 +1,4 @@
+# Cargo Audit configuration for Acta workspace
+
+[advisories]
+ignore = []

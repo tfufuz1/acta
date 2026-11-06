@@ -1,110 +1,137 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-use acta_rank::fusion::{reciprocal_rank_fusion, SearchResult};
-use acta_types::DocId;
-use std::collections::HashMap;
+//! Referenztests für acta-rank.
 
-/// Helper function adapting RRF interface to accept lists of `DocId` and `k`.
-fn rrf_fusion(result_lists: &[Vec<DocId>], k: usize) -> HashMap<DocId, f32> {
-    let result_sets: Vec<Vec<SearchResult>> = result_lists
-        .iter()
-        .map(|list| {
-            list.iter()
-                .map(|doc_id| SearchResult {
-                    id: doc_id.0.to_string(),
-                    score: 0.0,
-                    metadata: None,
-                    matched_signals: vec![],
-                    provenance: None,
-                })
-                .collect()
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+
+use acta_rank::{rrf_fuse, Candidate, DocHandle, Fused, RankError, RrfScore, K_RRF};
+
+/// SPEC: T-RANK-1
+/// Prüft die naive Referenzimplementierung in Ganzzahlarithmetik gegen `rrf_fuse`.
+fn naive_rrf_reference(lists: &[&[Candidate]], top: usize) -> Result<Vec<Fused>, RankError> {
+    if top == 0 {
+        return Ok(Vec::new());
+    }
+    for list in lists {
+        if list.len() > 1000 {
+            return Err(RankError::TooLarge);
+        }
+        for i in 0..list.len() {
+            for j in (i + 1)..list.len() {
+                if list.get(i).map(|c| (c.handle, c.chunk))
+                    == list.get(j).map(|c| (c.handle, c.chunk))
+                {
+                    return Err(RankError::Duplicate);
+                }
+            }
+        }
+    }
+
+    let mut map: Vec<(DocHandle, u32, u64)> = Vec::new();
+    for list in lists {
+        for (idx, cand) in list.iter().enumerate() {
+            let rank = (idx + 1) as u64;
+            let contrib = (1u64 << 40) / (K_RRF as u64 + rank);
+            if let Some(pos) = map
+                .iter()
+                .position(|(h, chunk, _)| *h == cand.handle && *chunk == cand.chunk)
+            {
+                if let Some(entry) = map.get_mut(pos) {
+                    entry.2 = entry.2.checked_add(contrib).ok_or(RankError::Overflow)?;
+                }
+            } else {
+                map.push((cand.handle, cand.chunk, contrib));
+            }
+        }
+    }
+
+    // Totale Ordnung: Score absteigend, dann doc_tag aufsteigend, dann chunk aufsteigend,
+    // dann cluster_tag aufsteigend.
+    map.sort_by(|a, b| {
+        b.2.cmp(&a.2)
+            .then_with(|| a.0.doc_tag.cmp(&b.0.doc_tag))
+            .then_with(|| a.1.cmp(&b.1))
+            .then_with(|| a.0.cluster_tag.cmp(&b.0.cluster_tag))
+    });
+
+    let res = map
+        .into_iter()
+        .take(top)
+        .map(|(handle, chunk, score)| Fused {
+            handle,
+            chunk,
+            score: RrfScore(score),
         })
         .collect();
 
-    // In `reciprocal_rank_fusion`, internal RRF smoothing parameter is k=60.
-    // `k` passed here controls max_results returned (e.g. max 60 results).
-    let fused = reciprocal_rank_fusion(result_sets, k);
-    let mut scores = HashMap::new();
-    for res in fused {
-        if let Ok(id_val) = res.id.parse::<u64>() {
-            scores.insert(DocId(id_val), res.score);
-        }
-    }
-    scores
+    Ok(res)
 }
 
+/// SPEC: T-RANK-1
 #[test]
-fn rrf_known_values() {
-    let list_a = vec![DocId(1), DocId(2), DocId(3)];
-    let list_b = vec![DocId(2), DocId(1), DocId(3)];
-    let k = 60;
-    let scores = rrf_fusion(&[list_a, list_b], k);
+fn t_rank_1_reference_parity_basic() {
+    let doc1 = DocHandle {
+        cluster_tag: [1; 16],
+        doc_tag: [10; 16],
+    };
+    let doc2 = DocHandle {
+        cluster_tag: [2; 16],
+        doc_tag: [20; 16],
+    };
+    let doc3 = DocHandle {
+        cluster_tag: [1; 16],
+        doc_tag: [30; 16],
+    };
 
-    // Derivation of expected scores with k = 60 (1-based ranking):
-    // DocId(1): List A Rank 1 -> 1/(60+1) = 1/61 ≈ 0.01639344; List B Rank 2 -> 1/(60+2) = 1/62 ≈ 0.01612903.
-    //           Total = 1/61 + 1/62 ≈ 0.03252247
-    // DocId(2): List A Rank 2 -> 1/(60+2) = 1/62 ≈ 0.01612903; List B Rank 1 -> 1/(60+1) = 1/61 ≈ 0.01639344.
-    //           Total = 1/62 + 1/61 ≈ 0.03252247 (same as DocId(1))
-    // DocId(3): List A Rank 3 -> 1/(60+3) = 1/63 ≈ 0.01587302; List B Rank 3 -> 1/(60+3) = 1/63 ≈ 0.01587302.
-    //           Total = 1/63 + 1/63 = 2/63 ≈ 0.03174603
-    assert!((scores[&DocId(3)] - 0.03175).abs() < 0.001);
-    assert!((scores[&DocId(1)] - 0.03252).abs() < 0.001);
-    assert!((scores[&DocId(2)] - 0.03252).abs() < 0.001);
+    let list_a = vec![
+        Candidate {
+            handle: doc1,
+            chunk: 0,
+        },
+        Candidate {
+            handle: doc2,
+            chunk: 0,
+        },
+    ];
+    let list_b = vec![
+        Candidate {
+            handle: doc2,
+            chunk: 0,
+        },
+        Candidate {
+            handle: doc3,
+            chunk: 0,
+        },
+    ];
+
+    let lists: [&[Candidate]; 2] = [&list_a, &list_b];
+    let actual = rrf_fuse(&lists, 10).expect("rrf_fuse should succeed");
+    let expected = naive_rrf_reference(&lists, 10).expect("naive should succeed");
+
+    assert_eq!(actual, expected);
 }
 
+/// SPEC: T-RANK-1
 #[test]
-fn rrf_with_disjoint_lists() {
-    let list_a = vec![DocId(10), DocId(20)];
-    let list_b = vec![DocId(30), DocId(40)];
-    let k = 60;
-    let scores = rrf_fusion(&[list_a, list_b], k);
+fn t_rank_1_reference_parity_disjoint() {
+    let doc1 = DocHandle {
+        cluster_tag: [0; 16],
+        doc_tag: [1; 16],
+    };
+    let doc2 = DocHandle {
+        cluster_tag: [0; 16],
+        doc_tag: [2; 16],
+    };
+    let list_a = vec![Candidate {
+        handle: doc1,
+        chunk: 0,
+    }];
+    let list_b = vec![Candidate {
+        handle: doc2,
+        chunk: 0,
+    }];
 
-    // Derivation of expected scores for disjoint lists (k = 60, 1-based rank):
-    // Since lists are completely disjoint, each document only receives a contribution
-    // from the list in which it appears (no cross-contamination from the other list).
-    //
-    // DocId(10): List A Rank 1 -> 1/(60+1) = 1/61 ≈ 0.016393443
-    // DocId(20): List A Rank 2 -> 1/(60+2) = 1/62 ≈ 0.016129032
-    // DocId(30): List B Rank 1 -> 1/(60+1) = 1/61 ≈ 0.016393443
-    // DocId(40): List B Rank 2 -> 1/(60+2) = 1/62 ≈ 0.016129032
-    let expected_rank1 = 1.0 / 61.0_f32; // ~0.016393443
-    let expected_rank2 = 1.0 / 62.0_f32; // ~0.016129032
+    let lists: [&[Candidate]; 2] = [&list_a, &list_b];
+    let actual = rrf_fuse(&lists, 2).expect("success");
+    let expected = naive_rrf_reference(&lists, 2).expect("success");
 
-    assert!((scores[&DocId(10)] - expected_rank1).abs() < 1e-6);
-    assert!((scores[&DocId(20)] - expected_rank2).abs() < 1e-6);
-    assert!((scores[&DocId(30)] - expected_rank1).abs() < 1e-6);
-    assert!((scores[&DocId(40)] - expected_rank2).abs() < 1e-6);
-}
-
-#[test]
-fn rrf_with_three_lists() {
-    let list_a = vec![DocId(100), DocId(200), DocId(300)];
-    let list_b = vec![DocId(200), DocId(100), DocId(400)];
-    let list_c = vec![DocId(300), DocId(400), DocId(100)];
-    let k = 60;
-    let scores = rrf_fusion(&[list_a, list_b, list_c], k);
-
-    // Derivation of expected scores across 3 lists (k = 60, 1-based rank):
-    //
-    // DocId(100) appears in all 3 lists at different positions:
-    // - List A: Rank 1 -> Term 1 = 1 / (60 + 1) = 1/61 ≈ 0.016393443
-    // - List B: Rank 2 -> Term 2 = 1 / (60 + 2) = 1/62 ≈ 0.016129032
-    // - List C: Rank 3 -> Term 3 = 1 / (60 + 3) = 1/63 ≈ 0.015873016
-    // Total Score DocId(100) = Term 1 + Term 2 + Term 3
-    //                       = 1/61 + 1/62 + 1/63 ≈ 0.048395491
-    let expected_doc100 = (1.0 / 61.0_f32) + (1.0 / 62.0_f32) + (1.0 / 63.0_f32);
-    assert!((scores[&DocId(100)] - expected_doc100).abs() < 1e-6);
-
-    // DocId(200) appears in List A (Rank 2) and List B (Rank 1):
-    // - List A: Rank 2 -> 1 / (60 + 2) = 1/62 ≈ 0.016129032
-    // - List B: Rank 1 -> 1 / (60 + 1) = 1/61 ≈ 0.016393443
-    // Total Score DocId(200) = 1/61 + 1/62 ≈ 0.032522475
-    let expected_doc200 = (1.0 / 61.0_f32) + (1.0 / 62.0_f32);
-    assert!((scores[&DocId(200)] - expected_doc200).abs() < 1e-6);
-
-    // DocId(300) appears in List A (Rank 3) and List C (Rank 1):
-    // - List A: Rank 3 -> 1 / (60 + 3) = 1/63 ≈ 0.015873016
-    // - List C: Rank 1 -> 1 / (60 + 1) = 1/61 ≈ 0.016393443
-    // Total Score DocId(300) = 1/61 + 1/63 ≈ 0.032266459
-    let expected_doc300 = (1.0 / 61.0_f32) + (1.0 / 63.0_f32);
-    assert!((scores[&DocId(300)] - expected_doc300).abs() < 1e-6);
+    assert_eq!(actual, expected);
 }

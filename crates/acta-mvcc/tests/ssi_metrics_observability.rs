@@ -1,14 +1,22 @@
+//! # Observability- und Metrik-Tests für SSI
+//!
+//! Verifiziert die Aufzeichnung von Kennzahlen an den MetricsSink-Port:
+//! - Füllstand des Commit-Registers und Auslösen von Coarsening-Metriken.
+//! - Meldung der Haltedauer langlaufender Snapshot-Pins.
+//! - Hot-Swap-Fähigkeit des MetricsSink-Containers ohne Datenverlust oder Panics.
+
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use acta_mvcc::SequenceLogSsiValidator;
 use acta_mvcc::SnapshotRegistry;
-use acta_ports::metrics::{MetricEvent, TestMetricsSink};
 use acta_ports::MetricsSink;
+use acta_testkit::{ManualClock, MetricEvent, TestMetricsSink};
+use acta_testmacros::ctx_test;
 use parking_lot::RwLock;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
-#[test]
+// Prüft die Emission von Füllstands- und Coarsening-Gauges beim Überschreiten der 80 %-Schwelle.
+#[ctx_test(id = "T-TXN-1")]
 fn test_ssi_metrics_observability_threshold_and_coarsening() {
     let test_sink = Arc::new(TestMetricsSink::new());
     let sink_container: Arc<RwLock<Arc<dyn MetricsSink>>> =
@@ -21,7 +29,7 @@ fn test_ssi_metrics_observability_threshold_and_coarsening() {
     // Commit 17 distinct keys to exceed the 80% threshold (17 / 20 = 85%)
     for i in 1..=17 {
         let key = format!("user_key_{i:02}");
-        validator.record_commit_key(key.as_bytes(), i as u64);
+        validator.record_commit_key(key.as_bytes(), u64::try_from(i).expect("valid u64"));
     }
 
     let events = test_sink.events();
@@ -54,26 +62,30 @@ fn test_ssi_metrics_observability_threshold_and_coarsening() {
     );
 }
 
-#[test]
+// Prüft die metrische Erfassung der Haltedauer überalterter Snapshot-Pins.
+#[ctx_test(id = "T-TXN-1")]
 fn test_ssi_metrics_observability_long_pin_duration() {
     let test_sink = Arc::new(TestMetricsSink::new());
     let sink_container: Arc<RwLock<Arc<dyn MetricsSink>>> =
         Arc::new(RwLock::new(test_sink.clone() as Arc<dyn MetricsSink>));
 
-    let registry = Arc::new(SnapshotRegistry::new());
-    let now = Instant::now();
-    let past_350s = now.checked_sub(Duration::from_secs(350)).unwrap_or(now);
-    let _guard = registry.register_at(42, past_350s);
+    let clock = Arc::new(ManualClock::new(500_000_000_000));
+    let registry = Arc::new(SnapshotRegistry::with_clock(clock.clone()));
+
+    let now_nanos = clock.now_nanos();
+    let past_350s_nanos = now_nanos.saturating_sub(350_000_000_000);
+    let _guard = registry.register_at(42, past_350s_nanos);
 
     let max_keys = 20;
     let validator = SequenceLogSsiValidator::new_with_bounds(max_keys)
+        .with_clock(clock.clone())
         .with_snapshot_registry(registry)
         .with_metrics_sink(sink_container);
 
     // Commit 17 distinct keys to exceed threshold
     for i in 1..=17 {
         let key = format!("data_key_{i:02}");
-        validator.record_commit_key(key.as_bytes(), i as u64);
+        validator.record_commit_key(key.as_bytes(), u64::try_from(i).expect("valid u64"));
     }
 
     let events = test_sink.events();
@@ -91,7 +103,8 @@ fn test_ssi_metrics_observability_long_pin_duration() {
     );
 }
 
-#[test]
+// Prüft das unterbrechungsfreie Austauschen (Hot-Swap) des MetricsSink während des Betriebs.
+#[ctx_test(id = "T-TXN-1")]
 fn test_ssi_metrics_observability_hot_swap_consistency() {
     let sink1 = Arc::new(TestMetricsSink::new());
     let sink_container: Arc<RwLock<Arc<dyn MetricsSink>>> =
@@ -133,7 +146,7 @@ fn test_ssi_metrics_observability_hot_swap_consistency() {
         "sink2 must receive metric events recorded after hot-swap"
     );
     assert!(matches!(
-        &events_sink2[0],
+        events_sink2.first().unwrap(),
         MetricEvent::Gauge { name, .. } if name == "mvcc_ssi_commit_register_utilization_ratio"
     ));
 }

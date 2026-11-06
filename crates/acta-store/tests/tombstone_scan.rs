@@ -8,8 +8,9 @@
 //   1. Pure MemTable path (no flush).
 //   2. SSTable path (flush before the delete arrives in the MemTable).
 
-use acta_core::{StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
+use acta_types::TxId;
 
 // ---------------------------------------------------------------------------
 // 1. MemTable path — delete stays in the active MemTable

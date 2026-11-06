@@ -1,3 +1,8 @@
+//! # Mandantentrennung & Key-Codec (Ring 1)
+//!
+//! Definiert [`TenantKeyCodec`] und [`TenantScopedStorage`], um Daten strikt
+//! mandantenfaehig zu praefigieren und logisch zu isolieren.
+
 // FILE-CONTEXT
 // STAND: 2026-09-28T00:00:00Z
 // ZWECK: Multi-Tenant Key Isolation & Encoding für LSM Storage Engine
@@ -15,8 +20,9 @@
 
 use crate::lsm::LsmStorage;
 use bytes::Bytes;
-use acta_core::{CollectionId, DocId, StorageStats, TenantId, TxId};
+use acta_ports::StorageStats;
 use acta_ports::{BoxFuture, Result, StorageEngine};
+use acta_types::{CollectionId, DocId, TenantId, TxId};
 use std::ops::Bound;
 use std::sync::Arc;
 
@@ -39,7 +45,6 @@ impl TenantKeyCodec {
 
     /// Encodes a document chunk key: `t:{tenant}:{collection}:chunk:{doc}`.
     #[inline]
-    // TODO(wiring): Facade-Anbindung in acta/src/builder.rs folgt in separatem Task
     pub fn encode_chunk_key(&self, collection: &CollectionId, doc_id: DocId) -> Vec<u8> {
         format!(
             "t:{}:{}:chunk:{}",
@@ -52,7 +57,6 @@ impl TenantKeyCodec {
 
     /// Encodes a graph entity key: `t:{tenant}:{collection}:graph:{entity}`.
     #[inline]
-    // TODO(wiring): Facade-Anbindung in acta/src/builder.rs folgt in separatem Task
     pub fn encode_graph_key(&self, collection: &CollectionId, entity_id: u64) -> Vec<u8> {
         format!(
             "t:{}:{}:graph:{}",
@@ -71,14 +75,12 @@ impl TenantKeyCodec {
     }
 
     /// Collection-spezifisches Scan-Präfix: `t:{tenant}:{col}:`
-    // TODO(wiring): Facade-Anbindung in acta/src/builder.rs folgt in separatem Task
     pub fn collection_prefix(&self, collection: &CollectionId) -> Vec<u8> {
         format!("t:{}:{}:", self.tenant_id.inner(), collection.0).into_bytes()
     }
 
     /// Dekodiert TenantId aus encoded Key. None bei ungültigem Format.
     /// Kein Unwrap — robuste Nutzung im Recovery-Pfad.
-    // TODO(wiring): Facade-Anbindung in acta/src/builder.rs folgt in separatem Task
     pub fn decode_tenant_id(key: &[u8]) -> Option<TenantId> {
         let s = std::str::from_utf8(key).ok()?;
         let rest = s.strip_prefix("t:")?;
@@ -509,7 +511,7 @@ impl<S> TenantScopedStorage<S> {
     fn strip_key(&self, key: Vec<u8>) -> Option<Vec<u8>> {
         let prefix = self.codec.scan_prefix();
         if key.starts_with(prefix) {
-            Some(key[prefix.len()..].to_vec())
+            key.get(prefix.len()..).map(|s| s.to_vec())
         } else {
             None
         }
@@ -521,7 +523,7 @@ impl<S> TenantScopedStorage<S> {
             .into_iter()
             .filter_map(|(k, v)| {
                 if k.starts_with(prefix) {
-                    Some((k[prefix.len()..].to_vec(), v))
+                    k.get(prefix.len()..).map(|stripped| (stripped.to_vec(), v))
                 } else {
                     None
                 }

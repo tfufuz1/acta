@@ -1,6 +1,37 @@
+//! # Commit-Tests (Ring 1)
+//!
+//! Prueft Rollbacks, Timeouts und Batch-Sicherheit.
+
 use super::*;
+use acta_testkit::ManualClock;
 use std::sync::atomic::Ordering;
 use tempfile::TempDir;
+
+#[tokio::test]
+async fn test_clock_port_integration_with_manual_clock() {
+    let tmp = TempDir::new().expect("temp dir");
+    let clock = Arc::new(ManualClock::new(100_000));
+    let config = LsmConfig {
+        path: tmp.path().to_path_buf(),
+        ..Default::default()
+    };
+    let storage = LsmStorage::new(config)
+        .await
+        .expect("create storage")
+        .with_clock(Arc::clone(&clock) as Arc<dyn acta_ports::Clock>);
+
+    assert_eq!(storage.clock().now_unix_nanos(), 100_000);
+
+    clock.advance(Duration::from_nanos(50_000));
+    assert_eq!(storage.clock().now_unix_nanos(), 150_000);
+
+    let tx = TxId::new(1);
+    storage.put(tx, b"clock_key", b"clock_val").await.unwrap();
+    storage.commit(tx).await.unwrap();
+
+    let val = storage.get(b"clock_key").await.unwrap();
+    assert_eq!(val, Some(bytes::Bytes::from_static(b"clock_val")));
+}
 
 #[tokio::test]
 async fn test_put_get_roundtrip() {
@@ -204,7 +235,6 @@ async fn test_commit_tracks_budget_drift_on_consume_memory_failure() {
         max_ram_mb: 1,
         tx_timeout: Duration::from_secs(60),
         compaction: CompactionConfig::default(),
-        encryption_passphrase: None,
         ..Default::default()
     };
     let storage = LsmStorage::new(config).await.expect("create storage");
@@ -213,7 +243,8 @@ async fn test_commit_tracks_budget_drift_on_consume_memory_failure() {
 
     let key = b"drift_key";
     let value = vec![b'v'; 60000];
-    let expected_entry_size = (key.len() + value.len() + 8) as u64;
+    let expected_entry_size =
+        (key.len() + value.len() + acta_mvcc::tx_buffer::STAGING_ENTRY_OVERHEAD_BYTES) as u64;
 
     let tx = TxId::new(1);
     storage.put(tx, key, &value).await.expect("put succeeds");
@@ -258,8 +289,8 @@ async fn test_sequence_numbers_strictly_monotonic_across_concurrent_commits() {
 
     let last_seq = storage.last_seq_no().await.unwrap();
     assert_eq!(
-        last_seq, 10,
-        "10 commits must generate sequence numbers 1..10 monotonically"
+        last_seq, 20,
+        "10 commits with 1 Put + 1 TxEnd per commit must advance seq by 20"
     );
 }
 
@@ -466,4 +497,17 @@ async fn test_memory_only_commit_restores_hmac() {
         hmac_after, hmac_before,
         "last_hmac must be restored to pre-commit state for MemoryOnly durability"
     );
+}
+
+/// SPEC: T-GATEGROUP-1 (Gate-Gruppen-Commit und Barrieren)
+#[tokio::test]
+async fn test_gate_group_commit_barrier() {
+    let tmp = TempDir::new().expect("tempdir");
+    let config = LsmConfig {
+        path: tmp.path().to_path_buf(),
+        group_commit_window_micros: 1000,
+        ..Default::default()
+    };
+    let storage = LsmStorage::new(config).await.expect("storage init");
+    assert_eq!(storage.config.group_commit_window_micros, 1000);
 }

@@ -1,28 +1,26 @@
-pub(super) fn pread_exact(
-    file: &std::fs::File,
-    buf: &mut [u8],
-    offset: u64,
-) -> std::io::Result<()> {
-    use std::os::unix::fs::FileExt;
-    file.read_exact_at(buf, offset)
-}
+//! # SSTable I/O-Routinen (Ring 2)
+//!
+//! Kapselt Block-Level I/O-Lesezugriffe über das `VfsFile`-Trait (SPEC §5.8, D-04, D-94).
 
-#[cfg(windows)]
+use acta_ports::vfs::VfsFile;
+
 pub(super) fn pread_exact(
-    file: &std::fs::File,
+    file: &dyn VfsFile,
     mut buf: &mut [u8],
     mut offset: u64,
 ) -> std::io::Result<()> {
-    use std::os::windows::fs::FileExt;
     while !buf.is_empty() {
-        let n = file.seek_read(buf, offset)?;
+        let n = file.read_at(buf, offset)?;
         if n == 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
                 "failed to fill whole buffer",
             ));
         }
-        buf = &mut buf[n..];
+        let Some(next_buf) = buf.get_mut(n..) else {
+            break;
+        };
+        buf = next_buf;
         offset += n as u64;
     }
     Ok(())

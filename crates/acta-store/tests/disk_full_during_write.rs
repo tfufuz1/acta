@@ -1,9 +1,10 @@
 #![cfg(feature = "fault-injection")]
 // FILE-CONTEXT: Integration test verifying clean rollback and absence of phantom entries on WAL write failure (disk full simulation). (TS: 2026-09-11)
 
-use acta_core::{StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
 use acta_store::wal::FAIL_APPEND_FOR_TX;
+use acta_types::TxId;
 use std::sync::atomic::Ordering;
 use tempfile::tempdir;
 

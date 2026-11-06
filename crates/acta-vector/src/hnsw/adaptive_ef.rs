@@ -3,7 +3,7 @@
 // INVARIANTEN: Zero-Panic, keine Zufallsquellen/Systemzeit (deterministisch).
 // NICHT-OFFENSICHTLICH: Bricht Suche ab, sobald sich die Top-k-Kandidaten über das Konvergenzfenster stabilisieren.
 
-use acta_core::{ActaError, DocId, Result};
+use acta_types::{ActaError, DocId, Result};
 
 /// Configuration policy for adaptive ef_search (Ada-ef).
 #[derive(Debug, Clone, PartialEq)]

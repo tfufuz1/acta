@@ -4,11 +4,11 @@
 
 #![cfg(feature = "fault-injection")]
 
-use acta_core::{ActaError, TxId};
 use acta_store::wal::{
     Wal, WalConfig, WalOp, WalVersion, FAIL_APPEND_FOR_TX, FAIL_TRUNCATE_ONCE,
 };
 use acta_testkit::{FaultConfig, FaultVfs};
+use acta_types::{ActaError, TxId};
 use tempfile::TempDir;
 
 /// Number of fault time points tested per command type (at least 15 per task spec)
@@ -115,7 +115,7 @@ async fn test_command_crash_point(cmd_type: &str, time_point: usize) -> Result<b
                 ..Default::default()
             });
 
-            if let Ok((replayed_entries, _)) = wal.replay_mmap().await {
+            if let Ok((replayed_entries, _)) = wal.replay_buffer().await {
                 let dummy_key = [0u8; 32];
                 cmd_attempt_ok = wal
                     .rewrite_as_v3_with_integrity_key(&replayed_entries, dummy_key)
@@ -131,7 +131,7 @@ async fn test_command_crash_point(cmd_type: &str, time_point: usize) -> Result<b
 
             let file_size = wal.size();
             cmd_attempt_ok = wal
-                .scan_entries_mmap(file_size, |_seq, _entry, _pos| true)
+                .scan_entries_buffer(file_size, |_seq, _entry, _pos| true)
                 .await
                 .is_ok();
         }

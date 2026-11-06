@@ -62,7 +62,7 @@ pub async fn verify_storage_against_reference_model(
     model: &ReferenceModel,
     confirmed_seq: u64,
 ) -> Result<(), String> {
-    use acta_core::StorageEngine;
+    use acta_ports::StorageEngine;
 
     let snapshot_map = model.snapshot_map_at(confirmed_seq);
     for (key, expected_val) in snapshot_map {

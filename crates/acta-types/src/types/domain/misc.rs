@@ -1,3 +1,14 @@
+//! Wissensgraphen-Elemente (`Entity`, `Edge`), `MemoryType`, `WorkflowState` und Verfallskonstanten.
+//!
+//! # Architektur-Rolle: Ring 0 (Wissensgraph & Gedächtnismodelle)
+//!
+//! Dieses Modul enthält Strukturen für:
+//! - `WorkflowState`: Eingefrorener Workflow-Zustand mit Transaktions- und Graph-Hash als Savepoint.
+//! - `Entity`, `Edge`, `LinkRelation`: Wissensgraphen- und Zettelkasten-Primitive (A-MEM).
+//! - `MemoryType`: Kognitive Einteilung (episodisch, semantisch, prozedural, working) mit Verfallsraten.
+//! - `PprConfig`, `TlHfdParams`: Konfigurationsparameter für Graph-Diffusionsalgorithmen (Personalized PageRank).
+//! - `ConfigFingerprint`: Bit-exakte Konfigurations-Fingerabdrücke zur Vermeidung von Score-Kalibrierungs-Drift.
+
 use crate::error::{ActaError, Result};
 use crate::types::domain::{DocId, EntityId, TxId};
 use serde::{Deserialize, Serialize};
@@ -32,9 +43,13 @@ mod hex {
             )));
         }
         let mut bytes = [0u8; 32];
-        for i in 0..32 {
-            bytes[i] =
-                u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).map_err(serde::de::Error::custom)?;
+        for (i, slot) in bytes.iter_mut().enumerate() {
+            let start = i * 2;
+            let end = start + 2;
+            let slice = s
+                .get(start..end)
+                .ok_or_else(|| serde::de::Error::custom("invalid hex slice"))?;
+            *slot = u8::from_str_radix(slice, 16).map_err(serde::de::Error::custom)?;
         }
         Ok(bytes)
     }
@@ -59,12 +74,11 @@ pub const EXPIRY_METADATA_KEY: &str = "__expires_at_seq";
 
 /// Maximum number of search results that any hybrid/vector/text search may return.
 ///
-/// Callers in acta-mcp and acta-db both enforce this limit before forwarding k to HNSW/BM25.
+/// Callers enforce this limit before forwarding k to HNSW/BM25.
 /// Duplicating the literal 1000 anywhere else in the workspace is prohibited — always import this constant.
 ///
-/// This cap is applied at the orchestration layer (acta-db) before forwarding `k`
-/// to HNSW and BM25 sub-searches. All upstream layers (acta-mcp, acta-py,
-/// acta-py) MUST reference this constant — never duplicate the literal `1000`.
+/// This cap is applied at the orchestration layer before forwarding `k`
+/// to HNSW and BM25 sub-searches. All upstream callers MUST reference this constant — never duplicate the literal `1000`.
 ///
 /// # DECISION-REF
 /// AGT-DB-003 — Boundary defence at Layer 2 against unbounded `k` from untrusted JSON-RPC.
@@ -150,7 +164,13 @@ impl Entity {
 }
 
 /// Graph directed edge representation with explicit bitemporal axis separation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// # Abgrenzung
+/// Dieser Typ `acta_types::Edge` ist die domänenzentrierte Hyperedge-Repräsentation in Ring 0
+/// mit Entitäts-IDs, Beziehungslabel, Quell-Dokumenten-ID und bitemporalen Gültigkeitsachsen
+/// (`tx_valid_from`/`tx_valid_to`, `business_valid_from`/`business_valid_to`).
+/// Bildet relationale Kantenstrukturen im Speicher ab.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Edge {
     /// Source entity identifier.
     pub from: EntityId,
@@ -220,7 +240,17 @@ impl Edge {
                 "Edge weight must be finite and non-negative".to_string(),
             ));
         }
-        Ok(Self::new(from, to, label_str).with_weight(weight))
+        Ok(Self {
+            from,
+            to,
+            label: label_str.into(),
+            weight,
+            tx_valid_from: None,
+            tx_valid_to: None,
+            business_valid_from: None,
+            business_valid_to: None,
+            source_doc_id: None,
+        })
     }
 
     /// Sets a custom weight on the edge.
@@ -230,8 +260,10 @@ impl Edge {
     }
 
     /// Sets transaction validity window (system time / MVCC) on the edge.
-    pub fn with_tx_validity(self, from: Option<TxId>, to: Option<TxId>) -> Self {
-        self.with_validity(from, to)
+    pub fn with_tx_validity(mut self, from: Option<TxId>, to: Option<TxId>) -> Self {
+        self.tx_valid_from = from;
+        self.tx_valid_to = to;
+        self
     }
 
     /// Sets business validity window (business time in Unix ms) on the edge.
@@ -242,10 +274,8 @@ impl Edge {
     }
 
     /// Sets transaction validity window on the edge (alias for `with_tx_validity` for backward compatibility).
-    pub fn with_validity(mut self, from: Option<TxId>, to: Option<TxId>) -> Self {
-        self.tx_valid_from = from;
-        self.tx_valid_to = to;
-        self
+    pub fn with_validity(self, from: Option<TxId>, to: Option<TxId>) -> Self {
+        self.with_tx_validity(from, to)
     }
 }
 
@@ -316,11 +346,6 @@ impl MemoryType {
         }
     }
 
-    /// Returns the canonical metadata key string.
-    pub fn as_str(&self) -> &'static str {
-        self.as_metadata_key()
-    }
-
     /// Gibt den kanonischen Metadaten-Key zurück (für JSON-Serialisierung).
     pub fn as_metadata_key(&self) -> &'static str {
         match self {
@@ -332,17 +357,13 @@ impl MemoryType {
     }
 }
 
-impl std::fmt::Display for MemoryType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_metadata_key())
-    }
-}
-
 /// Configuration parameters for Thresholded Local Hyper-Flow Diffusion (TL-HFD, Spec §21.1).
 ///
 /// # Ring Architecture
-/// Defined in `acta-types` (Ring 0) to avoid dependency on `acta-graph` (Ring 1).
-/// Graph algorithms in `acta-graph` map this configuration to `acta_graph::TlHfdParams`.
+/// Defined in `acta-types` (Ring 0).
+///
+/// # Zweck
+/// Konfigurationsstruktur für Diffusionsparameter (`sigma`, `delta`, `gamma`, etc.).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct TlHfdParams {
     /// Regularization parameter $\sigma > 0$ controlling diffusion scale (default: 0.1).
@@ -546,6 +567,7 @@ impl AutoExtractionMode {
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for AutoExtractionMode {
     fn default() -> Self {
         #[cfg(not(feature = "auto-extraction-opt-out"))]

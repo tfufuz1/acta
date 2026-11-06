@@ -1,8 +1,8 @@
-use acta_core::error::ActaError;
-use acta_core::traits::{BoxFuture, StorageEngine, StorageStats};
-use acta_core::types::*;
-use acta_core::Result;
+use acta_ports::{BoxFuture, StorageEngine, StorageStats};
 use acta_store::lsm::{LsmConfig, LsmStorage};
+use acta_types::ActaError;
+use acta_types::Result;
+use acta_types::*;
 use futures::future::join_all;
 use std::sync::Arc;
 

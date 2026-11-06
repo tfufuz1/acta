@@ -1,7 +1,15 @@
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 //! Proptest-Suite für ScalarQuantizer und compute_distance.
 //! Verifiziert mathematische Invarianten über zufällige Eingaben.
 
-use acta_core::DistanceMetric;
+use acta_types::DistanceMetric;
 use acta_vector::distance::compute_distance;
 use proptest::prelude::*;
 

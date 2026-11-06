@@ -1,19 +1,20 @@
 use super::types::{Language, StagedStatsChange, TextIndexMetadata};
 use crate::posting_list::{Posting, ResidentPostingIndex};
 use crate::tokenizer::{DefaultTokenizer, GermanMorphTokenizer, Tokenizer};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use acta_ports::{StorageEngine, TextIndex, TextIndexStats};
 use acta_types::{ActaError, DocId, Result, ScoredDocument, TxId, MAX_SEARCH_K};
-/// An inverted index tied to a specific collection namespace.
+// ANCHOR[acta-text:INV-008]
+/// Persistenter invertierter Index über einer Kollektion im Storage-Backend.
 ///
-/// # Concurrency & Lock Hierarchy:
-/// 1. `commit_lock` (`parking_lot::Mutex`): Ensures single-writer serialization during transactional stats commits.
-/// 2. `staged_stats` (`parking_lot::Mutex`): Synchronous, short-lived spinlock guarding in-memory uncommitted transaction statistics.
+/// # Nebenläufigkeit & Sperrhierarchie:
+/// 1. `commit_lock` (`parking_lot::Mutex`): Serialisiert Transaktions-Commits auf den Statistiken (Single-Writer).
+/// 2. `staged_stats` (`parking_lot::Mutex`): Kurzlebiger Spinlock für ungecommittete Transaktionsänderungen im RAM.
 ///
-/// **Rule**: `commit_lock` must ALWAYS be acquired BEFORE acquiring `staged_stats`. Never hold synchronous lock guards across `.await` points.
+/// **Regel**: `commit_lock` muss IMMER vor `staged_stats` akquiriert werden. Niemals synchrone Sperren über `.await`-Punkte halten!
 pub struct InvertedIndex<S: StorageEngine> {
     storage: Arc<S>,
     prefix: Vec<u8>,
@@ -21,8 +22,8 @@ pub struct InvertedIndex<S: StorageEngine> {
     pub(crate) total_docs: Arc<AtomicU64>,
     pub(crate) total_tokens: Arc<AtomicU64>,
     pub(crate) avg_doc_len_x1000: Arc<AtomicU64>, // Cached fixed-point (FIND-TXT-004)
-    pub(crate) staged_stats: Arc<parking_lot::Mutex<HashMap<TxId, StagedStatsChange>>>,
-    pub(crate) staged_terms: Arc<parking_lot::Mutex<HashMap<TxId, Vec<String>>>>,
+    pub(crate) staged_stats: Arc<parking_lot::Mutex<BTreeMap<TxId, StagedStatsChange>>>,
+    pub(crate) staged_terms: Arc<parking_lot::Mutex<BTreeMap<TxId, Vec<String>>>>,
     commit_lock: Arc<parking_lot::Mutex<()>>,
     pub(crate) resident_index: Arc<ResidentPostingIndex>,
 }
@@ -45,13 +46,16 @@ impl<S: StorageEngine> Clone for InvertedIndex<S> {
 }
 
 impl<S: StorageEngine> InvertedIndex<S> {
-    /// Maximum allowed document text size in bytes (10 MB).
+    // ANCHOR[acta-text:INV-009]
+    /// Maximale Textgröße pro Dokument (10 MiB) zur Begrenzung von Speicherverbrauch und DoS-Schutz.
     pub const MAX_TEXT_BYTES: usize = 10 * 1024 * 1024;
 
-    /// Maximum allowed staged uncommitted transaction statistics changes (10,000).
+    // ANCHOR[acta-text:INV-010]
+    /// Maximale Anzahl gleichzeitig ungecommitteter Transaktionen (10.000).
     pub const MAX_STAGED_TRANSACTIONS: usize = 10_000;
 
-    /// Creates a new InvertedIndex with explicit language configuration.
+    // ANCHOR[acta-text:INV-011]
+    /// Erzeugt einen neuen invertierten Index mit expliziter Sprachkonfiguration.
     ///
     /// # Language Selection
     /// Use `Language::from_iso("de")` for German,
@@ -66,7 +70,7 @@ impl<S: StorageEngine> InvertedIndex<S> {
         };
 
         let tokenizer: Arc<dyn Tokenizer> = match language {
-            Language::German => Arc::new(GermanMorphTokenizer::new()),
+            Language::German => Arc::new(GermanMorphTokenizer::try_new().unwrap_or_default()),
             Language::English | Language::Custom => Arc::new(DefaultTokenizer),
         };
 
@@ -77,25 +81,43 @@ impl<S: StorageEngine> InvertedIndex<S> {
             total_docs: Arc::new(AtomicU64::new(0)),
             total_tokens: Arc::new(AtomicU64::new(0)),
             avg_doc_len_x1000: Arc::new(AtomicU64::new(0)),
-            staged_stats: Arc::new(parking_lot::Mutex::new(HashMap::new())),
-            staged_terms: Arc::new(parking_lot::Mutex::new(HashMap::new())),
+            staged_stats: Arc::new(parking_lot::Mutex::new(BTreeMap::new())),
+            staged_terms: Arc::new(parking_lot::Mutex::new(BTreeMap::new())),
             commit_lock: Arc::new(parking_lot::Mutex::new(())),
             resident_index: Arc::new(ResidentPostingIndex::new()),
         }
     }
 
-    /// Creates a new InvertedIndex with English tokenizer (default).
+    // ANCHOR[acta-text:INV-012]
+    /// Erzeugt einen neuen invertierten Index mit englischem Standard-Tokenizer.
     pub fn new(storage: Arc<S>, namespace: &str) -> Self {
         Self::new_with_language(storage, namespace, Language::English)
     }
 
-    /// Sets a custom tokenizer for the inverted index.
+    // ANCHOR[acta-text:INV-013]
+    /// Konfiguriert einen benutzerdefinierten Tokenizer.
     pub fn with_tokenizer(mut self, tokenizer: Arc<dyn Tokenizer>) -> Self {
         self.tokenizer = tokenizer;
         self
     }
 
-    /// Loads index statistics from storage into the cache.
+    /// Accessor for underlying storage engine.
+    pub fn storage(&self) -> &Arc<S> {
+        &self.storage
+    }
+
+    /// Accessor for index storage prefix bytes.
+    pub fn prefix(&self) -> &[u8] {
+        &self.prefix
+    }
+
+    /// Accessor for single-writer commit lock.
+    pub fn commit_lock(&self) -> &parking_lot::Mutex<()> {
+        &self.commit_lock
+    }
+
+    // ANCHOR[acta-text:INV-014]
+    /// Lädt die persistenten Statistiken (`meta:stats`) aus dem Storage in die atomaren In-Memory-Felder.
     pub async fn load_stats(&self) -> Result<()> {
         let meta_key = self.key("meta:stats");
         if let Some(bytes) = self.storage.get(&meta_key).await? {
@@ -179,24 +201,23 @@ impl<S: StorageEngine> InvertedIndex<S> {
         let raw_entries = self.storage.scan_prefix(&prefix).await?;
         let mut postings = Vec::with_capacity(raw_entries.len());
         for (key, val_bytes) in raw_entries {
-            let suffix_bytes = &key[prefix.len()..];
+            let suffix_bytes = key.get(prefix.len()..).unwrap_or_default();
             if let Ok(suffix) = std::str::from_utf8(suffix_bytes) {
-                #[cfg(not(feature = "docid-128"))]
                 let parsed_doc_id = suffix.parse::<u64>().ok();
-                #[cfg(feature = "docid-128")]
-                let parsed_doc_id = suffix.parse::<u128>().ok();
 
                 if let Some(doc_id_raw) = parsed_doc_id {
                     if val_bytes.len() == 4 {
                         let doc_id = DocId::new(doc_id_raw);
-                        let tf =
-                            u32::from_le_bytes((&val_bytes[..4]).try_into().map_err(|_| {
-                                ActaError::Storage("Invalid posting tf length".into())
-                            })?);
+                        let slice = val_bytes.get(..4).ok_or_else(|| {
+                            ActaError::Storage("Invalid posting tf length".into())
+                        })?;
+                        let tf = u32::from_le_bytes(slice.try_into().map_err(|_| {
+                            ActaError::Storage("Invalid posting tf length".into())
+                        })?);
                         let dl_key = self.key_with_id("dl:", doc_id.inner());
                         let doc_len = match self.storage.get(&dl_key).await? {
                             Some(dl_bytes) if dl_bytes.len() == 4 => {
-                                u32::from_le_bytes((&dl_bytes[..]).try_into().map_err(|_| {
+                                u32::from_le_bytes(dl_bytes.as_ref().try_into().map_err(|_| {
                                     ActaError::Storage("Invalid doc_len length".into())
                                 })?)
                             }
@@ -236,6 +257,15 @@ impl<S: StorageEngine> InvertedIndex<S> {
         k
     }
 
+    // ANCHOR[acta-text:INV-015]
+    /// Fügt ein Dokument in den Index ein oder aktualisiert ein bestehendes.
+    ///
+    /// # Ablauf
+    /// 1. Größenprüfung gegen `MAX_TEXT_BYTES`.
+    /// 2. Tokenisierung und Berechnung der Termfrequenzen.
+    /// 3. Vorherige Dokumentlänge und Terme auslesen; für weggefallene Terme Tombstones schreiben.
+    /// 4. Dokumentlänge `dl:{doc_id}` und Vorwärtsindex `fw:{doc_id}` schreiben.
+    /// 5. Postings in Storage schreiben und speicherresidenten Index per RCU aktualisieren.
     #[tracing::instrument(skip(self, text))]
     pub async fn upsert_document(&self, tx: TxId, doc_id: DocId, text: &str) -> Result<()> {
         if text.len() > Self::MAX_TEXT_BYTES {
@@ -247,9 +277,9 @@ impl<S: StorageEngine> InvertedIndex<S> {
         }
 
         let tokens = self.tokenizer.tokenize(text);
-        let new_len = tokens.len() as u32;
+        let new_len = u32::try_from(tokens.len()).unwrap_or(u32::MAX);
 
-        let mut tfs = HashMap::with_capacity(tokens.len());
+        let mut tfs = BTreeMap::new();
         for t in tokens {
             *tfs.entry(t).or_insert(0u32) += 1;
         }
@@ -321,12 +351,8 @@ impl<S: StorageEngine> InvertedIndex<S> {
     }
 
     ///
-    /// For every document with a `tbs:{doc_id}` marker this method reads the
-    /// *current* forward index and removes posting-list entries for terms that
-    /// are no longer present.  Call this during background compaction or
-    /// whenever write throughput is low.
-    ///
-    /// Returns the number of tombstones that were resolved.
+    // ANCHOR[acta-text:INV-016]
+    /// Löst aufgelaufene Tombstones (`tbs:{doc_id}:{term}`) auf und bereinigt verwaiste Posting-Listen.
     pub async fn resolve_tombstones(&self, tx: TxId) -> Result<u64> {
         let tbs_prefix = {
             let mut k = Vec::with_capacity(self.prefix.len() + 4);
@@ -340,27 +366,26 @@ impl<S: StorageEngine> InvertedIndex<S> {
 
         for (tbs_key, _) in tombstones {
             // Format: {prefix}tbs:{doc_id}:{term}
-            let suffix = &tbs_key[tbs_prefix.len()..];
+            let suffix = tbs_key.get(tbs_prefix.len()..).unwrap_or_default();
             let parts: Vec<&[u8]> = suffix.split(|&b| b == b':').collect();
-            if parts.len() < 2 {
-                continue;
-            }
+            let part0 = match parts.first() {
+                Some(p) => *p,
+                None => continue,
+            };
+            let part1 = match parts.get(1) {
+                Some(p) => *p,
+                None => continue,
+            };
 
-            #[cfg(not(feature = "docid-128"))]
-            let doc_id_raw_opt = std::str::from_utf8(parts[0])
+            let doc_id_raw_opt = std::str::from_utf8(part0)
                 .ok()
                 .and_then(|s| s.parse::<u64>().ok())
                 .map(DocId::new);
-            #[cfg(feature = "docid-128")]
-            let doc_id_raw_opt = std::str::from_utf8(parts[0])
-                .ok()
-                .and_then(|s| s.parse::<u128>().ok())
-                .map(|v| DocId::new(v));
             let doc_id = match doc_id_raw_opt {
                 Some(v) => v,
                 None => continue,
             };
-            let term = String::from_utf8_lossy(parts[1]).to_string();
+            let term = String::from_utf8_lossy(part1).to_string();
 
             // Read the *current* forward index to know which terms are live.
             // DECISION-REF: Consistent with load_stats() (L92) — bincode errors must propagate,
@@ -403,7 +428,8 @@ impl<S: StorageEngine> InvertedIndex<S> {
         Ok(resolved)
     }
 
-    /// Deletes a document from the index.
+    // ANCHOR[acta-text:INV-017]
+    /// Löscht ein Dokument logisch aus dem Index und markiert alle Terme mit Tombstones.
     pub async fn delete_document(&self, tx: TxId, doc_id: DocId) -> Result<()> {
         let dl_key = self.key_with_id("dl:", doc_id.inner());
         let fw_key = self.key_with_id("fw:", doc_id.inner());
@@ -472,6 +498,8 @@ impl<S: StorageEngine> InvertedIndex<S> {
         Ok(())
     }
 
+    // ANCHOR[acta-text:INV-018]
+    /// Überträgt die gepufferten statistischen Änderungen einer Transaktion dauerhaft.
     pub(crate) async fn commit_stats(&self, tx: TxId) -> Result<()> {
         let change = {
             let mut guard = self.staged_stats.lock();
@@ -481,7 +509,7 @@ impl<S: StorageEngine> InvertedIndex<S> {
         if change.docs_delta != 0 || change.tokens_delta != 0 {
             if change.docs_delta > 0 {
                 self.total_docs
-                    .fetch_add(change.docs_delta as u64, Ordering::SeqCst);
+                    .fetch_add(change.docs_delta.unsigned_abs(), Ordering::SeqCst);
             } else if change.docs_delta < 0 {
                 self.total_docs
                     .fetch_sub(change.docs_delta.unsigned_abs(), Ordering::SeqCst);
@@ -489,7 +517,7 @@ impl<S: StorageEngine> InvertedIndex<S> {
 
             if change.tokens_delta > 0 {
                 self.total_tokens
-                    .fetch_add(change.tokens_delta as u64, Ordering::SeqCst);
+                    .fetch_add(change.tokens_delta.unsigned_abs(), Ordering::SeqCst);
             } else if change.tokens_delta < 0 {
                 self.total_tokens
                     .fetch_sub(change.tokens_delta.unsigned_abs(), Ordering::SeqCst);
@@ -498,7 +526,8 @@ impl<S: StorageEngine> InvertedIndex<S> {
             let docs = self.total_docs.load(Ordering::SeqCst);
             let tokens = self.total_tokens.load(Ordering::SeqCst);
             let avg_len = if docs > 0 {
-                (tokens as f64 / docs as f64 * 1000.0) as u64
+                let scaled = (tokens as u128).saturating_mul(1000) / (docs as u128);
+                u64::try_from(scaled).unwrap_or(u64::MAX)
             } else {
                 0
             };
@@ -524,6 +553,8 @@ impl<S: StorageEngine> InvertedIndex<S> {
         self.storage.put(tx, &meta_key, &meta_bytes).await
     }
 
+    // ANCHOR[acta-text:INV-019]
+    /// Verwirft die gepufferten statistischen Änderungen einer Transaktion bei Rollback.
     pub(crate) async fn rollback_stats(&self, tx: TxId) -> Result<()> {
         let mut guard = self.staged_stats.lock();
         guard.remove(&tx);
@@ -531,7 +562,8 @@ impl<S: StorageEngine> InvertedIndex<S> {
         Ok(())
     }
 
-    /// Searches the inverted index using BM25.
+    // ANCHOR[acta-text:INV-020]
+    /// Führt eine Volltextsuche mit BM25 aus.
     #[tracing::instrument(skip(self, query))]
     pub async fn search_bm25(
         &self,
@@ -542,7 +574,8 @@ impl<S: StorageEngine> InvertedIndex<S> {
         self.search_bm25_at(query, k, max_seq).await
     }
 
-    /// Searches the inverted index using BM25 at a specific snapshot version.
+    // ANCHOR[acta-text:INV-021]
+    /// Führt eine Volltextsuche mit BM25 zu einer bestimmten MVCC-Snapshot-Sequenznummer aus.
     #[tracing::instrument(skip(self, query))]
     pub async fn search_bm25_at(
         &self,
@@ -644,7 +677,7 @@ impl<S: StorageEngine> TextIndex for InvertedIndex<S> {
     }
 
     async fn len(&self) -> usize {
-        self.total_docs.load(Ordering::Acquire) as usize
+        usize::try_from(self.total_docs.load(Ordering::Acquire)).unwrap_or(usize::MAX)
     }
 
     async fn stats(&self) -> Result<TextIndexStats> {
@@ -657,8 +690,8 @@ impl<S: StorageEngine> TextIndex for InvertedIndex<S> {
         };
 
         Ok(TextIndexStats {
-            num_documents: meta.total_docs as usize,
-            num_tokens: meta.total_tokens as usize,
+            num_documents: usize::try_from(meta.total_docs).unwrap_or(usize::MAX),
+            num_tokens: usize::try_from(meta.total_tokens).unwrap_or(usize::MAX),
             memory_usage_bytes: 0,
         })
     }

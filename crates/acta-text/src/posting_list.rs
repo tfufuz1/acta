@@ -8,42 +8,57 @@
 // 5. MVCC-Sichtbarkeit und Tombstones werden weiterhin dynamisch pro Anfrage evaluiert.
 // INVARIANTEN: Zero-Panic Doctrine, repr(C, align(8)) Layout für Postings, RCU-Locking ohne globale Exklusivlocks.
 
+//! Kompakte, speicherresidente Posting-Listen und Block-Max-Metadaten.
+//!
+//! # Ring-Zuordnung
+//! Ring 0 (Kern).
+//!
+//! # Funktionsweise
+//! Verwaltet Invertierte Listen pro Term mit Delta-Varint-Kompression und
+//! Block-Max-Zusammenfassungen (à 64 Einträge) zur Beschleunigung des WAND-Algorithmus.
+//! Aktualisierungen erfolgen über RCU (Read-Copy-Update) für sperrenfreie Lesezugriffe.
+
 use acta_types::{ActaError, DocId};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
+// ANCHOR[acta-text:POST-001]
+/// Magische Bytes für das kompakte V2-Posting-Listen-Format (`PL\x02\x00`).
 pub const POSTING_LIST_V2_MAGIC: &[u8; 4] = b"PL\x02\x00";
 
-/// Block size for Block-Max WAND decomposition.
+// ANCHOR[acta-text:POST-002]
+/// Blockgröße für die Block-Max-WAND-Zerlegung (64 Postings pro Block).
 pub const BLOCK_SIZE: usize = 64;
 
-#[cfg(not(feature = "docid-128"))]
 pub type DocIdRaw = u64;
 
-#[cfg(feature = "docid-128")]
-pub type DocIdRaw = u128;
-
-/// Block-Max metadata for a chunk of postings (typically 64 postings).
+// ANCHOR[acta-text:POST-003]
+/// Metadaten eines 64er-Posting-Blocks zur Berechnung oberer BM25-Schranken in Block-Max WAND.
 #[repr(C, align(8))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct PostingBlockInfo {
-    /// Upper bound doc_id in this block (for fast skip).
+    /// Höchste Dokument-ID in diesem Block (ermöglicht schnelles Überspringen).
     pub max_doc_id: DocIdRaw,
-    /// Maximum term frequency in this block.
+    /// Maximale Termfrequenz innerhalb dieses Blocks.
     pub max_tf: u32,
-    /// Minimum document length in this block (maximizing BM25 score upper bound).
+    /// Minimale Dokumentlänge innerhalb dieses Blocks (maximiert die BM25-Obergrenze).
     pub min_doc_len: u32,
 }
 
-/// Compact representation of a single posting in a posting list.
-/// Packed with 8-byte alignment (16 bytes total) for optimal CPU cache alignment.
+// ANCHOR[acta-text:POST-004]
+/// Kompakte Repräsentation eines einzelnen Vorkommens (Posting) im Index.
+///
+/// 8-Byte ausgerichtet (`repr(C, align(8))`) für optimale CPU-Cacheline-Ausnutzung (16 Bytes Gesamtgröße).
 #[repr(C, align(8))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Posting {
+    /// Dokument-ID des Eintrags.
     pub doc_id: DocIdRaw,
+    /// Termfrequenz (Häufigkeit des Terms in diesem Dokument).
     pub tf: u32,
+    /// Gesamtlänge des Dokuments in Token.
     pub doc_len: u32,
 }
 
@@ -93,7 +108,8 @@ fn compute_blocks(postings: &[Posting]) -> Vec<PostingBlockInfo> {
     blocks
 }
 
-/// A contiguous, sorted sequence of postings for a specific term.
+// ANCHOR[acta-text:POST-005]
+/// Zusammenhängende, nach DocId sortierte Posting-Liste für einen Begriff.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PostingList {
     postings: Vec<Posting>,
@@ -101,7 +117,8 @@ pub struct PostingList {
 }
 
 impl PostingList {
-    /// Creates a new `PostingList` from a vector of postings, ensuring sorted order by DocId.
+    // ANCHOR[acta-text:POST-006]
+    /// Erzeugt eine sortierte und deduplizierte Posting-Liste und berechnet die Block-Metadaten.
     pub fn new(mut postings: Vec<Posting>) -> Self {
         postings.sort_unstable_by_key(|p| p.doc_id);
         postings.dedup_by_key(|p| p.doc_id);
@@ -109,7 +126,8 @@ impl PostingList {
         Self { postings, blocks }
     }
 
-    /// Creates an empty `PostingList`.
+    // ANCHOR[acta-text:POST-007]
+    /// Erzeugt eine leere Posting-Liste.
     pub fn empty() -> Self {
         Self {
             postings: Vec::new(),
@@ -117,36 +135,43 @@ impl PostingList {
         }
     }
 
-    /// Returns a slice of postings.
+    // ANCHOR[acta-text:POST-008]
+    /// Liefert die Postings als Slice.
     #[inline]
     pub fn as_slice(&self) -> &[Posting] {
         &self.postings
     }
 
-    /// Returns the block-max metadata blocks.
+    // ANCHOR[acta-text:POST-009]
+    /// Liefert die Block-Max-Metadaten.
     #[inline]
     pub fn blocks(&self) -> &[PostingBlockInfo] {
         &self.blocks
     }
 
-    /// Returns the number of postings.
+    // ANCHOR[acta-text:POST-010]
+    /// Liefert die Anzahl der Einträge in der Liste.
     #[inline]
     pub fn len(&self) -> usize {
         self.postings.len()
     }
 
-    /// Returns true if the posting list is empty.
+    // ANCHOR[acta-text:POST-011]
+    /// Prüft, ob die Liste leer ist.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.postings.is_empty()
     }
 
-    /// Inserts or updates a posting for a doc_id using RCU/copy-on-write semantics.
+    // ANCHOR[acta-text:POST-012]
+    /// Fügt ein Posting per Copy-On-Write (RCU) ein oder aktualisiert einen bestehenden Eintrag.
     pub fn upsert(&self, posting: Posting) -> Self {
         let mut new_postings = self.postings.clone();
         match new_postings.binary_search_by_key(&posting.doc_id, |p| p.doc_id) {
             Ok(idx) => {
-                new_postings[idx] = posting;
+                if let Some(elem) = new_postings.get_mut(idx) {
+                    *elem = posting;
+                }
             }
             Err(idx) => {
                 new_postings.insert(idx, posting);
@@ -159,7 +184,8 @@ impl PostingList {
         }
     }
 
-    /// Removes a posting for a doc_id using RCU/copy-on-write semantics.
+    // ANCHOR[acta-text:POST-013]
+    /// Entfernt ein Posting per Copy-On-Write (RCU).
     pub fn remove(&self, doc_id: DocId) -> Self {
         let mut new_postings = self.postings.clone();
         if let Ok(idx) = new_postings.binary_search_by_key(&doc_id.inner(), |p| p.doc_id) {
@@ -172,7 +198,8 @@ impl PostingList {
         }
     }
 
-    /// Encodes the posting list into a compact binary format with Delta-Varint encoding.
+    // ANCHOR[acta-text:POST-014]
+    /// Kodiert die Posting-Liste in das kompakte Binärformat mit Delta-Varint-Kompression.
     pub fn encode_compact(&self) -> Result<Vec<u8>, ActaError> {
         let mut buf = Vec::with_capacity(4 + 8 + self.postings.len() * 8);
         buf.extend_from_slice(POSTING_LIST_V2_MAGIC);
@@ -180,27 +207,27 @@ impl PostingList {
 
         let mut prev_doc_id = 0u64;
         for p in &self.postings {
-            let delta = (p.doc_id as u128)
+            let delta_u128 = (p.doc_id as u128)
                 .checked_sub(prev_doc_id as u128)
                 .ok_or_else(|| {
                     ActaError::Storage(
                         "Unsorted or overflow doc_id in posting list".to_string(),
                     )
-                })? as u64;
+                })?;
+            let delta = u64::try_from(delta_u128).map_err(|_| {
+                ActaError::Storage("DocId delta overflow in posting list".to_string())
+            })?;
             encode_varint(delta, &mut buf);
             encode_varint(p.tf as u64, &mut buf);
             encode_varint(p.doc_len as u64, &mut buf);
-            #[allow(clippy::unnecessary_cast)]
-            {
-                prev_doc_id = p.doc_id as u64;
-            }
+            prev_doc_id = p.doc_id;
         }
 
         Ok(buf)
     }
 
-    /// Decodes a posting list from compact Delta-Varint binary format,
-    /// with legacy bincode V1 fallback.
+    // ANCHOR[acta-text:POST-015]
+    /// Dekodiert eine Posting-Liste aus dem Delta-Varint-Format mit Fallback auf Legacy-Bincode.
     pub fn decode_compact(bytes: &[u8]) -> Result<Self, ActaError> {
         if bytes.starts_with(POSTING_LIST_V2_MAGIC) {
             let mut offset = POSTING_LIST_V2_MAGIC.len();
@@ -211,7 +238,8 @@ impl PostingList {
                     count
                 )));
             }
-            let mut postings = Vec::with_capacity(count as usize);
+            let cap = usize::try_from(count).unwrap_or(usize::MAX);
+            let mut postings = Vec::with_capacity(cap);
             let mut prev_doc_id = 0u64;
 
             for _ in 0..count {
@@ -256,17 +284,22 @@ impl PostingList {
 
 fn encode_varint(mut val: u64, buf: &mut Vec<u8>) {
     while val >= 0x80 {
-        buf.push((val as u8 & 0x7f) | 0x80);
+        let b = u8::try_from(val & 0x7f).unwrap_or(0);
+        buf.push(b | 0x80);
         val >>= 7;
     }
-    buf.push(val as u8);
+    let last = u8::try_from(val & 0x7f).unwrap_or(0);
+    buf.push(last);
 }
 
 fn decode_varint(bytes: &[u8], offset: &mut usize) -> Result<u64, ActaError> {
     let mut result = 0u64;
     let mut shift = 0u32;
     while *offset < bytes.len() {
-        let byte = bytes[*offset];
+        let byte = match bytes.get(*offset) {
+            Some(&b) => b,
+            None => break,
+        };
         *offset += 1;
         result |= ((byte & 0x7f) as u64) << shift;
         if (byte & 0x80) == 0 {
@@ -282,31 +315,36 @@ fn decode_varint(bytes: &[u8], offset: &mut usize) -> Result<u64, ActaError> {
     ))
 }
 
-/// In-Memory resident index mapping terms to their posting lists.
-/// Uses RCU (Read-Copy-Update) via `Arc<PostingList>` for lock-free read access under `RwLock`.
+// ANCHOR[acta-text:POST-016]
+/// Speicherresidenter Lese-Cache für Posting-Listen mit RCU-Verwaltung.
 #[derive(Default)]
 pub struct ResidentPostingIndex {
-    index: RwLock<HashMap<String, Arc<PostingList>>>,
+    index: RwLock<BTreeMap<String, Arc<PostingList>>>,
 }
 
 impl ResidentPostingIndex {
+    // ANCHOR[acta-text:POST-017]
+    /// Erzeugt einen leeren residenten Posting-Index.
     pub fn new() -> Self {
         Self {
-            index: RwLock::new(HashMap::new()),
+            index: RwLock::new(BTreeMap::new()),
         }
     }
 
-    /// Retrieves an Arc to the PostingList for a given term if cached.
+    // ANCHOR[acta-text:POST-018]
+    /// Liefert eine referenzgezählte Posting-Liste für den Begriff, falls im Cache vorhanden.
     pub fn get(&self, term: &str) -> Option<Arc<PostingList>> {
         self.index.read().get(term).cloned()
     }
 
-    /// Inserts or replaces a PostingList for a given term.
+    // ANCHOR[acta-text:POST-019]
+    /// Fügt eine Posting-Liste in den Index ein oder ersetzt sie.
     pub fn insert_list(&self, term: String, list: PostingList) {
         self.index.write().insert(term, Arc::new(list));
     }
 
-    /// Upserts a single posting for a term using RCU (Copy-On-Write).
+    // ANCHOR[acta-text:POST-020]
+    /// Fügt ein einzelnes Posting per RCU (Copy-On-Write) in die Posting-Liste des Begriffs ein.
     pub fn upsert_posting(&self, term: &str, posting: Posting) {
         let mut guard = self.index.write();
         let existing = guard.get(term).cloned();
@@ -317,13 +355,9 @@ impl ResidentPostingIndex {
         guard.insert(term.to_string(), Arc::new(updated));
     }
 
-    /// Removes a posting for a doc_id across a list of terms using RCU.
+    // ANCHOR[acta-text:POST-021]
+    /// Entfernt eine Dokument-ID aus den Posting-Listen mehrerer Begriffe per RCU.
     pub fn remove_posting_from_terms(&self, terms: &[String], doc_id: DocId) {
-        self.remove_terms(doc_id, terms);
-    }
-
-    /// Removes postings for a given doc_id across specified terms from the in-memory cache (e.g., on transaction rollback).
-    pub fn remove_terms(&self, doc_id: DocId, terms: &[String]) {
         let mut guard = self.index.write();
         for term in terms {
             if let Some(list) = guard.get(term).cloned() {
@@ -337,7 +371,17 @@ impl ResidentPostingIndex {
         }
     }
 
-    /// Clears the in-memory cache (e.g., on full re-sync).
+    // ANCHOR[acta-text:POST-022]
+    /// Entfernt die angegebenen Begriffe aus dem Cache (z. B. bei Rollback).
+    pub fn remove_terms(&self, terms: &[String]) {
+        let mut guard = self.index.write();
+        for term in terms {
+            guard.remove(term);
+        }
+    }
+
+    // ANCHOR[acta-text:POST-023]
+    /// Leert den gesamten Cache (z. B. bei vollständigem Index-Neuladen).
     pub fn clear(&self) {
         self.index.write().clear();
     }
@@ -347,6 +391,8 @@ impl ResidentPostingIndex {
 mod tests {
     use super::*;
 
+    // ANCHOR[acta-text:TEST-POST-001]
+    // Prüft, dass PostingList Eingaben automatisch nach DocId sortiert und Duplikate dedupliziert.
     #[test]
     fn test_posting_list_sorted_and_dedup() {
         let p1 = Posting::new(DocId::new(10), 2, 100);
@@ -395,12 +441,12 @@ mod tests {
         assert_eq!(plist.as_slice()[0].doc_id(), DocId::new(50));
         assert_eq!(plist.as_slice()[1].doc_id(), DocId::new(100));
 
-        index.remove_terms(DocId::new(50), std::slice::from_ref(&term));
+        index.remove_posting_from_terms(std::slice::from_ref(&term), DocId::new(50));
         let plist_after = index.get(&term).unwrap();
         assert_eq!(plist_after.len(), 1);
         assert_eq!(plist_after.as_slice()[0].doc_id(), DocId::new(100));
 
-        index.remove_terms(DocId::new(100), std::slice::from_ref(&term));
+        index.remove_posting_from_terms(std::slice::from_ref(&term), DocId::new(100));
         assert!(index.get(&term).is_none());
     }
 
@@ -498,28 +544,5 @@ mod tests {
         let invalid_bytes = b"PL\x02\x00\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff";
         let res = PostingList::decode_compact(invalid_bytes);
         assert!(res.is_err());
-    }
-
-    #[test]
-    fn test_remove_terms_per_document() {
-        let index = ResidentPostingIndex::new();
-        let term = "alpha".to_string();
-
-        let doc1 = DocId::new(1);
-        let doc2 = DocId::new(2);
-
-        index.upsert_posting(&term, Posting::new(doc1, 1, 10));
-        index.upsert_posting(&term, Posting::new(doc2, 2, 20));
-
-        let list_before = index.get(&term).expect("term alpha should exist");
-        assert_eq!(list_before.len(), 2);
-
-        index.remove_terms(doc1, &[term.clone()]);
-
-        let list_after = index
-            .get(&term)
-            .expect("term alpha should still exist for doc2");
-        assert_eq!(list_after.len(), 1);
-        assert_eq!(list_after.as_slice()[0].doc_id(), doc2);
     }
 }

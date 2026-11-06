@@ -1,4 +1,8 @@
-use acta_core::{ActaError, Result};
+//! # Manifest-Rollover (Ring 1)
+//!
+//! Schreibt periodisch kompakte Manifest-Snapshots, um Logdateien klein zu halten.
+
+use acta_types::{ActaError, Result};
 use tokio::io::AsyncWriteExt;
 
 use super::core::Manifest;

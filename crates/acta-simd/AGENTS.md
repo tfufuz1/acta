@@ -1,48 +1,43 @@
-# AGENTS.md — acta-simd
-> Ring 0 · stable · Quelle: capabilities.toml · Spec: K.25
+# AGENTS – acta-simd
 
-## 1. Zweck
+Abgeleitet aus [`docs/SPEC.md`](../../docs/SPEC.md) (8.4, D-28, D-29, 15.1). Bei Widerspruch gilt die SPEC (D-98). Gemeinsame Regeln: [`AGENTS.md`](../../AGENTS.md).
 
-SIMD-beschleunigte Distanzberechnungen (Cosine, L2/Euklidisch, Dot Product) und Vektor-Operationen für f32, u8 und SQ8-Quantisierung. Der Crate kapselt hardware-spezifische Kernel (AVX2, AVX-512, NEON, Scalar) sowie dynamischen CPU-Dispatch in einer Unsafe-Insel und stellt eine 100% sichere öffentliche API bereit.
+**Zweck:** Vektor-Distanzfunktionen (L2, Dot, Cosine) mit SIMD-Kernen und Skalar-Referenz.
 
-## 2. Modul-Karte
+**Ring und Abhängigkeiten:** Ring 1. Erlaubt: `types`. `unsafe` ist hier erlaubt (AR-8), jede Zeile mit `// SAFETY:`.
 
-| Datei/Verzeichnis | Verantwortung |
-|---|---|
-| `src/lib.rs` | Öffentliche safe API-Schnittstelle, Re-Exports und Top-Level Doku |
-| `src/dispatch.rs` | Hardware-Feature-Erkennung und dynamische CPU-Dispatching-Logik |
-| `src/kernels/mod.rs` | Modul-Deklarationen für Kernel und gemeinsame Typen/Hilfsfunktionen |
-| `src/kernels/avx2.rs` | AVX2-beschleunigte F32- und U8-Distanzkernel |
-| `src/kernels/avx512.rs` | AVX-512 / VNNI-beschleunigte Kernel für F32 und U8 |
-| `src/kernels/neon.rs` | ARM NEON SIMD-Kernel für AArch64 |
-| `src/kernels/scalar.rs` | Skalare Fallback-Implementierungen aller Distanz- und Ähnlichkeitsfunktionen |
+## Fachprofil (Arbeitsrolle)
 
-## 3. Invarianten
+HPC-Ingenieur für Vektorkerne (AVX2, AVX-512, NEON) mit Schwerpunkt Reproduzierbarkeit. Dieses Profil beschreibt Arbeitsweise und Fachwissen und begründet keine eigene Anforderung.
 
-- `INV-SIMD-SAFE-BOUNDARY`: Die öffentliche API ist 100% safe. Alle `unsafe`-Blöcke und `unsafe fn` sind intern gekapselt und erfüllen `#![deny(unsafe_op_in_unsafe_fn)]`.
-- `INV-SIMD-FALLBACK-PARITY`: Jeder SIMD-Kernel MUSS identische Ergebnisse wie der skalare Fallback in `scalar.rs` liefern (validiert via SIMD Cross-Validation Workflow).
-- `INV-SIMD-BOUNDS-CHECK`: Puffer-Längen und Ausrichtungen MÜSSEN vor dem Aufruf intrinsischer Instruktionen geprüft werden, um Out-of-Bounds-Zugriffe zu verhindern.
+- Distanzkerne (L2, Dot, Cosine) mit Laufzeit-Dispatch, Ausrichtung und Tail-Behandlung.
+- Gleitkomma-Determinismus: feste Reduktionsreihenfolge, FMA-Verhalten, Denormale; Ergebnisgleichheit zwischen Pfaden oder dokumentierte Toleranz mit Kreuzvalidierung gegen den Skalarpfad.
+- `unsafe`-Disziplin (Intrinsics, `target_feature`, Alignment), Fuzz- und Differentialtests.
 
-## 4. Verboten / Anti-Patterns
+## Normative Anker
 
-- Unkontrollierte Panics bei NaN-Werten in Float-Arrays (Behandlung gemäß `cargo xtask check-nan-hot-loop`).
-- Kopieren von Sicherheitsregeln aus `rules/simd_safety.md` — stattdessen direkt auf `rules/simd_safety.md` referenzieren.
+- Nur **f32-Kerne** (Dot, L2, Cosine) mit Laufzeit-Dispatch und Skalar-Referenz. Der u8-VNNI-Kernel entfällt (D-28: falsche Operandentypen bei `_mm512_dpbusd_epi32`).
+- **Jeder Kernel hat einen Cross-Check gegen die Skalar-Referenz** (T-SIMD-1). Ohne ihn ist ein Kernel nicht fertig.
+- Der deterministische Rebuild des Vektorindex hängt nur von der Menge der lebenden Slots ab (D-77, T-VEC-REBUILD-INDEP). **Folgerung:** Die Kernel-Ergebnisse müssen für gleiche Eingaben reproduzierbar sein; Determinismus der Graphkonstruktion hat Vorrang vor Spitzengeschwindigkeit.
+- Keine Quantisierung außerhalb der Arena-Repräsentationen (D-86); SQ8/PQ/Binär sind spätere Erweiterungen im selben Slot-Layout.
+- `unsafe` nur in dieser Insel und in `sys` (D-29). Kein `mmap`.
 
-## 5. Nebenläufigkeit, Async- und Lock-Regeln
+## Verboten
 
-- Kernel sind reine CPU-bound synchrone Berechnungsfunktionen ohne Zustände, Locks oder Async/tokio (Ring 0, Rule P26).
+u8-VNNI-Kernel (D-28), Kernel ohne Skalar-Referenz und Cross-Check, `unsafe` außerhalb der Insel, Panik bei beliebigen Eingabelängen (P6), Features, die Pfade schalten (AR-9).
 
-## 6. Verifikation
+## Abnahme
+
+`T-SIMD-1` (Property-Tests Skalar gegen SIMD), `T-UNSAFE-1` (Miri auf der Skalar-Referenz), CI-Matrix x86_64 und aarch64 (`.github/workflows/simd-cross-validation.yml`), Benchmark mit Regressionsgrenze (P9, 15.2).
+
+## Arbeitspakete
+
+Rückbau VNNI nach D-28 (WP-1.2); Kerne dienen WP-8.1. Statusquelle: `.agents/jules/tasks/BACKLOG.md`.
+
+## Prüfbefehle
 
 ```bash
-cargo test -p acta-simd
-cargo xtask check-nan-hot-loop
-cargo xtask check-agents-integrity
-cargo xtask check-unsafe-islands
-cargo xtask check-ring0-async-purity
+cargo test -p acta-simd --locked
+cargo +nightly miri test -p acta-simd
+cargo test -p acta-arch-tests --locked
 ```
-
-## 7. Bekannte Lücken / SOLL
-
-- AVX-512 VNNI und NEON-Pfade erfordern spezifische Target-Features und fallen bei Nichtverfügbarkeit auf AVX2 oder Scalar zurück.
-

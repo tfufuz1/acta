@@ -1,3 +1,11 @@
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 //! Campaign J-24 Test Suite — acta-vector
 //! Covers Hypotheses H1 - H10 for Product 3 Vector Index Deep Audit.
 
@@ -5,8 +13,8 @@ use std::collections::HashSet;
 use std::f32;
 use std::fs;
 
-use acta_core::types::{DistanceMetric, DocId, TxId};
-use acta_core::VectorIndex;
+use acta_ports::VectorIndex;
+use acta_types::{DistanceMetric, DocId, TxId};
 use acta_vector::candidate_stream::VectorCandidateStream;
 use acta_vector::compute_pool::ComputePool;
 #[cfg(feature = "experimental-diskann")]
@@ -14,7 +22,7 @@ use acta_vector::diskann::{DiskAnnConfig, DiskAnnFallbackPolicy, DiskAnnIndex};
 use acta_vector::distance::{cosine_distance, dot_product_distance, euclidean_distance};
 use acta_vector::hnsw::sq8_bias::Sq8Bias;
 use acta_vector::hnsw::{HnswConfig, HnswIndex};
-use acta_vector::persistence::{MmapIndex, NodeRecord};
+use acta_vector::persistence::{BufferIndex, NodeRecord};
 use acta_vector::quantize::ScalarQuantizer;
 #[cfg(feature = "experimental-rabitq")]
 use acta_vector::RaBitQQuantizer;
@@ -372,12 +380,12 @@ fn test_h4_simd_dispatch_and_numerical_audit() {
 }
 
 // ============================================================================
-// H5: RAM vs Mmap Precision Differences & Top-K Determinism
+// H5: RAM vs Buffer Precision Differences & Top-K Determinism
 // ============================================================================
 #[tokio::test]
-async fn test_h5_ram_vs_mmap_mixed_precision_top_k() {
+async fn test_h5_ram_vs_buffer_mixed_precision_top_k() {
     let dir = tempfile::tempdir().unwrap();
-    let index_path = dir.path().join("hnsw_mmap_test.idx");
+    let index_path = dir.path().join("hnsw_buffer_test.idx");
 
     let dim = 16;
     let config = HnswConfig {
@@ -403,30 +411,30 @@ async fn test_h5_ram_vs_mmap_mixed_precision_top_k() {
 
     ram_index.save(&index_path).await.unwrap();
 
-    let loaded_mmap_index = HnswIndex::try_new(config.clone()).unwrap();
-    loaded_mmap_index.load_mmap(&index_path).await.unwrap();
+    let loaded_buffer_index = HnswIndex::try_new(config.clone()).unwrap();
+    loaded_buffer_index.load_buffer(&index_path).await.unwrap();
 
     let query = gen_vector(dim, 9999);
 
     let ram_results = ram_index.search(&query, 10).await.unwrap();
-    let mmap_results = loaded_mmap_index.search(&query, 10).await.unwrap();
+    let buffer_results = loaded_buffer_index.search(&query, 10).await.unwrap();
 
     let ram_ids: HashSet<DocId> = ram_results.iter().map(|r| r.doc_id).collect();
-    let mmap_ids: HashSet<DocId> = mmap_results.iter().map(|r| r.doc_id).collect();
+    let buffer_ids: HashSet<DocId> = buffer_results.iter().map(|r| r.doc_id).collect();
 
-    let overlap = ram_ids.intersection(&mmap_ids).count();
-    println!("H5 Top-10 set overlap between RAM and Mmap index: {overlap}/10");
+    let overlap = ram_ids.intersection(&buffer_ids).count();
+    println!("H5 Top-10 set overlap between RAM and Buffer index: {overlap}/10");
     assert!(
         overlap >= 8,
-        "RAM and Mmap search candidate overlap should be at least 8/10, got {overlap}"
+        "RAM and Buffer search candidate overlap should be at least 8/10, got {overlap}"
     );
 
-    for (r_ram, r_mmap) in ram_results.iter().zip(mmap_results.iter()) {
-        if r_ram.doc_id == r_mmap.doc_id {
-            let dist_diff = (r_ram.score - r_mmap.score).abs();
+    for (r_ram, r_buffer) in ram_results.iter().zip(buffer_results.iter()) {
+        if r_ram.doc_id == r_buffer.doc_id {
+            let dist_diff = (r_ram.score - r_buffer.score).abs();
             assert!(
                 dist_diff < 1e-5,
-                "Distance discrepancy for same doc ID {} between RAM and Mmap: {dist_diff}",
+                "Distance discrepancy for same doc ID {} between RAM and Buffer: {dist_diff}",
                 r_ram.doc_id
             );
         }
@@ -480,8 +488,8 @@ async fn test_h6_hnsw_persistence_corruption_and_bounds() {
     index.save(&index_path).await.unwrap();
 
     // Roundtrip verification
-    let valid_mmap = MmapIndex::open(&index_path);
-    assert!(valid_mmap.is_ok(), "Valid mmap load should succeed");
+    let valid_buffer = BufferIndex::open(&index_path);
+    assert!(valid_buffer.is_ok(), "Valid buffer load should succeed");
 
     // Header corruption test: mutate each of the first 128 bytes
     let orig_bytes = fs::read(&index_path).unwrap();
@@ -499,7 +507,7 @@ async fn test_h6_hnsw_persistence_corruption_and_bounds() {
         let corrupt_path = corrupt_dir.join(format!("header_{i}.idx"));
         fs::write(&corrupt_path, &corrupted).unwrap();
 
-        let res = std::panic::catch_unwind(|| MmapIndex::open(&corrupt_path));
+        let res = std::panic::catch_unwind(|| BufferIndex::open(&corrupt_path));
         match res {
             Ok(Err(_)) => err_count += 1,
             Ok(Ok(_)) => {
@@ -512,7 +520,7 @@ async fn test_h6_hnsw_persistence_corruption_and_bounds() {
     println!("H6 Corrupted header bytes tested: {bytes_to_test}, Errors caught cleanly: {err_count}, Panics: {panic_count}");
     assert_eq!(
         panic_count, 0,
-        "MmapIndex::open must never panic on corrupted header bytes"
+        "BufferIndex::open must never panic on corrupted header bytes"
     );
 
     // NodeRecord::from_bytes buffer bounds check

@@ -1,6 +1,12 @@
+//! # Eigenschaftstest: MVCC-Sichtbarkeitsinvariante
+//!
+//! Verifiziert die mathematische Äquivalenz der O(1)-Sichtbarkeitsprüfung
+//! von `SeqLogEntry::is_visible` gegen eine formale Referenzfunktion über 10.000 Testfälle.
+
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use acta_mvcc::{DocId, SeqLogEntry, SequenceLog};
+use acta_testmacros::ctx_test;
 use proptest::prelude::*;
 
 /// Trivial reference implementation of the MVCC visibility formula:
@@ -12,7 +18,8 @@ fn reference_visibility(insert_seq: u64, delete_seq: Option<u64>, as_of: u64) ->
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(10_000))]
 
-    #[test]
+    // Eigenschaftstest: Verifiziert die Sichtbarkeit gegen die Referenzformel über 10.000 Zufallsfälle.
+#[ctx_test(id = "T-TXN-1")]
     fn prop_mvcc_visibility_matches_reference_10k(
         insert_seq in 0..10_000u64,
         delete_opt in prop_oneof![
@@ -62,7 +69,8 @@ proptest! {
     }
 
     /// Explicit boundary testing: as_of == insert_seq, as_of == delete_seq, delete_seq == None
-    #[test]
+    // Eigenschaftstest: Prüft explizite Randwertfälle an den Grenzen von insert_seq und delete_seq.
+#[ctx_test(id = "T-TXN-1")]
     fn prop_mvcc_visibility_explicit_boundary_cases(
         seq_a in 0..5_000u64,
         seq_b in 5_000..10_000u64,

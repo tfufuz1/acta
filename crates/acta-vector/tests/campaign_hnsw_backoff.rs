@@ -1,7 +1,16 @@
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 //! Campaign J-10 Test: HNSW Rebuild Backoff Cooldown Invariant Verification
 //! Demonstrates deterministic exponential backoff cooldown behavior under rapid rebuild requests.
 
-use acta_core::{DocId, TxId, VectorIndex};
+use acta_ports::VectorIndex;
+use acta_types::{DocId, TxId};
 use acta_vector::hnsw::{HnswConfigBuilder, HnswIndex};
 use std::time::Duration;
 

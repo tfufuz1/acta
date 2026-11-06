@@ -1,14 +1,15 @@
 // FILE-CONTEXT
 // ZWECK: DiskANN-Graphindex für Out-of-Core Approximate Nearest Neighbor Search (WP-4.3).
-// INVARIANTEN: Lock-Hierarchie: header -> mmap -> cache / quantizer / doc_ids; atomic rename + parent dir sync bei file persistence.
-// NICHT-OFFENSICHTLICH: Mmap für Vektor- & Graphlesezugriffe, ausgelagert an acta-sys::mmap_readonly.
+// INVARIANTEN: Lock-Hierarchie: header -> vfs_file -> cache / quantizer / doc_ids; atomic rename + parent dir sync bei file persistence.
+// NICHT-OFFENSICHTLICH: Positional VFS-Lesevorgänge über acta_ports::Vfs.
 // STAND: TS:2026-09-10T19:30:00Z (SESSION: a9d67eae)
 
 use super::config::{DiskAnnFallbackPolicy, VectorData};
 use super::format::DiskAnnHeader;
 use super::types::{DiskAnnIndex, SearchCandidate};
 use crate::distance::compute_distance_trusted;
-use acta_core::{ActaError, DistanceMetric, DocId, Result, ScoredDocument, VectorIndex};
+use acta_ports::VectorIndex;
+use acta_types::{ActaError, DistanceMetric, DocId, Result, ScoredDocument};
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashSet};
 
@@ -223,11 +224,11 @@ impl DiskAnnIndex {
     }
 
     pub async fn search_internal(&self, query: &[f32], k: usize) -> Result<Vec<ScoredDocument>> {
-        if k > acta_core::MAX_SEARCH_K {
+        if k > acta_types::MAX_SEARCH_K {
             return Err(ActaError::invalid_input(format!(
                 "Requested k ({}) exceeds maximum allowed search limit ({})",
                 k,
-                acta_core::MAX_SEARCH_K
+                acta_types::MAX_SEARCH_K
             )));
         }
 

@@ -1,15 +1,29 @@
-//! Memory Importance scoring and Recency-Decay functionality.
+//! Gedächtnis-Relevanzbewertung (Importance Scoring) und zeitlicher Verfall (Recency Decay).
+//!
+//! # Architektur-Rolle: Ring 0 (Kognitive Gewichtung)
+//!
+//! In Agenten- und Gedächtnissystemen veralten episodische Informationen mit der Zeit,
+//! während semantische Fakten stabil bleiben sollen (ADR-025).
+//!
+//! Dieses Modul implementiert:
+//! - `ImportanceScore`: Normalisierter Wichtigkeits-Score `[0.0, 1.0]`.
+//! - `DecayFunction`: Mathematische Verfallsfunktionen (exponentiell nach Transaktionen,
+//!   Stufenfunktion oder exponentiell nach echter Wanduhrzeit).
+//! - `MemoryImportance`: Kombinierter Container zur Berechnung des effektiven Scores
+//!   (`base_score * decay_factor`).
+//!
+//! # Invarianten
+//! - `ImportanceScore` ist strikt auf `[0.0, 1.0]` begrenzt. `NaN` wird sicher zu `0.0`.
+//! - Reine, nebenwirkungsfreie Berechnungen ohne Panics (Zero-Panic-Garantie).
 
-// FILE-CONTEXT
-// STAND: 2026-08-30T18:51:56Z (SESSION: e459bd5f)
 // ZWECK: Memory Importance Scoring und Recency-Decay Berechnungen (ADR-025).
-// INVARIANTEN: ImportanceScore ist garantiert [0.0, 1.0] geclampt; NaN wird zu 0.0 (Zero-Panic).
+// INVARIANTEN: ImportanceScore ist auf [0.0, 1.0] geclampt; NaN wird zu 0.0 (Zero-Panic).
 // HOTSPOTS: 15-120
 // NICHT-OFFENSICHTLICH: Recency Decay basiert auf TxId-Distanz (nicht Wall-Clock Time).
 // SIEHE AUCH: rules/tag_taxonomy.md, DECISIONS.md (ADR-025)
 
 //! # Invarianten
-//! - `ImportanceScore` ist garantiert im Bereich `[0.0, 1.0]`. NaN wird zu `0.0`.
+//! - `ImportanceScore` ist im Bereich `[0.0, 1.0]`. NaN wird zu `0.0`.
 //! - `decay_factor` und `effective_score` sind reine, nicht-fehlschlagende Funktionen (Zero-Panic).
 
 use crate::types::domain::TxId;

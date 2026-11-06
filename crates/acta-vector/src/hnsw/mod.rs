@@ -10,6 +10,7 @@ pub mod adaptive_ef;
 pub mod arena;
 pub mod deletion;
 pub mod sq8_bias;
+pub mod staging;
 
 mod acorn_filtered;
 mod batch;
@@ -17,6 +18,7 @@ mod config;
 mod core_insert;
 mod core_rebuild;
 mod core_search;
+mod erasure_layer_impl;
 mod types;
 mod vector_index_impl;
 
@@ -31,6 +33,5 @@ pub use deletion::{DeletionStats, GhostFreeVectorIndex};
 pub use sq8_bias::Sq8Bias;
 pub use types::{
     Candidate, HnswColdCore, HnswHotCore, HnswIndex, HnswIndexCore, HnswNode, RebuildGuard,
-    RebuildStatus, SnapshotPinGuard, VectorData, HNSW_REBUILD_DELETION_RATIO,
-    SENTINEL_NO_ENTRY_POINT,
+    RebuildStatus, VectorData, HNSW_REBUILD_DELETION_RATIO, SENTINEL_NO_ENTRY_POINT,
 };

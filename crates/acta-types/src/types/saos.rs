@@ -1,9 +1,18 @@
-//! Query-Abstraktionen (wie `HybridQuery` und `HybridQueryBuilder`) sowie Signal-Fusionstypen (wie `FusionWeights`, `FusionStrategy`, `GraphTraversalStrategy`, `ContextChunk`, `ContextWindow`, `ScoredEntry`, `RerankResult`). Der Begriff SAOS (Synthesized Agent Operating System) dient als historische Modulbezeichnung.
+//! Query-Abstraktionen (wie `HybridQuery` und `HybridQueryBuilder`) sowie Signal-Fusionstypen.
+//!
+//! # Architektur-Rolle: Ring 0 (Hybride Multi-Signal-Suche)
+//!
+//! Acta synthetisiert Antworten über vier Suchkanäle (Dense Vector, Sparse Text/BM25, Graph und Recency).
+//!
+//! Dieses Modul stellt bereit:
+//! - `HybridQuery`: Zentrale Abfragestruktur mit Text, Embedding, Startknoten und Filtern.
+//! - `HybridQueryBuilder`: Ergonomischer Value-Builder zur Konstruktion unveränderlicher Abfragen.
+//! - `FusionWeights`: Auf 1.0 normalisierte Gewichte für Vektor-, Text- und Graph-Signale.
+//! - `FusionStrategy`: Fusionsalgorithmen (RRF = Reciprocal Rank Fusion, Score-Normalisierung).
+//! - `ContextChunk` & `ContextWindow`: Für LLMs aufbereitete Textsegmente inklusive Tokenzählung und Zettelkasten-Links.
 
-// FILE-CONTEXT
-// STAND: 2026-08-30T18:51:56Z (SESSION: e459bd5f)
 // ZWECK: Multi-Signal HybridQuery, FusionWeights, ContextWindow und ContextChunk Repräsentation.
-// INVARIANTEN: FusionWeights::new garantiert normalisierte Summe == 1.0 (Summe in [0.999, 1.001]).
+// INVARIANTEN: FusionWeights::new normalisiert die Summe auf ~1.0 (Summe in [0.999, 1.001]).
 // HOTSPOTS: 30-320
 // NICHT-OFFENSICHTLICH: metadata signal weight ist in FusionWeights reserviert und liefert via pub fn metadata() 0.0 zurück.
 // SIEHE AUCH: rules/tag_taxonomy.md, DECISIONS.md (ADR-021)
@@ -210,7 +219,7 @@ impl FusionWeights {
 }
 
 /// A chunk of context for LLM budget allocation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContextChunk {
     /// Document identifier associated with this chunk.
     pub doc_id: DocId,
@@ -251,7 +260,7 @@ impl ContextChunk {
     }
 
     /// Kombinierter Token-Count (Heuristik: chars/4 ≈ Tokens).
-    /// Verwendet für Budget-Management in `acta-db/src/context.rs`.
+    /// Verwendet für Budget- und Token-Management.
     pub fn combined_token_count(&self) -> usize {
         match &self.contextual_prefix {
             Some(p) if !p.is_empty() => self.token_count + p.len() / 4,
@@ -268,7 +277,7 @@ impl ContextChunk {
 }
 
 /// An aggregated context window constrained by a token budget.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContextWindow {
     /// List of included context chunks.
     pub chunks: Vec<ContextChunk>,
@@ -291,6 +300,12 @@ impl std::fmt::Display for ContextWindow {
 }
 
 /// Individual retrieval signal (vector, text, graph) in multi-signal hybrid search.
+///
+/// # Abgrenzung
+/// Dieser Typ `acta_types::Signal` beschreibt das ungewichtete Domänen-Enum der drei
+/// primären Suchkanäle (`Vector`, `Text`, `Graph`) für das Query-Interface systemweit.
+/// Im Gegensatz dazu ist `acta_rank::fusion::types::Signal` eine interne Signal-Repräsentation
+/// der Rank-Engine zur Gewichtsmodulation und Z-Score/RRF-Kalibrierung.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Signal {
     /// Dense vector embedding search signal.
@@ -316,7 +331,7 @@ impl std::fmt::Display for Signal {
 /// **Semantik**:
 /// - `Fail` (Default): If an individual signal fails due to an underlying internal error
 ///   (e.g., vector index failure or timeout), the search aborts immediately and returns a
-///   structured error ([`ActaError::SignalFailed`]) explicitly identifying the failing signal.
+///   structured error (`ActaError`) explicitly identifying the failing signal.
 /// - `Degrade`: If an individual signal fails, the search logs a warning and proceeds with
 ///   fusion across the remaining successful signals. The returned results bear a non-empty
 ///   `degraded_signals` list detailing which signals failed.
@@ -331,8 +346,6 @@ pub enum OnSignalFailure {
     /// Degrade search gracefully using remaining active signals and report failed signals in `degraded_signals`.
     Degrade,
 }
-
-pub use super::domain::RerankResult;
 
 /// Output of a query rewriter containing text, semantic, and graph anchor reformulations.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -378,18 +391,6 @@ impl QueryRewriteOutput {
                 .is_none_or(|s| s.trim().is_empty())
             && self.anchor_entities.is_empty()
     }
-
-    /// Converts this query rewrite output into a [`HybridQueryBuilder`].
-    pub fn into_query_builder(self) -> HybridQueryBuilder {
-        let mut builder = HybridQueryBuilder::new();
-        if let Some(text) = self.text_query {
-            builder = builder.with_text_query(text);
-        }
-        if let Some(anchor) = self.anchor_entities.first() {
-            builder = builder.with_graph_start_node(anchor.clone());
-        }
-        builder
-    }
 }
 
 /// Evaluated result for hybrid/4-signal search.
@@ -404,7 +405,7 @@ pub struct ScoredEntry {
 }
 
 /// A unified query traversing multiple index signals.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HybridQuery {
     /// Optional full-text query string.
     pub text_query: Option<String>,
@@ -462,86 +463,16 @@ impl HybridQuery {
     pub fn builder() -> HybridQueryBuilder {
         HybridQueryBuilder::default()
     }
-
-    /// Creates a `HybridQuery` with a text search query string.
-    pub fn text_search(text: impl Into<String>) -> Result<Self> {
-        HybridQueryBuilder::new().with_text_query(text).build()
-    }
-
-    /// Creates a `HybridQuery` with a vector query embedding.
-    pub fn vector_search(vector: Vec<f32>) -> Result<Self> {
-        HybridQueryBuilder::new().with_vector_query(vector).build()
-    }
-
-    /// Creates a `HybridQuery` configured for graph traversal search.
-    pub fn graph_search(
-        start_node: impl Into<String>,
-        strategy: GraphTraversalStrategy,
-    ) -> Result<Self> {
-        HybridQueryBuilder::new()
-            .with_graph_start_node(start_node)
-            .with_graph_strategy(strategy)
-            .build()
-    }
-
-    /// Creates a `HybridQuery` with custom fusion weights and signal fusion strategy.
-    pub fn with_fusion(
-        weights: FusionWeights,
-        strategy: impl Into<SignalFusionStrategies>,
-    ) -> Result<Self> {
-        HybridQueryBuilder::new()
-            .with_fusion_weights(weights)
-            .with_fusion_strategy(strategy)
-            .build()
-    }
-
-    /// Creates a `HybridQuery` with a metadata filter expression.
-    pub fn filtered(filter: FilterExpr) -> Result<Self> {
-        HybridQueryBuilder::new().with_filter(filter).build()
-    }
-
-    /// Creates a `HybridQuery` with community context boosting.
-    pub fn community_boosted(entity_id: EntityId) -> Result<Self> {
-        HybridQueryBuilder::new()
-            .with_same_community_as(entity_id)
-            .build()
-    }
-
-    /// Creates a `HybridQuery` filtered by cognitive memory types.
-    pub fn memory_filtered(types: Vec<MemoryType>) -> Result<Self> {
-        HybridQueryBuilder::new()
-            .with_memory_type_filter(types)
-            .build()
-    }
-
-    /// Creates a `HybridQuery` with options for superseded items and provenance.
-    pub fn with_provenance_and_superseded(
-        include_provenance: bool,
-        include_superseded: bool,
-    ) -> Result<Self> {
-        HybridQueryBuilder::new()
-            .with_include_provenance(include_provenance)
-            .with_include_superseded(include_superseded)
-            .build()
-    }
-
-    /// Creates a `HybridQuery` with pre-reranking pool expansion settings.
-    pub fn rerank_pool_config(multiplier: usize, max: usize) -> Result<Self> {
-        HybridQueryBuilder::new()
-            .with_rerank_pool_multiplier(multiplier)
-            .with_rerank_pool_max(max)
-            .build()
-    }
-
-    /// Creates a `HybridQuery` with a specified signal failure policy.
-    pub fn with_failure_policy(policy: OnSignalFailure) -> Result<Self> {
-        HybridQueryBuilder::new()
-            .with_on_signal_failure(policy)
-            .build()
-    }
 }
 
 /// Builder for HybridQuery to improve DX.
+///
+/// # Abgrenzung
+/// `acta_types::HybridQueryBuilder` ist ein speicherfreier, reiner Value-Builder in Ring 0,
+/// der eine unveränderliche `HybridQuery`-Value-Instanz erzeugt.
+/// Im Gegensatz dazu ist `acta_engine::collection::query_builder::builder::HybridQueryBuilder`
+/// an eine aktive `Collection`-Instanz mit Storage- und Vektorindex-Handles gebunden und führt
+/// die Abfrage über `.execute()` direkt auf der Datenbank aus.
 #[derive(Default)]
 pub struct HybridQueryBuilder {
     text_query: Option<String>,
@@ -694,7 +625,7 @@ mod tests {
 
     #[test]
     fn test_fusion_weights_valid() {
-        let w = FusionWeights::new(0.5, 0.5, 0.0).expect("valid"); // expect
+        let w = FusionWeights::new(0.5, 0.5, 0.0).expect("valid"); // expect // #[cfg(test)]
         assert_eq!(w.vector(), 0.5);
         assert_eq!(w.text(), 0.5);
     }
@@ -734,7 +665,7 @@ mod tests {
             .with_text_query("test query")
             .with_k(10)
             .build()
-            .unwrap();
+            .unwrap(); // #[cfg(test)]
         let eps = 1e-5f32;
         assert!((query.fusion_weights.vector() - 1.0 / 3.0).abs() < eps);
         assert!((query.fusion_weights.text() - 1.0 / 3.0).abs() < eps);
@@ -748,10 +679,10 @@ mod tests {
             .with_vector_query(vec![0.1, 0.2])
             .with_k(5)
             .build()
-            .expect("build ok"); // expect
+            .expect("build ok"); // expect // #[cfg(test)]
 
-        assert_eq!(query.text_query.unwrap(), "test query"); // unwrap
-        assert_eq!(query.vector_query.unwrap(), vec![0.1, 0.2]); // unwrap
+        assert_eq!(query.text_query.unwrap(), "test query"); // unwrap // #[cfg(test)]
+        assert_eq!(query.vector_query.unwrap(), vec![0.1, 0.2]); // unwrap // #[cfg(test)]
         assert_eq!(query.k, 5);
         // Default weights: balanced 1/3 each
         let eps = 1e-5f32;
@@ -762,18 +693,18 @@ mod tests {
 
     #[test]
     fn test_hybrid_query_builder_custom_weights() {
-        let weights = FusionWeights::new(0.4, 0.5, 0.1).unwrap(); // unwrap
+        let weights = FusionWeights::new(0.4, 0.5, 0.1).unwrap(); // unwrap // #[cfg(test)]
         let query = HybridQuery::builder()
             .with_fusion_weights(weights.clone())
             .build()
-            .unwrap(); // unwrap
+            .unwrap(); // unwrap // #[cfg(test)]
 
         assert_eq!(query.fusion_weights, weights);
     }
 
     #[test]
     fn test_hybrid_query_builder_defaults() {
-        let query = HybridQuery::builder().build().unwrap(); // unwrap
+        let query = HybridQuery::builder().build().unwrap(); // unwrap // #[cfg(test)]
         assert_eq!(query.k, 10);
         let eps = 1e-5f32;
         assert!((query.fusion_weights.vector() - 1.0 / 3.0).abs() < eps);
@@ -859,11 +790,16 @@ mod tests {
             total_tokens: 1,
             truncated: false,
         };
-        let ser = serde_json::to_string(&window).unwrap(); // unwrap
-        let deser: ContextWindow = serde_json::from_str(&ser).unwrap(); // unwrap
+        let ser = serde_json::to_string(&window).unwrap(); // unwrap // #[cfg(test)]
+        let deser: ContextWindow = serde_json::from_str(&ser).unwrap(); // unwrap // #[cfg(test)]
         assert_eq!(deser.total_tokens, 1);
         assert_eq!(deser.chunks.len(), 1);
-        assert!(deser.chunks[0].contextual_prefix.is_none());
+        assert!(deser
+            .chunks
+            .first()
+            .expect("chunk") // #[cfg(test)]
+            .contextual_prefix
+            .is_none());
     }
 
     #[test]
@@ -917,7 +853,7 @@ mod tests {
     #[test]
     fn test_serde_backward_compat_no_prefix_field() {
         let json = r#"{"doc_id":1,"content":"X","relevance":0.5,"token_count":1}"#;
-        let chunk: ContextChunk = serde_json::from_str(json).expect("deserialize"); // expect
+        let chunk: ContextChunk = serde_json::from_str(json).expect("deserialize"); // expect // #[cfg(test)]
         assert!(chunk.contextual_prefix.is_none());
     }
 
@@ -969,7 +905,7 @@ mod tests {
             .with_include_superseded(true)
             .with_k(25)
             .build()
-            .expect("build hybrid query"); // expect
+            .expect("build hybrid query"); // expect // #[cfg(test)]
 
         assert_eq!(query.text_query.as_deref(), Some("knowledge graph"));
         assert_eq!(query.vector_query.as_deref(), Some(&[0.5, 0.5][..]));

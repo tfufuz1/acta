@@ -1,4 +1,13 @@
-use acta_core::{ActaError, DistanceMetric, DocId, TxId, VectorIndex};
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
+use acta_ports::VectorIndex;
+use acta_types::{ActaError, DistanceMetric, DocId, TxId};
 use acta_vector::distance::{compute_distance_trusted, validate_vector};
 use acta_vector::hnsw::HnswIndex;
 use acta_vector::HnswConfig;

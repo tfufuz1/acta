@@ -1,6 +1,14 @@
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 #![cfg(feature = "experimental-rabitq")]
 
-use acta_core::ActaError;
+use acta_types::ActaError;
 use acta_vector::quantize_rabitq::RaBitQQuantizer;
 
 struct SplitMix64 {

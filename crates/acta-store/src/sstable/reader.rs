@@ -1,3 +1,8 @@
+//! # SSTable-Reader (Ring 1)
+//!
+//! Ermoeglicht wahlfreien und sequentiellen Lesezugriff auf unveraenderliche SSTables
+//! mit Block-Caching und Bloom-Filter-Abfragen.
+
 use super::block_cache::{BlockCache, SSTABLE_MAGIC_LEGACY, SSTABLE_MAGIC_MFSX};
 use super::block_search::{
     binary_search_entry_in_block, binary_search_first_index_in_block, get_entry_at_index,
@@ -8,7 +13,7 @@ use super::io::pread_exact;
 use super::stream::SstableStream;
 use crate::wal::KeyManager;
 use bytes::Bytes;
-use acta_core::{ActaError, Result};
+use acta_types::{ActaError, Result};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -144,7 +149,8 @@ pub(super) fn may_contain_key_in_block_bloom(
         }
         let (h1, h2) = BloomFilter::hash_pair(key);
         for i in 0..7u64 {
-            let bit_idx = (h1.wrapping_add(i.wrapping_mul(h2)) as usize) % m;
+            let bit_idx =
+                usize::try_from(h1.wrapping_add(i.wrapping_mul(h2)) % (m as u64)).unwrap_or(0);
             let byte_idx = bit_idx / 8;
             let bit_mask = 1u8 << (bit_idx % 8);
             if let Some(&byte) = bloom_bytes.get(byte_idx) {
@@ -181,7 +187,8 @@ pub(super) fn may_contain_key_in_block_bloom(
                 *hash_bytes.get(i * 2 + 1).unwrap_or(&0),
             ]);
             let bit_idx = chunk as usize % 256;
-            if (bloom_words[bit_idx / 64] & (1u64 << (bit_idx % 64))) == 0 {
+            let word = bloom_words.get(bit_idx / 64).copied().unwrap_or(0);
+            if (word & (1u64 << (bit_idx % 64))) == 0 {
                 return false;
             }
         }
@@ -190,7 +197,7 @@ pub(super) fn may_contain_key_in_block_bloom(
         if bloom_bytes.len() < 8 {
             return false;
         }
-        let bloom = if let Ok(arr) = bloom_bytes[0..8].try_into() {
+        let bloom = if let Some(arr) = bloom_bytes.get(0..8).and_then(|s| s.try_into().ok()) {
             u64::from_le_bytes(arr)
         } else {
             return false;
@@ -213,8 +220,10 @@ pub(super) fn may_contain_key_in_block_bloom(
 }
 
 /// A reader for existing SSTables.
+// ANCHOR[acta-store:SST-RDR-001]
+/// Liest SSTable-Dateien mit Block-Cache und Bloom-Filter-Unterstuetzung.
 pub struct SstableReader {
-    pub(super) file: Arc<std::fs::File>,
+    pub(super) file: Arc<dyn acta_ports::vfs::VfsFile>,
     pub(super) index: Vec<(Bytes, u64)>,
     pub(super) metadata: SstableMetadata,
     /// Byte offset where the index data begins (= end of last block).
@@ -276,23 +285,11 @@ impl SstableReader {
             None
         };
 
-        let path_for_open = path_buf.clone();
-        let (file, file_size) =
-            tokio::task::spawn_blocking(move || -> std::io::Result<(std::fs::File, u64)> {
-                let file = std::fs::File::open(&path_for_open)?;
-                let metadata = file.metadata()?;
-                let file_size = metadata.len();
-                Ok((file, file_size))
-            })
-            .await
-            .map_err(|e| ActaError::Storage(format!("Join error: {}", e)))?
-            .map_err(|e| ActaError::Storage(format!("File open failed: {}", e)))?;
+        let (file, file_size) = crate::vfs::open_vfs_file(&path_buf).await?;
 
         if file_size < 12 {
             return Err(ActaError::Storage("SSTable file too small".into()));
         }
-
-        let file = Arc::new(file);
 
         // Read trailer: last 54 bytes (v1..v4) or 52 bytes (v0)
         let trailer_data = {
@@ -302,7 +299,7 @@ impl SstableReader {
             tokio::task::spawn_blocking(move || -> std::io::Result<Vec<u8>> {
                 let mut buf = vec![0u8; read_len];
                 let offset = file_size.saturating_sub(54);
-                pread_exact(&f, &mut buf, offset)?;
+                pread_exact(&*f, &mut buf, offset)?;
                 Ok(buf)
             })
             .await
@@ -416,13 +413,19 @@ impl SstableReader {
                     .map_err(|_| ActaError::ParseError("Invalid index_offset".into()))?,
             )
         } else if trailer_len >= 54 {
+            let magic_slice = trailer_data
+                .get(50..54)
+                .ok_or_else(|| ActaError::checksum_mismatch(path_buf.to_string_lossy(), 0))?;
             let magic_legacy =
-                u32::from_le_bytes(trailer_data[50..54].try_into().map_err(|_| {
+                u32::from_le_bytes(magic_slice.try_into().map_err(|_| {
                     ActaError::checksum_mismatch(path_buf.to_string_lossy(), 0)
                 })?);
             if magic_legacy == SSTABLE_MAGIC_LEGACY {
+                let off_slice = trailer_data
+                    .get(42..50)
+                    .ok_or_else(|| ActaError::ParseError("Invalid index offset".into()))?;
                 u64::from_le_bytes(
-                    trailer_data[42..50]
+                    off_slice
                         .try_into()
                         .map_err(|_| ActaError::ParseError("Invalid index offset".into()))?,
                 )
@@ -471,7 +474,7 @@ impl SstableReader {
                 let f = Arc::clone(&file);
                 tokio::task::spawn_blocking(move || -> std::io::Result<Vec<u8>> {
                     let mut buf = vec![0u8; bloom_read_len];
-                    pread_exact(&f, &mut buf, bloom_offset)?;
+                    pread_exact(&*f, &mut buf, bloom_offset)?;
                     Ok(buf)
                 })
                 .await
@@ -485,12 +488,17 @@ impl SstableReader {
                         "Bloom filter data too short for CRC".into(),
                     ));
                 }
+                let crc_slice = bloom_data_raw
+                    .get(0..4)
+                    .ok_or_else(|| ActaError::Serialization("Invalid CRC".into()))?;
                 let stored_crc = u32::from_le_bytes(
-                    bloom_data_raw[0..4]
+                    crc_slice
                         .try_into()
                         .map_err(|_| ActaError::Serialization("Invalid CRC".into()))?,
                 );
-                let payload = &bloom_data_raw[4..];
+                let payload = bloom_data_raw.get(4..).ok_or_else(|| {
+                    ActaError::Storage("corrupted bloom data: payload missing".into())
+                })?;
                 if crc32fast::hash(payload) != stored_crc {
                     return Err(ActaError::checksum_mismatch(
                         path_buf.to_string_lossy(),
@@ -531,7 +539,7 @@ impl SstableReader {
 
             tokio::task::spawn_blocking(move || -> std::io::Result<Vec<u8>> {
                 let mut buf = vec![0u8; index_read_len];
-                pread_exact(&f, &mut buf, index_offset)?;
+                pread_exact(&*f, &mut buf, index_offset)?;
                 Ok(buf)
             })
             .await
@@ -546,8 +554,11 @@ impl SstableReader {
                     "Index data too short for CRC".into(),
                 ));
             }
+            let crc_slice = index_bytes_raw
+                .get(0..4)
+                .ok_or_else(|| ActaError::Serialization("Invalid CRC".into()))?;
             let stored_crc = u32::from_le_bytes(
-                index_bytes_raw[0..4]
+                crc_slice
                     .try_into()
                     .map_err(|_| ActaError::Serialization("Invalid CRC".into()))?,
             );
@@ -568,11 +579,13 @@ impl SstableReader {
         let index_len = index_bytes.len();
 
         while pos + 10 <= index_len {
-            let key_len = usize::from(u16::from_le_bytes(
-                index_bytes[pos..pos + 2]
-                    .try_into()
-                    .map_err(|_| ActaError::ParseError("corrupted index: key_len".into()))?,
-            ));
+            let klen_slice = index_bytes.get(pos..pos + 2).ok_or_else(|| {
+                ActaError::ParseError("corrupted index: key_len slice".into())
+            })?;
+            let key_len =
+                usize::from(u16::from_le_bytes(klen_slice.try_into().map_err(|_| {
+                    ActaError::ParseError("corrupted index: key_len".into())
+                })?));
             pos += 2;
 
             if pos + key_len + 8 > index_len {
@@ -584,8 +597,11 @@ impl SstableReader {
             let key = index_bytes.slice(pos..pos + key_len);
             pos += key_len;
 
+            let off_slice = index_bytes.get(pos..pos + 8).ok_or_else(|| {
+                ActaError::ParseError("corrupted index: offset slice".into())
+            })?;
             let offset = u64::from_le_bytes(
-                index_bytes[pos..pos + 8]
+                off_slice
                     .try_into()
                     .map_err(|_| ActaError::ParseError("corrupted index: offset".into()))?,
             );
@@ -606,13 +622,9 @@ impl SstableReader {
             ));
         }
 
-        let first_key = if !index.is_empty() {
-            let offset = index[0].1;
-            let next_offset = if index.len() > 1 {
-                index[1].1
-            } else {
-                index_offset
-            };
+        let first_key = if let Some(first_entry) = index.first() {
+            let offset = first_entry.1;
+            let next_offset = index.get(1).map(|e| e.1).unwrap_or(index_offset);
             let block = Self::read_block_at_file(
                 Arc::clone(&file),
                 offset,
@@ -627,10 +639,13 @@ impl SstableReader {
                     "corrupted block: header too short".into(),
                 ));
             }
+            let klen_slice = block
+                .get(0..2)
+                .ok_or_else(|| ActaError::ParseError("corrupted block: klen slice".into()))?;
             let k_len =
-                usize::from(u16::from_le_bytes(block[0..2].try_into().map_err(
-                    |_| ActaError::ParseError("corrupted block: k_len".into()),
-                )?));
+                usize::from(u16::from_le_bytes(klen_slice.try_into().map_err(|_| {
+                    ActaError::ParseError("corrupted block: k_len".into())
+                })?));
             let end_k = 2usize.checked_add(k_len).ok_or_else(|| {
                 ActaError::ParseError("corrupted block: k_len overflow".into())
             })?;
@@ -672,7 +687,7 @@ impl SstableReader {
     }
 
     async fn read_block_at_file(
-        file: Arc<std::fs::File>,
+        file: Arc<dyn acta_ports::vfs::VfsFile>,
         offset: u64,
         next_offset: u64,
         key_manager: &Option<Arc<KeyManager>>,
@@ -691,7 +706,7 @@ impl SstableReader {
 
         let data = tokio::task::spawn_blocking(move || -> std::io::Result<Vec<u8>> {
             let mut buf = vec![0u8; len];
-            pread_exact(&file, &mut buf, offset)?;
+            pread_exact(&*file, &mut buf, offset)?;
             Ok(buf)
         })
         .await
@@ -699,27 +714,32 @@ impl SstableReader {
         .map_err(|e| ActaError::Storage(format!("Block read failed: {}", e)))?;
 
         let block_data = if let Some(km) = key_manager {
-            if data.len() < 12 {
-                return Err(ActaError::Storage("Block too small for nonce".into()));
-            }
+            let nonce_slice = data
+                .get(0..12)
+                .ok_or_else(|| ActaError::Storage("Block too small for nonce".into()))?;
             let mut nonce = [0u8; 12];
-            nonce.copy_from_slice(&data[0..12]);
-            let decrypted = km.decrypt_auto_nonce(&data[12..], &nonce)?;
+            nonce.copy_from_slice(nonce_slice);
+            let ct_slice = data
+                .get(12..)
+                .ok_or_else(|| ActaError::Storage("Block data missing ciphertext".into()))?;
+            let decrypted = km.decrypt_auto_nonce(ct_slice, &nonce)?;
             Bytes::from(decrypted)
         } else {
             Bytes::from(data)
         };
 
         if has_crc {
-            if block_data.len() < 4 {
-                return Err(ActaError::Storage("Block too small for CRC".into()));
-            }
+            let crc_slice = block_data
+                .get(0..4)
+                .ok_or_else(|| ActaError::Storage("Block too small for CRC".into()))?;
             let stored_crc = u32::from_le_bytes(
-                block_data[0..4]
+                crc_slice
                     .try_into()
                     .map_err(|_| ActaError::Serialization("Invalid CRC format".into()))?,
             );
-            let payload = &block_data[4..];
+            let payload = block_data.get(4..).ok_or_else(|| {
+                ActaError::Storage("Block data missing payload after CRC".into())
+            })?;
             let computed_crc = crc32fast::hash(payload);
 
             if stored_crc != computed_crc {
@@ -776,20 +796,28 @@ impl SstableReader {
         };
 
         // Rewind start_idx to the earliest block whose last_key >= key (handles multi-block key spans)
-        while start_idx > 0 && self.index[start_idx - 1].0.as_ref() >= key {
-            start_idx -= 1;
+        while start_idx > 0 {
+            if let Some(prev) = self.index.get(start_idx - 1) {
+                if prev.0.as_ref() >= key {
+                    start_idx -= 1;
+                    continue;
+                }
+            }
+            break;
         }
 
-        let max_seq_raw = max_seq & !acta_core::TOMBSTONE_BIT;
+        let max_seq_raw = max_seq & !acta_types::TOMBSTONE_BIT;
         let is_v3 = self.format_version >= 3;
 
         for idx in start_idx..self.index.len() {
-            let (block_last_key, offset) = &self.index[idx];
-            let next_offset = if idx + 1 < self.index.len() {
-                self.index[idx + 1].1
-            } else {
-                self.index_offset
+            let Some((block_last_key, offset)) = self.index.get(idx) else {
+                continue;
             };
+            let next_offset = self
+                .index
+                .get(idx + 1)
+                .map(|e| e.1)
+                .unwrap_or(self.index_offset);
 
             let block_data = self.get_block(*offset, next_offset).await?;
 
@@ -877,9 +905,9 @@ impl SstableReader {
                             ));
                         }
 
-                        let raw_seq = seq_no & !acta_core::TOMBSTONE_BIT;
+                        let raw_seq = seq_no & !acta_types::TOMBSTONE_BIT;
                         if raw_seq <= max_seq_raw
-                            && (tx_id <= max_tx || tx_id >= acta_core::TxId::INTERNAL_BASE)
+                            && (tx_id <= max_tx || tx_id >= acta_types::TxId::INTERNAL_BASE)
                         {
                             let entry_val = block_data.slice(ep_val..end_val);
                             return Ok(Some((entry_val, seq_no, tx_id)));

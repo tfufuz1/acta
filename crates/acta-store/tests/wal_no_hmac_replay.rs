@@ -1,5 +1,5 @@
-use acta_core::TxId;
 use acta_store::wal::{Wal, WalEntry, WalOp, WAL_V3_HEADER};
+use acta_types::TxId;
 use tempfile::tempdir;
 use tokio::fs;
 

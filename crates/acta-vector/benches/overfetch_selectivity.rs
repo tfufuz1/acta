@@ -1,5 +1,14 @@
-use acta_core::{DistanceMetric, DocId, TxId, VectorIndex};
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 use acta_ports::SeededRng;
+use acta_ports::VectorIndex;
+use acta_types::{DistanceMetric, DocId, TxId};
 use acta_vector::hnsw::{HnswConfigBuilder, HnswIndex};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::sync::Arc;

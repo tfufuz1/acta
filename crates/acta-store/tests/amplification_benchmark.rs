@@ -1,9 +1,10 @@
 //! Write- and Read-Amplification benchmark for `acta-store`.
 
-use acta_core::{StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::compaction::CompactionConfig;
 use acta_store::lsm::{LsmConfig, LsmStorage};
 use acta_store::sstable::BloomFilter;
+use acta_types::TxId;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -100,7 +101,7 @@ fn test_bloom_filter_fpr_100k() -> (usize, usize, usize, f64, f64) {
 #[ignore = "long-running benchmark"]
 async fn run_amplification_benchmark() {
     println!("============================================================");
-    println!("CONTEXTRA-STORE WRITE & READ AMPLIFICATION BENCHMARK SUITE");
+    println!("ACTA-STORE WRITE & READ AMPLIFICATION BENCHMARK SUITE");
     println!("============================================================");
 
     // STEP 1 & 2: Bloom Filter FPR Measurement
@@ -142,7 +143,6 @@ async fn run_amplification_benchmark() {
             max_memory_bytes: Some(128 * 1024 * 1024),
             ..Default::default()
         },
-        encryption_passphrase: None,
         ..Default::default()
     };
 

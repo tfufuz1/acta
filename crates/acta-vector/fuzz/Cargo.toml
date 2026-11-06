@@ -1,3 +1,6 @@
+[lints]
+workspace = true
+
 [package]
 name = "acta-vector-fuzz" # <!-- crate-ref-ignore -->
 version = "0.0.0"
@@ -13,7 +16,9 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 arbitrary = { version = "1.4", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
-acta-core = { path = "../../acta-core" }
+acta-types = { path = "../../acta-types" }
+acta-ports = { path = "../../acta-ports" }
+acta-mvcc = { path = "../../acta-mvcc" }
 acta-vector = { path = ".." }
 
 [[bin]]

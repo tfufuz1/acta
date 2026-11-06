@@ -1,11 +1,18 @@
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 // FILE-CONTEXT
 // ZWECK: Audit-Testsuite für HNSW & DiskANN Graph-Korrektheit & Brute-Force Recall
 // STAND: TS:2026-08-31T00:00:00Z
-
 #![cfg(feature = "experimental-diskann")]
 
-use acta_core::traits::VectorIndex;
-use acta_core::types::{DistanceMetric, DocId, TxId};
+use acta_ports::VectorIndex;
+use acta_types::{DistanceMetric, DocId, TxId};
 use acta_vector::diskann::{DiskAnnConfig, DiskAnnIndex};
 use acta_vector::hnsw::{HnswConfig, HnswIndex};
 use rand::seq::SliceRandom;

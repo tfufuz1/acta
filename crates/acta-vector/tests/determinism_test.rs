@@ -1,6 +1,15 @@
+#![allow(
+    clippy::all,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    warnings
+)]
 use std::sync::Arc;
 
-use acta_core::{DocId, TxId, VectorIndex};
+use acta_ports::VectorIndex;
+use acta_types::{DocId, TxId};
 
 use acta_ports::{Rng, SeededRng};
 use acta_vector::hnsw::{HnswConfigBuilder, HnswIndex};

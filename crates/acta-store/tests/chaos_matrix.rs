@@ -4,8 +4,9 @@
 //! Evaluates store durability, crash recovery, and non-corruption invariants under combined
 //! fault injection (task cancellation, memory pressure, bit-flips, crash cycles).
 
-use acta_core::{ActaError, StorageEngine, TxId};
+use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
+use acta_types::{ActaError, TxId};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::collections::BTreeMap;

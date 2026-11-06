@@ -1,8 +1,8 @@
 //! Integration and isolation tests for `TenantScopedStorage`.
 
-use acta_core::{TenantId, TxId};
 use acta_ports::StorageEngine;
 use acta_store::{tenant_codec::TenantScopedStorage, LsmConfig, LsmStorage};
+use acta_types::{TenantId, TxId};
 use proptest::prelude::*;
 use std::sync::Arc;
 use tempfile::TempDir;

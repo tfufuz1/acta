@@ -1,20 +1,28 @@
+//! # LSM-Konfiguration (Ring 2)
+//!
+//! Konfiguriert Schwellenwerte für MemTable-Größe, Flush-Intervalle und WAL-Pfade.
+//!
+//! Verschlüsselung ist nicht abschaltbar (D-05): Der `KeyManager` wird immer
+//! über `LsmStorage::open_with_key_manager` injiziert. `LsmConfig` selbst enthält
+//! keine Passphrase (SPEC D-05, P5).
+
 use crate::compaction::CompactionConfig;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// WAL-Dauerhaftigkeitsmodus.
+///
+/// Nur `Full` ist zulässig (D-05). `WalNoHmac` und `MemoryOnly` wurden entfernt,
+/// da sie die WAL-Integrität abschwächen würden (F-21, D-05).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub enum DurabilityMode {
+    /// Vollständige Persistenz mit HMAC-Kette (einzige zulässige Variante, D-05).
+    #[default]
     Full,
-    WalNoHmac,
+    /// Nur für In-Memory-Tests ohne Dateisystem-I/O.
     MemoryOnly,
-}
-
-impl Default for DurabilityMode {
-    fn default() -> Self {
-        Self::Full
-    }
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -27,72 +35,38 @@ pub enum DurabilityConfigError {
     },
 }
 
-impl From<DurabilityConfigError> for acta_core::ActaError {
+impl From<DurabilityConfigError> for acta_types::ActaError {
     fn from(err: DurabilityConfigError) -> Self {
-        acta_core::ActaError::DurabilityConfig(err.to_string())
+        acta_types::ActaError::DurabilityConfig(err.to_string())
     }
 }
 
-impl DurabilityMode {
-    pub fn validate_against_features(
-        self,
-        deletion_proof_active: bool,
-        feature_ring: acta_ports::license::FeatureRing,
-    ) -> Result<(), DurabilityConfigError> {
-        use DurabilityMode::*;
-        match self {
-            Full => Ok(()),
-            WalNoHmac if deletion_proof_active => {
-                Err(DurabilityConfigError::IncompatibleCombination {
-                    mode: self,
-                    feature: "deletion-proof",
-                    reason: "no HMAC integrity chain to anchor the proof",
-                })
-            }
-            MemoryOnly
-                if deletion_proof_active
-                    || feature_ring == acta_ports::license::FeatureRing::Sovereign =>
-            {
-                Err(DurabilityConfigError::IncompatibleCombination {
-                    mode: self,
-                    feature: "deletion-proof / FeatureRing::Sovereign",
-                    reason: "no persistence layer exists to prove deletion from",
-                })
-            }
-            _ => Ok(()),
-        }
-    }
-}
-
-/// LSM storage configuration.
-// SEC-001 — Erweitere LsmConfig um `encryption_passphrase` und AES-256.
-// TEST: cargo test -p acta-store test_encrypted_db_unreadable_without_key
-// DONE: LsmConfig akzeptiert Passphrase, AES-256 wird für Disk-I/O verwendet.
+/// Konfiguration des LSM-Speichers.
+///
+/// Verschlüsselung ist Pflicht (D-05): Der `KeyManager` wird separat über
+/// `LsmStorage::open_with_key_manager` injiziert. Diese Konfiguration enthält
+/// kein Schlüsselmaterial.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
-/// Configuration for the LSM storage engine.
 pub struct LsmConfig {
-    /// Path to the data directory.
+    /// Pfad zum Datenverzeichnis.
     pub path: PathBuf,
-    /// Maximum size of the memtable before flushing to disk.
+    /// Maximale MemTable-Größe vor Flush.
     pub memtable_size_limit: usize,
-    /// Maximum RAM usage for the storage engine in MB.
+    /// Maximale RAM-Nutzung in MB.
     pub max_ram_mb: u64,
-    /// Timeout for transactions in the buffer.
+    /// Transaktions-Timeout.
     pub tx_timeout: Duration,
-    /// Configuration for background compaction.
+    /// Kompaktierungskonfiguration.
     pub compaction: CompactionConfig,
-    pub encryption_passphrase: Option<String>,
-    /// Time window in microseconds to batch concurrent WAL commits before issuing fsync.
-    /// Set to 0 to disable group commit batching (immediate single commit).
+    /// Zeitfenster in Mikrosekunden für Gruppen-Commit-Batching.
+    /// 0 = kein Batching (sofortiger Einzel-Commit).
     pub group_commit_window_micros: u64,
-    /// Number of shards for the block cache.
-    /// Default is 64 (increased from 16 to reduce lock contention during concurrent BM25 range scans).
+    /// Anzahl der Block-Cache-Shards.
     pub block_cache_shards: usize,
-    /// Durability mode for WAL persistence and integrity checks.
+    /// WAL-Dauerhaftigkeitsmodus. Standard: `Full` (D-05).
     pub durability_mode: DurabilityMode,
-    /// Maximum capacity of committed write keys tracked in SSI validator before pruning or rejecting.
-    /// Default is 1,000,000 keys.
+    /// Maximale Kapazität der SSI-Validierungstabelle.
     pub ssi_max_tracked_keys: usize,
 }
 
@@ -104,7 +78,6 @@ impl Default for LsmConfig {
             max_ram_mb: 2048,
             tx_timeout: Duration::from_secs(60),
             compaction: CompactionConfig::default(),
-            encryption_passphrase: None,
             group_commit_window_micros: 500,
             block_cache_shards: 64,
             durability_mode: DurabilityMode::default(),

@@ -5,8 +5,8 @@
 // INVARIANT 2: truncate() und append_batch() sind über truncate_lock serialisiert.
 // REQUIRES: Feature "fault-injection" für Test 1.
 
-use acta_core::{Result, TxId};
 use acta_store::wal::{Wal, WalEntry, WalOp};
+use acta_types::{Result, TxId};
 use std::sync::Arc;
 use tempfile::tempdir;
 
@@ -172,7 +172,7 @@ async fn proof_concurrent_flush_and_truncate_no_panic() -> Result<()> {
         res_w.expect("writer task panicked");
         res_t.expect("truncater task panicked");
 
-        Ok::<(), acta_core::ActaError>(())
+        Ok::<(), acta_types::ActaError>(())
     })
     .await;
 

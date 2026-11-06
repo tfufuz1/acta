@@ -1,9 +1,15 @@
+//! # Kompaktierungs-Engine (Ring 1)
+//!
+//! Fuehrt das Zusammenfuehren ueberlappender SSTables durch und bereinigt alte Versionen.
+
 use super::adaptive::{AdaptiveCompactionPlanner, CostBasedAdaptivePlanner, WorkloadMetrics};
 use super::config::CompactionConfig;
 use super::merge_operator::MergeOperator;
 use crate::sstable::{BlockCache, SstableBuilder, SstableReader};
 use crate::wal::KeyManager;
-use acta_core::{Result, SnapshotRegistry, StorageStats, TOMBSTONE_BIT};
+use acta_mvcc::SnapshotRegistry;
+use acta_ports::StorageStats;
+use acta_types::{Result, TOMBSTONE_BIT};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
 
@@ -12,12 +18,15 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing;
 
+// ANCHOR[acta-store:COMP-ENG-001]
+/// Orchestriert die periodische Verdichtung und Bereinigung von SSTables.
 pub struct CompactionEngine {
+    pub purge_waiting: std::sync::atomic::AtomicBool,
     config: CompactionConfig,
     pub(super) snapshot_registry: Arc<SnapshotRegistry>,
     block_cache: Arc<BlockCache>,
     key_manager: Option<Arc<KeyManager>>,
-    budget: Arc<acta_core::ResourceTracker>,
+    budget: Arc<acta_ports::ResourceTracker>,
     manifest: Option<Arc<crate::manifest::Manifest>>,
     compaction_counter: AtomicU64,
     pressure_rx: Option<tokio::sync::watch::Receiver<crate::system_pressure::SystemPressure>>,
@@ -34,7 +43,7 @@ impl CompactionEngine {
         snapshot_registry: Arc<SnapshotRegistry>,
         block_cache: Arc<BlockCache>,
         key_manager: Option<Arc<KeyManager>>,
-        budget: Arc<acta_core::ResourceTracker>,
+        budget: Arc<acta_ports::ResourceTracker>,
         manifest: Option<Arc<crate::manifest::Manifest>>,
     ) -> Self {
         let adaptive_planner: Option<Arc<dyn AdaptiveCompactionPlanner>> =
@@ -49,6 +58,7 @@ impl CompactionEngine {
             };
 
         Self {
+            purge_waiting: std::sync::atomic::AtomicBool::new(false),
             config,
             snapshot_registry,
             block_cache,
@@ -86,7 +96,6 @@ impl CompactionEngine {
     }
 
     /// Attaches a custom adaptive compaction planner.
-    // TODO(wiring): Facade-Anbindung in acta/src/builder.rs folgt in separatem Task
     pub fn with_adaptive_planner(mut self, planner: Arc<dyn AdaptiveCompactionPlanner>) -> Self {
         self.adaptive_planner = Some(planner);
         self
@@ -196,7 +205,7 @@ impl CompactionEngine {
                     limit_bytes,
                     limit_mb
                 );
-                return Err(acta_core::ActaError::MemoryBudgetExceeded {
+                return Err(acta_types::ActaError::MemoryBudgetExceeded {
                     used_mb,
                     limit_mb,
                 });
@@ -232,17 +241,14 @@ impl CompactionEngine {
         let old_paths = {
             let mut ssts = sstables.write().await;
 
-            let start_opt = ssts.iter().position(|s| Arc::ptr_eq(s, &input_ssts[0]));
+            let first_input = input_ssts.first();
+            let start_opt = first_input.and_then(|fi| ssts.iter().position(|s| Arc::ptr_eq(s, fi)));
             let is_contiguous = match start_opt {
                 Some(start) => {
-                    if start + input_ssts.len() <= ssts.len() {
-                        input_ssts
-                            .iter()
-                            .enumerate()
-                            .all(|(idx, inp)| Arc::ptr_eq(inp, &ssts[start + idx]))
-                    } else {
-                        false
-                    }
+                    (start + input_ssts.len() <= ssts.len())
+                        && input_ssts.iter().enumerate().all(|(idx, inp)| {
+                            ssts.get(start + idx).is_some_and(|s| Arc::ptr_eq(inp, s))
+                        })
                 }
                 None => false,
             };
@@ -291,9 +297,13 @@ impl CompactionEngine {
             ssts.sort_by_key(|sst| sst.metadata().max_seq & !TOMBSTONE_BIT);
 
             debug_assert!(
-                ssts.windows(2)
-                    .all(|w| (w[0].metadata().max_seq & !TOMBSTONE_BIT)
-                        <= (w[1].metadata().max_seq & !TOMBSTONE_BIT)),
+                ssts.windows(2).all(|w| match (w.first(), w.get(1)) {
+                    (Some(a), Some(b)) => {
+                        (a.metadata().max_seq & !TOMBSTONE_BIT)
+                            <= (b.metadata().max_seq & !TOMBSTONE_BIT)
+                    }
+                    _ => true,
+                }),
                 "SSTable list must be sorted by max_seq in ascending order after compaction swap"
             );
 
@@ -375,7 +385,7 @@ impl CompactionEngine {
         // Base memory estimate for stream buffers and multi-way merge priority queue:
         // Each stream buffers at least 1 block (BLOCK_SIZE = 4KB), plus heap structures and
         // deserialized entry overhead (estimated as ~1.5x raw candidate file size).
-        let raw_overhead = (total_file_size as f64 * 1.5) as u64;
+        let raw_overhead = (total_file_size.saturating_mul(3)) / 2;
         let min_stream_buffer = (candidates.len() as u64) * 4096 * 4;
 
         raw_overhead + min_stream_buffer
@@ -512,12 +522,12 @@ impl CompactionEngine {
 
         // Token-Bucket-State für I/O-Rate-Limiting (§4.12 C-2)
         let mut io_token_bytes_written: u64 = 0;
-        let mut io_token_last_reset = std::time::Instant::now();
+        let mut io_token_last_reset = tokio::time::Instant::now();
 
         while let Some(item) = heap.pop() {
             if let Some(ct) = cancel_token {
                 if ct.is_cancelled() {
-                    return Err(acta_core::ActaError::Internal(
+                    return Err(acta_types::ActaError::Internal(
                         "Compaction cancelled during merge stream processing".into(),
                     ));
                 }
@@ -541,7 +551,7 @@ impl CompactionEngine {
                 // FIND-STO-002: Budgeted Compaction
                 // Apply memory backpressure to prevent Compaction from OOMing the system
                 if !self.budget.has_memory_capacity() {
-                    let wait_start = std::time::Instant::now();
+                    let wait_start = tokio::time::Instant::now();
                     while !self.budget.has_memory_capacity() {
                         if wait_start.elapsed() >= self.config.max_backpressure_wait {
                             let limit_bytes =
@@ -552,14 +562,14 @@ impl CompactionEngine {
                                 "Compaction aborted: backpressure wait timeout exceeded ({:?}) while memory budget exhausted",
                                 self.config.max_backpressure_wait
                             );
-                            return Err(acta_core::ActaError::MemoryBudgetExceeded {
+                            return Err(acta_types::ActaError::MemoryBudgetExceeded {
                                 used_mb,
                                 limit_mb,
                             });
                         }
                         if let Some(ct) = cancel_token {
                             if ct.is_cancelled() {
-                                return Err(acta_core::ActaError::Internal(
+                                return Err(acta_types::ActaError::Internal(
                                     "Compaction cancelled during memory budget wait".into(),
                                 ));
                             }
@@ -616,7 +626,7 @@ impl CompactionEngine {
                                     .unwrap_or(u64::MAX);
 
                             let merge_res = if timeout_nanos > 0 && elapsed_nanos > timeout_nanos {
-                                Err(acta_core::ActaError::Sandbox(
+                                Err(acta_types::ActaError::Sandbox(
                                     "Merge operator wall-clock timeout exceeded".into(),
                                 ))
                             } else {
@@ -628,16 +638,20 @@ impl CompactionEngine {
                                 Ok(merged_val) => {
                                     // Consume next_item from heap and advance its stream
                                     if let Some(popped_next) = heap.pop() {
-                                        if let Some((key, value, seq, tx)) =
-                                            streams[popped_next.source_idx].next_entry().await?
+                                        if let Some(stream) =
+                                            streams.get_mut(popped_next.source_idx)
                                         {
-                                            heap.push(HeapItem {
-                                                key,
-                                                value,
-                                                seq,
-                                                tx,
-                                                source_idx: popped_next.source_idx,
-                                            });
+                                            if let Some((key, value, seq, tx)) =
+                                                stream.next_entry().await?
+                                            {
+                                                heap.push(HeapItem {
+                                                    key,
+                                                    value,
+                                                    seq,
+                                                    tx,
+                                                    source_idx: popped_next.source_idx,
+                                                });
+                                            }
                                         }
                                     }
 
@@ -661,12 +675,17 @@ impl CompactionEngine {
                                                     .min(std::time::Duration::from_millis(100));
                                                 tokio::time::sleep(delay).await;
                                                 let total_elapsed = io_token_last_reset.elapsed();
-                                                let allowed_bytes = (total_elapsed.as_secs_f64()
-                                                    * max_bps as f64)
-                                                    as u64;
+                                                let allowed_bytes = total_elapsed
+                                                    .as_secs()
+                                                    .saturating_mul(max_bps)
+                                                    .saturating_add(
+                                                        (u64::from(total_elapsed.subsec_nanos())
+                                                            .saturating_mul(max_bps))
+                                                            / 1_000_000_000,
+                                                    );
                                                 io_token_bytes_written = io_token_bytes_written
                                                     .saturating_sub(allowed_bytes);
-                                                io_token_last_reset = std::time::Instant::now();
+                                                io_token_last_reset = tokio::time::Instant::now();
                                             }
                                         }
                                     }
@@ -740,11 +759,17 @@ impl CompactionEngine {
                                     tokio::time::sleep(delay).await;
                                     // Deduct allowed bytes based on actual elapsed time instead of wiping to 0
                                     let total_elapsed = io_token_last_reset.elapsed();
-                                    let allowed_bytes =
-                                        (total_elapsed.as_secs_f64() * max_bps as f64) as u64;
+                                    let allowed_bytes = total_elapsed
+                                        .as_secs()
+                                        .saturating_mul(max_bps)
+                                        .saturating_add(
+                                            (u64::from(total_elapsed.subsec_nanos())
+                                                .saturating_mul(max_bps))
+                                                / 1_000_000_000,
+                                        );
                                     io_token_bytes_written =
                                         io_token_bytes_written.saturating_sub(allowed_bytes);
-                                    io_token_last_reset = std::time::Instant::now();
+                                    io_token_last_reset = tokio::time::Instant::now();
                                 }
                             }
                         }
@@ -753,14 +778,16 @@ impl CompactionEngine {
             }
 
             // Immediately fetch the next item from the source stream
-            if let Some((key, value, seq, tx)) = streams[item.source_idx].next_entry().await? {
-                heap.push(HeapItem {
-                    key,
-                    value,
-                    seq,
-                    tx,
-                    source_idx: item.source_idx,
-                });
+            if let Some(stream) = streams.get_mut(item.source_idx) {
+                if let Some((key, value, seq, tx)) = stream.next_entry().await? {
+                    heap.push(HeapItem {
+                        key,
+                        value,
+                        seq,
+                        tx,
+                        source_idx: item.source_idx,
+                    });
+                }
             }
         }
         builder.finish().await?;

@@ -1,8 +1,13 @@
+//! # SSTable-Builder (Ring 1)
+//!
+//! Konstruiert neue SSTable-Dateien aus sortierten Sequenzen von Key-Value-Paaren,
+//! generiert Datenbloecke, Block-Indizes und Bloom-Filter.
+
 use super::block_cache::{BLOCK_SIZE, SSTABLE_MAGIC_MFSX};
 use super::bloom::BloomFilter;
 use crate::wal::KeyManager;
 use bytes::{BufMut, Bytes, BytesMut};
-use acta_core::{ActaError, Result};
+use acta_types::{ActaError, Result};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::fs::File;
@@ -46,7 +51,9 @@ impl BlockBuilder {
                     *bytes.get(i * 2 + 1).unwrap_or(&0),
                 ]);
                 let bit_idx = chunk as usize % 256;
-                self.v3_bloom[bit_idx / 64] |= 1u64 << (bit_idx % 64);
+                if let Some(word) = self.v3_bloom.get_mut(bit_idx / 64) {
+                    *word |= 1u64 << (bit_idx % 64);
+                }
             }
         }
     }
@@ -148,8 +155,13 @@ impl BlockBuilder {
             if num_bits > 0 {
                 for &(h1, h2) in &self.key_hashes {
                     for i in 0..7u64 {
-                        let bit_idx = (h1.wrapping_add(i.wrapping_mul(h2)) as usize) % num_bits;
-                        bloom_vec[bit_idx / 8] |= 1u8 << (bit_idx % 8);
+                        let bit_idx = usize::try_from(
+                            h1.wrapping_add(i.wrapping_mul(h2)) % (num_bits as u64),
+                        )
+                        .unwrap_or(0);
+                        if let Some(byte) = bloom_vec.get_mut(bit_idx / 8) {
+                            *byte |= 1u8 << (bit_idx % 8);
+                        }
                     }
                 }
             }
@@ -196,6 +208,8 @@ pub struct SstableMetadata {
 ///
 /// Note: Uses a whole-SSTable Bloom filter with a default FPR. The Bloom filter FPR should be
 /// treated as a tunable parameter and configured via [`crate::lsm::LsmConfig`].
+// ANCHOR[acta-store:SST-BLD-001]
+/// Erzeugt deterministisch geordnete SSTable-Dateien mit Datenbloecken und Index.
 pub struct SstableBuilder {
     path: PathBuf,
     file: File,
@@ -219,20 +233,7 @@ pub struct SstableBuilder {
 impl SstableBuilder {
     /// Creates a new SstableBuilder that writes to the given file path.
     pub async fn create(path: impl AsRef<Path>) -> Result<Self> {
-        Self::create_with_version(path, 4).await
-    }
-
-    /// Creates a new SstableBuilder with an explicit format version.
-    pub async fn create_with_version(path: impl AsRef<Path>, version: u16) -> Result<Self> {
-        let mut builder = Self::create_with_key_manager(path, None).await?;
-        builder.set_format_version(version);
-        Ok(builder)
-    }
-
-    /// Returns the estimated current total SSTable size written so far.
-    pub fn current_size(&self) -> u64 {
-        self.offset
-            .saturating_add(self.block_builder.current_size() as u64)
+        Self::create_with_key_manager(path, None).await
     }
 
     pub async fn create_with_key_manager(
@@ -253,7 +254,7 @@ impl SstableBuilder {
             .await
             .map_err(|e| ActaError::Storage(format!("Failed to create SSTable: {}", e)))?;
 
-        let mut builder = Self {
+        Ok(Self {
             path: path_ref.to_path_buf(),
             file,
             block_builder: BlockBuilder::new_with_version(BLOCK_SIZE, 4),
@@ -270,9 +271,7 @@ impl SstableBuilder {
             min_seq: u64::MAX,
             max_seq: 0,
             format_version: 4,
-        };
-        builder.set_format_version(4);
-        Ok(builder)
+        })
     }
 
     /// Explicitly configures the SSTable format version to write (default: 4).
@@ -296,7 +295,7 @@ impl SstableBuilder {
             )));
         }
 
-        let raw_seq = seq_no & !acta_core::TOMBSTONE_BIT;
+        let raw_seq = seq_no & !acta_types::TOMBSTONE_BIT;
 
         if let Some(prev_k) = &self.last_key {
             if key < prev_k.as_ref() {
@@ -344,7 +343,7 @@ impl SstableBuilder {
     }
 
     async fn flush_block(&mut self) -> Result<()> {
-        if self.block_builder.is_empty() || self.block_builder.current_size() == 0 {
+        if self.block_builder.is_empty() {
             return Ok(());
         }
 
@@ -352,15 +351,6 @@ impl SstableBuilder {
             .last_key
             .clone()
             .ok_or_else(|| ActaError::Storage("Missing last_key".into()))?;
-        let current_block_bytes = self.block_builder.current_size();
-        let estimated_total = self.current_size();
-        tracing::trace!(
-            path = %self.path.display(),
-            current_block_bytes,
-            estimated_total,
-            format_version = self.format_version,
-            "Flushing SSTable block"
-        );
         let block_data = std::mem::replace(
             &mut self.block_builder,
             BlockBuilder::new_with_version(BLOCK_SIZE, self.format_version),

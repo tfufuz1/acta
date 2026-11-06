@@ -8,7 +8,7 @@
 // SIEHE AUCH: wal.rs, sstable.rs, DECISIONS.md ADR-003
 
 // INVARIANT: Zentraler Storage-Engine-Orchestrator des Triebwerks.
-// IMPLEMENTS: StorageEngine Trait (acta-core/src/traits.rs)
+// IMPLEMENTS: StorageEngine Trait (acta_ports::storage::StorageEngine)
 // READ-PATH:  get() → Active MemTable → Immutable MemTables → SSTables (newest first)
 // WRITE-PATH: put()/delete() → TxBuffer → commit() → WAL + MemTable
 // FLUSH:      MemTable > size_limit → rotate → SSTable schreiben → cleanup
@@ -68,12 +68,13 @@ pub(super) use crate::memtable::MemTable;
 pub(super) use crate::sstable::{SstableBuilder, SstableReader};
 pub(super) use crate::wal::{Wal, WalOp};
 pub(super) use bytes::Bytes;
-pub(super) use acta_core::{BoxFuture, ActaError, Result, StorageEngine, TxId};
+pub(super) use acta_ports::{BoxFuture, StorageEngine};
+use acta_types::{ActaError, Result, TxId};
 pub(super) use std::path::PathBuf;
 pub(super) use std::sync::atomic::Ordering;
 
 pub mod config;
-mod engine;
+pub(crate) mod engine;
 mod guard;
 pub mod observer;
 mod validate;
