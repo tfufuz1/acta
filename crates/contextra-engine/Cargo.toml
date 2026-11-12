@@ -1,0 +1,30 @@
+[lints]
+workspace = true
+
+[package]
+name = "contextra-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Contextra — Core storage, index, and transaction orchestrator engine (Deprecated Façade)"
+
+[package.metadata.contextra]
+ring = "3"
+
+[dependencies]
+contextra-db = { workspace = true }
+
+[features]
+default = []
+onnx = ["contextra-db/onnx"]
+sandbox = ["contextra-db/sandbox"]
+reranking = ["contextra-db/reranking"]
+experimental-diskann = ["contextra-db/experimental-diskann"]
+background-maintenance = ["contextra-db/background-maintenance"]
+graph-connectivity-health = ["contextra-db/graph-connectivity-health"]
+edge-reinforcement-learning = ["contextra-db/edge-reinforcement-learning"]
+adaptive-candidate-pool-sizing = ["contextra-db/adaptive-candidate-pool-sizing"]
+exp-extraction = ["contextra-db/exp-extraction"]
+entity-extraction = ["contextra-db/entity-extraction"]
+auto-extraction-opt-out = ["contextra-db/auto-extraction-opt-out"]

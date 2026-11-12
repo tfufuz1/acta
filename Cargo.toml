@@ -1,43 +1,80 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/acta-types",
-    "crates/acta-ports",
-    "crates/acta-sys",
-    "crates/acta-simd",
-    "crates/acta-durable-fs",
-    "crates/acta-crypto",
-    "crates/acta-mvcc",
-    "crates/acta-store",
-    "crates/acta-vector",
-    "crates/acta-text",
-    "crates/acta-rank",
-    "crates/acta-erasure",
-    "crates/acta-engine",
-    "crates/acta",
-    "crates/acta-testkit",
-    "crates/acta-testmacros",
-    "crates/ctx-verify",
-    "crates/acta-lab",
-    "tests/arch",
+    "crates/contextra-ids",
+    "crates/contextra-env",
+    "crates/contextra-durable-fs",
+    "crates/contextra-wire",
+    "crates/contextra-sys",
+    "crates/contextra-simd",
+    "crates/contextra-store",
+    "crates/contextra-vector",
+    "crates/contextra-db",
+    "crates/contextra-text",
+    "crates/contextra-checkpoint",
+    "crates/contextra-crypto",
+    "crates/contextra-privacy",
+    "crates/contextra-graph",
+    "crates/contextra-infer-onnx",
+    "crates/contextra-mcp",
+    "crates/contextra-agent",
+    "crates/contextra-infer-ollama",
+    "crates/contextra-router",
+    "benchmarks/contextra-bench",
+    "crates/contextra-infer-candle",
+    "crates/contextra-sandbox",
+    "crates/contextra-py",
+    "crates/contextra-testkit",
+    "crates/contextra",
+    "crates/contextra-types",
+    "crates/contextra-ports",
+    "crates/contextra-mvcc",
+    "crates/contextra-adapt",
+    "crates/contextra-kvcache",
+    "crates/contextra-engine",
+    "crates/contextra-cognition",
+    "crates/contextra-rank",
+    "crates/contextra-audit-export",
+    "crates/contextra-avv-generator",
+    "crates/contextra-license",
+    "crates/contextra-erasure",
+    "crates/contextra-ingest",
+    "crates/contextra-prompt-guard",
 ]
+exclude = [
+    "crates/contextra-vault",
+]
+# Restored archived crates to default-members:
+# contextra-graph, contextra-cognition, contextra-adapt, contextra-kvcache, contextra-router, contextra-agent, contextra-infer-onnx, contextra-infer-ollama
 default-members = [
-    "crates/acta-types",
-    "crates/acta-ports",
-    "crates/acta-sys",
-    "crates/acta-simd",
-    "crates/acta-durable-fs",
-    "crates/acta-crypto",
-    "crates/acta-mvcc",
-    "crates/acta-store",
-    "crates/acta-vector",
-    "crates/acta-text",
-    "crates/acta-rank",
-    "crates/acta-erasure",
-    "crates/acta-engine",
-    "crates/acta",
-    "crates/acta-testkit",
-    "tests/arch",
+    "crates/contextra-ids",
+    "crates/contextra-env",
+    "crates/contextra-durable-fs",
+    "crates/contextra-wire",
+    "crates/contextra-sys",
+    "crates/contextra-simd",
+    "crates/contextra-types",
+    "crates/contextra-ports",
+    "crates/contextra-mvcc",
+    "crates/contextra-crypto",
+    "crates/contextra-vector",
+    "crates/contextra-text",
+    "crates/contextra-rank",
+    "crates/contextra-store",
+    "crates/contextra-checkpoint",
+    "crates/contextra-engine",
+    "crates/contextra-db",
+    "crates/contextra-mcp",
+    "crates/contextra",
+    "crates/contextra-testkit",
+    "crates/contextra-graph",
+    "crates/contextra-cognition",
+    "crates/contextra-adapt",
+    "crates/contextra-kvcache",
+    "crates/contextra-router",
+    "crates/contextra-agent",
+    "crates/contextra-infer-onnx",
+    "crates/contextra-infer-ollama",
 ]
 
 [workspace.package]
@@ -47,6 +84,9 @@ license = "MIT OR Apache-2.0"
 rust-version = "1.89"
 
 [workspace.dependencies]
+contextra-ids = { path = "crates/contextra-ids" }
+contextra-env = { path = "crates/contextra-env" }
+contextra-durable-fs = { path = "crates/contextra-durable-fs" }
 # Error handling
 thiserror = "2"
 
@@ -57,7 +97,7 @@ bincode = "1.3.3"
 flatbuffers = "24.3"
 
 # Async runtime
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "io-util", "fs"] }
+tokio = { version = "1", features = ["full"] }
 
 # Data structures
 bytes = "1"
@@ -84,22 +124,44 @@ criterion = { version = "0.5", features = ["async_tokio"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Workspace crates
-acta-types = { path = "crates/acta-types" }
-acta-ports = { path = "crates/acta-ports" }
-acta-sys = { path = "crates/acta-sys" }
-acta-simd = { path = "crates/acta-simd" }
-acta-durable-fs = { path = "crates/acta-durable-fs" }
-acta-crypto = { path = "crates/acta-crypto" }
-acta-mvcc = { path = "crates/acta-mvcc" }
-acta-store = { path = "crates/acta-store" }
-acta-vector = { path = "crates/acta-vector" }
-acta-index = { package = "acta-vector", path = "crates/acta-vector" } # <!-- crate-ref-ignore -->
-acta-text = { path = "crates/acta-text" }
-acta-rank = { path = "crates/acta-rank" }
-acta-engine = { path = "crates/acta-engine" }
-acta = { path = "crates/acta" }
-acta-testkit = { path = "crates/acta-testkit" }
-acta-testmacros = { path = "crates/acta-testmacros" }
+contextra-wire = { path = "crates/contextra-wire" }
+contextra-sys = { path = "crates/contextra-sys" }
+contextra-simd = { path = "crates/contextra-simd" }
+contextra-store = { path = "crates/contextra-store" }
+contextra-vector = { path = "crates/contextra-vector" }
+contextra-index = { package = "contextra-vector", path = "crates/contextra-vector" } # <!-- crate-ref-ignore -->
+contextra-db = { path = "crates/contextra-db" }
+contextra-text = { path = "crates/contextra-text" }
+contextra-checkpoint = { path = "crates/contextra-checkpoint" }
+contextra-crypto = { path = "crates/contextra-crypto" }
+contextra-privacy = { path = "crates/contextra-privacy" }
+contextra-graph = { path = "crates/contextra-graph" }
+contextra-infer-onnx = { path = "crates/contextra-infer-onnx" }
+contextra-embed = { package = "contextra-infer-onnx", path = "crates/contextra-infer-onnx" } # <!-- crate-ref-ignore -->
+contextra-mcp   = { path = "crates/contextra-mcp" }
+contextra-agent = { path = "crates/contextra-agent" }
+contextra-infer-ollama = { path = "crates/contextra-infer-ollama" }
+contextra-ollama = { package = "contextra-infer-ollama", path = "crates/contextra-infer-ollama" } # <!-- crate-ref-ignore -->
+contextra-router = { path = "crates/contextra-router" }
+contextra-infer-candle = { path = "crates/contextra-infer-candle" }
+contextra-candle = { package = "contextra-infer-candle", path = "crates/contextra-infer-candle" } # <!-- crate-ref-ignore -->
+contextra-sandbox = { path = "crates/contextra-sandbox" }
+contextra-py = { path = "crates/contextra-py" }
+contextra-testkit = { path = "crates/contextra-testkit" }
+contextra = { path = "crates/contextra" }
+contextra-types = { path = "crates/contextra-types" }
+contextra-ports = { path = "crates/contextra-ports" }
+contextra-mvcc = { path = "crates/contextra-mvcc" }
+contextra-adapt = { path = "crates/contextra-adapt" }
+contextra-kvcache = { path = "crates/contextra-kvcache" }
+contextra-engine = { path = "crates/contextra-engine" }
+contextra-cognition = { path = "crates/contextra-cognition" }
+contextra-rank = { path = "crates/contextra-rank" }
+contextra-audit-export = { path = "crates/contextra-audit-export" }
+contextra-avv-generator = { path = "crates/contextra-avv-generator" }
+contextra-license = { path = "crates/contextra-license" }
+contextra-erasure = { path = "crates/contextra-erasure" }
+contextra-ingest = { path = "crates/contextra-ingest" }
 
 # Ingestion dependencies
 unicode-segmentation = "1.12"
@@ -117,15 +179,15 @@ yaml-rust2 = "0.9"
 toml = "0.8"
 
 # ── Archived Zone ──────────────────────────────────────────────────────────────
-# acta-cluster, acta-sandbox, acta-saos-agent wurden in Phase 0 ausgelagert. <!-- crate-ref-ignore -->
-# acta-embed    → ONNX-Embeddings (wird via Feature-Flag optional) <!-- crate-ref-ignore -->
+# contextra-cluster, contextra-sandbox, contextra-saos-agent wurden in Phase 0 ausgelagert. <!-- crate-ref-ignore -->
+# contextra-embed    → ONNX-Embeddings (wird via Feature-Flag optional) <!-- crate-ref-ignore -->
 
 # 🧊 Frozen Zone — external deps for future reactivation
 # openraft = { version = "0.9", features = ["storage-v2", "serde"] }
 # tonic = { version = "0.12", features = ["tls"] }
 # prost = "0.13"
 #
-# Embedding & ML (activate with acta-infer-onnx feature)
+# Embedding & ML (activate with contextra-infer-onnx feature)
 # ort = { version = "2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "tracing", "download-binaries", "tls-rustls", "copy-dylibs", "api-24"] }
 # hf-hub = { version = "0.3", default-features = false }
 # tokenizers = "0.19"
