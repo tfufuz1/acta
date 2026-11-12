@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-# .githooks/pre-push — Pre-push Hook Wrapper
-set -e
-
-if command -v just &> /dev/null; then
-    just pre-push
-fi
