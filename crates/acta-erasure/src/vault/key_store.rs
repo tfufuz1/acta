@@ -3,7 +3,7 @@
 //! Entkoppelte Schnittstelle zum Erzeugen, Wrappen, Entschlüsseln und physischen
 //! Vernichten von Schlüsseln (KEK/DEK) mit Zeroize und Fail-Closed-Semantik.
 //!
-//! Herkunft: ffeb79555:crates/contextra-crypto/src/scope_keyring.rs
+//! Herkunft: ffeb79555:crates/acta-crypto/src/scope_keyring.rs
 
 #![forbid(unsafe_code)]
 
@@ -35,7 +35,7 @@ impl GroupEpochKey {
 }
 
 /// Vernichtungsergebnis nach `purge_keys` zur Verankerung im Ledger durch den Orchestrator.
-/// Herkunft: ffeb79555:crates/contextra-crypto/src/scope_keyring.rs:220 (DestructionReceipt)
+/// Herkunft: ffeb79555:crates/acta-crypto/src/scope_keyring.rs:220 (DestructionReceipt)
 #[cfg(not(feature = "vault"))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyPurgeReceipt {
@@ -50,7 +50,7 @@ pub struct KeyPurgeReceipt {
 }
 
 /// Stark typisierter Daten-Schlüssel (DEK) mit automatischer Nullung im Speicher.
-/// Herkunft: 1364a54d5:crates/contextra-crypto/src/hierarchy.rs:16 (MasterKey)
+/// Herkunft: 1364a54d5:crates/acta-crypto/src/hierarchy.rs:16 (MasterKey)
 #[derive(ZeroizeOnDrop)]
 pub struct LocalDek(pub [u8; 32]);
 

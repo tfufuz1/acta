@@ -4,10 +4,10 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use contextra_erasure::types_local::{FileId, FileKeyring, FileKind, RecordSealer, SealCtx};
-use contextra_erasure::types_local::{KeyBuf, KeyRange};
-use contextra_erasure::vault::keyring::InMemoryKeyring;
-use contextra_erasure::vault::sealer::VaultSealer;
+use acta_erasure::types_local::{FileId, FileKeyring, FileKind, RecordSealer, SealCtx};
+use acta_erasure::types_local::{KeyBuf, KeyRange};
+use acta_erasure::vault::keyring::InMemoryKeyring;
+use acta_erasure::vault::sealer::VaultSealer;
 
 #[tokio::test]
 async fn t_fk_1_keyring_create_open_destroy() {
@@ -41,7 +41,7 @@ async fn t_vault_2_and_4_sealer_seal_open_evict() {
     let sealer = VaultSealer::new_in_memory();
     let ctx = SealCtx::new(1);
     let key = KeyBuf::new([0x01; 16]);
-    let plain = b"hello secret contextra document";
+    let plain = b"hello secret acta document";
 
     let env = sealer.seal(&ctx, &key, plain).await.expect("seal failed");
 

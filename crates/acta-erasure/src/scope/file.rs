@@ -5,7 +5,7 @@
 //!
 //! Crash-Konsistenz: Schreiben erfolgt atomar (temp + rename + fsync des Elternverzeichnisses über Vfs).
 
-// Herkunft: 4b98cf91b:crates/contextra-store/src/lsm/purge/scope_file.rs:43
+// Herkunft: 4b98cf91b:crates/acta-store/src/lsm/purge/scope_file.rs:43
 
 use super::codec::{decode_scope, encode_scope};
 use super::set::LayerScopeSet;

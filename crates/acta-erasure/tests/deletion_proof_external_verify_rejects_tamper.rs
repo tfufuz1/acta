@@ -5,12 +5,12 @@
 //! Validiert die kryptographischen Invarianten und Sicherheitsanforderungen für `deletion_proof_external_verify_rejects_tamper`.
 //! Prüft Zero-Panic, deterministische Ausführung und Fail-Closed-Verhalten.
 
-use contextra_erasure::deletion_proof::CryptoError;
-use contextra_erasure::deletion_proof::{
+use acta_erasure::deletion_proof::CryptoError;
+use acta_erasure::deletion_proof::{
     DeletionLayer, DeletionProof, DeletionProofKeyPair, DeletionScope, ExcludedScope,
     LayerCleanupProof,
 };
-use contextra_erasure::types_local::{DocId, TenantId, TxId};
+use acta_erasure::types_local::{DocId, TenantId, TxId};
 
 #[test]
 fn verify_external_accepts_valid_proof() {

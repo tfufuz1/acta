@@ -2,7 +2,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use contextra_erasure::vault::slot::{
+use acta_erasure::vault::slot::{
     compute_slot_mac, decode_slot, encode_slot_body, slot_probe_start, tombstone_image, SlotData,
     SlotType, STATUS_ACTIVE, STATUS_TOMBSTONE, VAULT_SLOT_SIZE,
 };

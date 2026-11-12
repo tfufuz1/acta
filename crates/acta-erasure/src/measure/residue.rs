@@ -4,11 +4,11 @@
 //! sowie den `ResidueMeasurementCoordinator` bereit.
 //!
 //! Historische Vorbilder:
-//! - ca76fdac8:crates/contextra-vector/src/hnsw/residue_scan.rs:18
-//! - b713f897b:crates/contextra-vector/src/hnsw/residue_scan.rs:24
-//! - f228091b8:crates/contextra-vector/src/hnsw/zero_overlay.rs:27
-//! - e69edff48:crates/contextra-vector/src/hnsw/witness.rs:40
-//! - 48c5481e7:crates/contextra-graph/src/residue_scan.rs:17
+//! - ca76fdac8:crates/acta-vector/src/hnsw/residue_scan.rs:18
+//! - b713f897b:crates/acta-vector/src/hnsw/residue_scan.rs:24
+//! - f228091b8:crates/acta-vector/src/hnsw/zero_overlay.rs:27
+//! - e69edff48:crates/acta-vector/src/hnsw/witness.rs:40
+//! - 48c5481e7:crates/acta-graph/src/residue_scan.rs:17
 
 use crate::types_local::{Clock, DocId, LayerId};
 use serde::{Deserialize, Serialize};
@@ -260,7 +260,7 @@ impl ResidueQuery {
 
 /// Kryptographischer Zeugen-Digest einer erfolgreichen Messung.
 ///
-/// Kann an `contextra-erasure::report` oder `contextra-crypto` übergeben werden.
+/// Kann an `acta-erasure::report` oder `acta-crypto` übergeben werden.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResidueWitnessDigest {
     /// Betroffene Schicht.

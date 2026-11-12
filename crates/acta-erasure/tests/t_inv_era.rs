@@ -16,16 +16,16 @@
     clippy::panic
 )]
 
-use contextra_erasure::gate::MemoryFenceGate;
-use contextra_erasure::journal::MemoryWalSink;
-use contextra_erasure::ledger::ErasureLedger;
-use contextra_erasure::orchestrator::ErasureCoordinator;
-use contextra_erasure::report::binding::{compute_witnesses_chain_hash, verify_witnesses_binding};
-use contextra_erasure::restore::replay::resume_and_execute_purge;
-use contextra_erasure::saga::driver::SagaDriver;
-use contextra_erasure::saga::machine::{EraseSaga, SagaState};
-use contextra_erasure::scope::SingleFlightCoordinator;
-use contextra_erasure::types_local::*;
+use acta_erasure::gate::MemoryFenceGate;
+use acta_erasure::journal::MemoryWalSink;
+use acta_erasure::ledger::ErasureLedger;
+use acta_erasure::orchestrator::ErasureCoordinator;
+use acta_erasure::report::binding::{compute_witnesses_chain_hash, verify_witnesses_binding};
+use acta_erasure::restore::replay::resume_and_execute_purge;
+use acta_erasure::saga::driver::SagaDriver;
+use acta_erasure::saga::machine::{EraseSaga, SagaState};
+use acta_erasure::scope::SingleFlightCoordinator;
+use acta_erasure::types_local::*;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -54,7 +54,7 @@ fn test_inv_era_2_resume_executes_purge() {
 
     // INV-ERA-2: resume_and_execute_purge führt den Ablauf bis zur Vollendung aus
     let outcome = resume_and_execute_purge(&mut saga, &driver).expect("resume must succeed");
-    assert_eq!(outcome, contextra_erasure::saga::driver::StepOutcome::Terminal(SagaState::Completed));
+    assert_eq!(outcome, acta_erasure::saga::driver::StepOutcome::Terminal(SagaState::Completed));
     assert_eq!(saga.state(), SagaState::Completed);
 }
 
@@ -85,28 +85,28 @@ fn test_inv_era_4_ledger_anchor_before_saga_completion() {
         files: parking_lot::RwLock<std::collections::BTreeMap<PathBuf, Vec<u8>>>,
     }
     impl Vfs for MemVfs {
-        fn read(&self, path: &Path) -> Result<Vec<u8>, contextra_erasure::error::ErasureError> {
+        fn read(&self, path: &Path) -> Result<Vec<u8>, acta_erasure::error::ErasureError> {
             self.files.read().get(path).cloned().ok_or_else(|| {
-                contextra_erasure::error::ErasureError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "not found"))
+                acta_erasure::error::ErasureError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "not found"))
             })
         }
-        fn write_atomic(&self, path: &Path, data: &[u8]) -> Result<(), contextra_erasure::error::ErasureError> {
+        fn write_atomic(&self, path: &Path, data: &[u8]) -> Result<(), acta_erasure::error::ErasureError> {
             self.files.write().insert(path.to_path_buf(), data.to_vec());
             Ok(())
         }
-        fn exists(&self, path: &Path) -> Result<bool, contextra_erasure::error::ErasureError> {
+        fn exists(&self, path: &Path) -> Result<bool, acta_erasure::error::ErasureError> {
             Ok(self.files.read().contains_key(path))
         }
-        fn create_dir_all(&self, _path: &Path) -> Result<(), contextra_erasure::error::ErasureError> { Ok(()) }
-        fn remove_file(&self, path: &Path) -> Result<(), contextra_erasure::error::ErasureError> {
+        fn create_dir_all(&self, _path: &Path) -> Result<(), acta_erasure::error::ErasureError> { Ok(()) }
+        fn remove_file(&self, path: &Path) -> Result<(), acta_erasure::error::ErasureError> {
             self.files.write().remove(path);
             Ok(())
         }
-        fn len(&self, path: &Path) -> Result<u64, contextra_erasure::error::ErasureError> {
+        fn len(&self, path: &Path) -> Result<u64, acta_erasure::error::ErasureError> {
             Ok(self.files.read().get(path).map(|v| v.len() as u64).unwrap_or(0))
         }
-        fn list_dir(&self, _path: &Path) -> Result<Vec<String>, contextra_erasure::error::ErasureError> { Ok(vec![]) }
-        fn sync_dir(&self, _path: &Path) -> Result<(), contextra_erasure::error::ErasureError> { Ok(()) }
+        fn list_dir(&self, _path: &Path) -> Result<Vec<String>, acta_erasure::error::ErasureError> { Ok(vec![]) }
+        fn sync_dir(&self, _path: &Path) -> Result<(), acta_erasure::error::ErasureError> { Ok(()) }
     }
 
     let vfs = Arc::new(MemVfs::default());

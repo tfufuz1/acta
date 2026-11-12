@@ -11,11 +11,11 @@
     clippy::indexing_slicing
 )]
 
-use contextra_erasure::scope::codec::{decode_scope, encode_scope};
-use contextra_erasure::scope::set::{LayerScopeSet, ResolvedLayerScope};
-use contextra_erasure::scope::{load_scope_file, store_scope_file};
-use contextra_erasure::types_local::Vfs;
-use contextra_erasure::types_local::{FileId, FileKey, FileKeyring, FileKind};
+use acta_erasure::scope::codec::{decode_scope, encode_scope};
+use acta_erasure::scope::set::{LayerScopeSet, ResolvedLayerScope};
+use acta_erasure::scope::{load_scope_file, store_scope_file};
+use acta_erasure::types_local::Vfs;
+use acta_erasure::types_local::{FileId, FileKey, FileKeyring, FileKind};
 use futures_util::future::BoxFuture;
 use parking_lot::RwLock;
 use std::collections::BTreeMap;
@@ -78,10 +78,10 @@ impl Vfs for MemVfs {
     fn read(
         &self,
         path: &Path,
-    ) -> std::result::Result<Vec<u8>, contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<Vec<u8>, acta_erasure::error::ErasureError> {
         let guard = self.files.read();
         guard.get(path).cloned().ok_or_else(|| {
-            contextra_erasure::error::ErasureError::Io(std::io::Error::new(
+            acta_erasure::error::ErasureError::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 path.display().to_string(),
             ))
@@ -92,7 +92,7 @@ impl Vfs for MemVfs {
         &self,
         path: &Path,
         data: &[u8],
-    ) -> std::result::Result<(), contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<(), acta_erasure::error::ErasureError> {
         self.files.write().insert(path.to_path_buf(), data.to_vec());
         Ok(())
     }
@@ -100,14 +100,14 @@ impl Vfs for MemVfs {
     fn create_dir_all(
         &self,
         _path: &Path,
-    ) -> std::result::Result<(), contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<(), acta_erasure::error::ErasureError> {
         Ok(())
     }
 
     fn remove_file(
         &self,
         path: &Path,
-    ) -> std::result::Result<(), contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<(), acta_erasure::error::ErasureError> {
         self.files.write().remove(path);
         Ok(())
     }
@@ -115,14 +115,14 @@ impl Vfs for MemVfs {
     fn exists(
         &self,
         path: &Path,
-    ) -> std::result::Result<bool, contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<bool, acta_erasure::error::ErasureError> {
         Ok(self.files.read().contains_key(path))
     }
 
-    fn len(&self, path: &Path) -> std::result::Result<u64, contextra_erasure::error::ErasureError> {
+    fn len(&self, path: &Path) -> std::result::Result<u64, acta_erasure::error::ErasureError> {
         let guard = self.files.read();
         guard.get(path).map(|v| v.len() as u64).ok_or_else(|| {
-            contextra_erasure::error::ErasureError::Io(std::io::Error::new(
+            acta_erasure::error::ErasureError::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 path.display().to_string(),
             ))
@@ -132,14 +132,14 @@ impl Vfs for MemVfs {
     fn list_dir(
         &self,
         _path: &Path,
-    ) -> std::result::Result<Vec<String>, contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<Vec<String>, acta_erasure::error::ErasureError> {
         Ok(Vec::new())
     }
 
     fn sync_dir(
         &self,
         _path: &Path,
-    ) -> std::result::Result<(), contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<(), acta_erasure::error::ErasureError> {
         Ok(())
     }
 }

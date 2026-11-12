@@ -1,11 +1,11 @@
 //! P3 Integrationstests: PurgePhase (WP-2) und dauerhafter Scope mit Single-Flight (WP-3, INV-ERA-3).
 
-use contextra_erasure::error::ErasureError;
-use contextra_erasure::purge::{PurgePhase, PurgePhaseError, PurgeProgressTracker};
-use contextra_erasure::scope::codec::{decode_scope, encode_scope};
-use contextra_erasure::scope::set::{LayerScopeSet, ResolvedLayerScope};
-use contextra_erasure::scope::single_flight::{ScopeLockError, ScopeLockManager};
-use contextra_erasure::types_local::{Clock, Vfs};
+use acta_erasure::error::ErasureError;
+use acta_erasure::purge::{PurgePhase, PurgePhaseError, PurgeProgressTracker};
+use acta_erasure::scope::codec::{decode_scope, encode_scope};
+use acta_erasure::scope::set::{LayerScopeSet, ResolvedLayerScope};
+use acta_erasure::scope::single_flight::{ScopeLockError, ScopeLockManager};
+use acta_erasure::types_local::{Clock, Vfs};
 use parking_lot::RwLock;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -13,9 +13,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 #[cfg(feature = "async")]
-use contextra_erasure::scope::file::{load_scope_file, store_scope_file};
+use acta_erasure::scope::file::{load_scope_file, store_scope_file};
 #[cfg(feature = "async")]
-use contextra_erasure::types_local::{FileId, FileKey, FileKeyring, FileKind};
+use acta_erasure::types_local::{FileId, FileKey, FileKeyring, FileKind};
 #[cfg(feature = "async")]
 use futures_util::future::BoxFuture;
 
@@ -313,7 +313,7 @@ async fn scope_file_roundtrip_and_corruption_fails_closed() {
     assert_eq!(loaded.scopes[0].units, vec![10, 20, 30]);
 
     // 3. Korruptionstest: Bitflip im Body/Envelope -> Fail-Closed
-    let path = contextra_erasure::scope::file::scope_file_path(&erasure_id);
+    let path = acta_erasure::scope::file::scope_file_path(&erasure_id);
     let mut raw_bytes = vfs.read(&path).expect("File must exist");
     let last_idx = raw_bytes.len() - 1;
     raw_bytes[last_idx] ^= 0xFF;

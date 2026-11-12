@@ -12,11 +12,11 @@
     clippy::cast_possible_truncation
 )]
 
-use contextra_erasure::journal::appendlog::DurableJournal;
-use contextra_erasure::journal::epoch::{compute_commitment, EpochKeys};
-use contextra_erasure::journal::record::{JournalRecord, RecordCode, TargetType};
-use contextra_erasure::types_local::Vfs;
-use contextra_erasure::types_local::{VfsFile, VfsOpenOptions};
+use acta_erasure::journal::appendlog::DurableJournal;
+use acta_erasure::journal::epoch::{compute_commitment, EpochKeys};
+use acta_erasure::journal::record::{JournalRecord, RecordCode, TargetType};
+use acta_erasure::types_local::Vfs;
+use acta_erasure::types_local::{VfsFile, VfsOpenOptions};
 use parking_lot::RwLock;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -91,13 +91,13 @@ impl Vfs for TrackingVfs {
     fn read(
         &self,
         path: &Path,
-    ) -> std::result::Result<Vec<u8>, contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<Vec<u8>, acta_erasure::error::ErasureError> {
         let files = self.files.read();
         files
             .get(path)
             .map(|data| data.read().clone())
             .ok_or_else(|| {
-                contextra_erasure::error::ErasureError::Io(std::io::Error::new(
+                acta_erasure::error::ErasureError::Io(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
                     path.display().to_string(),
                 ))
@@ -108,7 +108,7 @@ impl Vfs for TrackingVfs {
         &self,
         path: &Path,
         data: &[u8],
-    ) -> std::result::Result<(), contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<(), acta_erasure::error::ErasureError> {
         let mut files = self.files.write();
         files.insert(path.to_path_buf(), Arc::new(RwLock::new(data.to_vec())));
         self.sync_counter.fetch_add(1, Ordering::SeqCst);
@@ -118,14 +118,14 @@ impl Vfs for TrackingVfs {
     fn create_dir_all(
         &self,
         _path: &Path,
-    ) -> std::result::Result<(), contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<(), acta_erasure::error::ErasureError> {
         Ok(())
     }
 
     fn remove_file(
         &self,
         path: &Path,
-    ) -> std::result::Result<(), contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<(), acta_erasure::error::ErasureError> {
         self.files.write().remove(path);
         Ok(())
     }
@@ -133,17 +133,17 @@ impl Vfs for TrackingVfs {
     fn exists(
         &self,
         path: &Path,
-    ) -> std::result::Result<bool, contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<bool, acta_erasure::error::ErasureError> {
         Ok(self.files.read().contains_key(path))
     }
 
-    fn len(&self, path: &Path) -> std::result::Result<u64, contextra_erasure::error::ErasureError> {
+    fn len(&self, path: &Path) -> std::result::Result<u64, acta_erasure::error::ErasureError> {
         let files = self.files.read();
         files
             .get(path)
             .map(|data| data.read().len() as u64)
             .ok_or_else(|| {
-                contextra_erasure::error::ErasureError::Io(std::io::Error::new(
+                acta_erasure::error::ErasureError::Io(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
                     path.display().to_string(),
                 ))
@@ -153,14 +153,14 @@ impl Vfs for TrackingVfs {
     fn list_dir(
         &self,
         _path: &Path,
-    ) -> std::result::Result<Vec<String>, contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<Vec<String>, acta_erasure::error::ErasureError> {
         Ok(Vec::new())
     }
 
     fn sync_dir(
         &self,
         _path: &Path,
-    ) -> std::result::Result<(), contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<(), acta_erasure::error::ErasureError> {
         self.sync_counter.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }

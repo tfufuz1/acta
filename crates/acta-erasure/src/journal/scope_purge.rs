@@ -5,14 +5,14 @@
 //! Vernichtung des scope-spezifischen Integritäts-/Kryptoschlüssels.
 //!
 //! // SECTION ScopePurge
-//! // ANCHOR[contextra-erasure:SCOPE-PURGE-001]
+//! // ANCHOR[acta-erasure:SCOPE-PURGE-001]
 
 use super::wal_sink::{WalDisposalMethod, WalDisposalReceipt, WalScope, WalSink, WalSinkError};
 
 #[cfg(not(test))]
 use crate::types_local::Clock;
 #[cfg(test)]
-use contextra_erasure::types_local::Clock;
+use acta_erasure::types_local::Clock;
 
 /// Führt die WAL-Entsorgung für den angegebenen Scope synchron durch.
 ///

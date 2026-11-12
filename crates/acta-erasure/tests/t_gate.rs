@@ -2,8 +2,8 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use contextra_erasure::gate::erased_set::ErasedSet;
-use contextra_erasure::types_local::{GateDecision, KeyBound, KeyBuf, KeyRange, RangeGate, Seq};
+use acta_erasure::gate::erased_set::ErasedSet;
+use acta_erasure::types_local::{GateDecision, KeyBound, KeyBuf, KeyRange, RangeGate, Seq};
 
 #[test]
 fn t_gate_1_erased_set_checks_and_compaction_policy() {

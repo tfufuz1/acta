@@ -14,14 +14,14 @@
     clippy::indexing_slicing
 )]
 
-use contextra_erasure::error::ErasureError;
-use contextra_erasure::replace::{ReplacePlan, ReplaceStep};
-use contextra_erasure::restricted::{
+use acta_erasure::error::ErasureError;
+use acta_erasure::replace::{ReplacePlan, ReplaceStep};
+use acta_erasure::restricted::{
     OperatorAttestation, RestrictedAccess, RestrictedPurpose, RestrictedReadAudit, RestrictedState,
 };
-use contextra_erasure::supersede::{SupersedeMode, SupersedePlan};
-use contextra_erasure::types_local::ErasureId;
-use contextra_erasure::types_local::KeyCoverage;
+use acta_erasure::supersede::{SupersedeMode, SupersedePlan};
+use acta_erasure::types_local::ErasureId;
+use acta_erasure::types_local::KeyCoverage;
 
 /// SPEC: T-REPL-1 (D-115 Replace-Protokoll R1 bis R4, Reihenfolge I-25 und Fehler ReplacementMissing)
 #[test]

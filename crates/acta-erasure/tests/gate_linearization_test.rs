@@ -11,14 +11,14 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use contextra_erasure::gate::batch::{
+use acta_erasure::gate::batch::{
     add_batch, bind_global_erased_set, BatchGateRequest, GateBatchCoordinator,
 };
-use contextra_erasure::gate::erased_set::ErasedSet;
-use contextra_erasure::gate::log::GateLog;
-use contextra_erasure::gate::read_gate::GateGuard;
-use contextra_erasure::types_local::{BarrierExclusive, BarrierShared, CommitBarrier};
-use contextra_erasure::types_local::{GateDecision, KeyBuf, ReadGate, Seq};
+use acta_erasure::gate::erased_set::ErasedSet;
+use acta_erasure::gate::log::GateLog;
+use acta_erasure::gate::read_gate::GateGuard;
+use acta_erasure::types_local::{BarrierExclusive, BarrierShared, CommitBarrier};
+use acta_erasure::types_local::{GateDecision, KeyBuf, ReadGate, Seq};
 use futures_util::future::BoxFuture;
 use parking_lot::RwLock;
 use std::sync::atomic::{AtomicUsize, Ordering};

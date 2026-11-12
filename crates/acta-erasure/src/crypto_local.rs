@@ -1,7 +1,7 @@
-//! Lokale Krypto-Primitiven und Kapselung für den autarken Löschkern `contextra-erasure`.
+//! Lokale Krypto-Primitiven und Kapselung für den autarken Löschkern `acta-erasure`.
 //!
 //! Alle kryptografischen Operationen (HKDF, AEAD Record Sealing, DEK-Ableitung)
-//! sind hier lokal gekapselt, sodass `contextra-erasure` ohne unsaubere Abhängigkeiten
+//! sind hier lokal gekapselt, sodass `acta-erasure` ohne unsaubere Abhängigkeiten
 //! zu konkreten Kerneln als autarker Baustein exportiert werden kann.
 
 use hmac::{Hmac, Mac};

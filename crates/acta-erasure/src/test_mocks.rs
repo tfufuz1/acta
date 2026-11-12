@@ -1,4 +1,4 @@
-//! Mock-Implementierungen für isolierte Tests innerhalb von `contextra-erasure`.
+//! Mock-Implementierungen für isolierte Tests innerhalb von `acta-erasure`.
 
 use crate::backend::{ErasureTarget, StorageBackend};
 use crate::error::ErasureError;

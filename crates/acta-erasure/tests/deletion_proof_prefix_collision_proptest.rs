@@ -12,7 +12,7 @@
 
 #![allow(dead_code)]
 
-use contextra_erasure::deletion_proof::hash_deleted_keys_length_prefixed;
+use acta_erasure::deletion_proof::hash_deleted_keys_length_prefixed;
 use proptest::prelude::*;
 
 fn split_into_chunks(bytes: &[u8], split_indices: &[usize]) -> Vec<Vec<u8>> {

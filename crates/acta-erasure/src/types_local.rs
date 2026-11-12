@@ -1,7 +1,7 @@
-//! Lokale Domänentypen und Port-Abstraktionen für `contextra-erasure`.
+//! Lokale Domänentypen und Port-Abstraktionen für `acta-erasure`.
 //!
 //! Kapselt Schnittstellendefinitionen für Gates, Barrieren, Ledger, VFS-Erweiterungen,
-//! Schlüsselverwaltung und Messungen, sodass `contextra-erasure` vollkommen autark
+//! Schlüsselverwaltung und Messungen, sodass `acta-erasure` vollkommen autark
 //! und isoliert als Ring-3-Löschkern funktioniert.
 
 #[cfg(feature = "async")]
@@ -2191,7 +2191,7 @@ impl<T: IdGen + ?Sized> IdGen for Arc<T> {
     }
 }
 
-/// Abstract object-safe Virtual File System interface for `contextra-erasure`.
+/// Abstract object-safe Virtual File System interface for `acta-erasure`.
 pub trait Vfs: Send + Sync + 'static {
     /// Opens a file according to the specified options.
     fn open(

@@ -6,7 +6,7 @@
 //!
 //! Übergänge sind ausschließlich erlaubt, wenn `can_transition_to` `true` zurückgibt.
 
-// Herkunft: 4b98cf91b:crates/contextra-store/src/lsm/purge/plan.rs:13
+// Herkunft: 4b98cf91b:crates/acta-store/src/lsm/purge/plan.rs:13
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

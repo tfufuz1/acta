@@ -8,10 +8,10 @@
 //! - **Owner-Token-Prinzip:** Ein Fence kann ausschließlich mit dem Token freigegeben werden, der bei der Erstellung erzeugt wurde.
 //! - **Keine Überlappung:** Doppel-Fences auf identischen oder überlappenden Bereichen werden abgewiesen.
 //! - **Fail-Closed:** Unbekannte oder korrumpierte Fence-Zustände blockieren jeden Schreiber.
-//! - **Autarkie & Synchrone Ausführung:** Keine Abhängigkeit zu externen Contextra-Crates, kein Tokio/Async im Kernpfad.
+//! - **Autarkie & Synchrone Ausführung:** Keine Abhängigkeit zu externen Acta-Crates, kein Tokio/Async im Kernpfad.
 //!
 //! Herkunft: Neu implementiert gemäß Spezifikation WP-6 / Entscheidung E4
-//! (Historische Referenz zur Vertragsableitung: `c1d5e2e64:crates/contextra-store/src/lsm/fence.rs`).
+//! (Historische Referenz zur Vertragsableitung: `c1d5e2e64:crates/acta-store/src/lsm/fence.rs`).
 
 use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};

@@ -123,7 +123,7 @@ struct GroupEntry {
 
 /// Leitet einen Sub-Key aus einem Masterschlüssel deterministisch via BLAKE3 KDF ab.
 pub fn derive_subkey(master_key: &[u8; 32], group_id: u64, epoch: u64) -> SubKey {
-    let mut hasher = blake3::Hasher::new_derive_key("contextra-kv-shredding-subkey-v1");
+    let mut hasher = blake3::Hasher::new_derive_key("acta-kv-shredding-subkey-v1");
     hasher.update(master_key);
     hasher.update(&group_id.to_le_bytes());
     hasher.update(&epoch.to_le_bytes());
@@ -150,7 +150,7 @@ impl GroupEpochKey {
 }
 
 /// Vernichtungsergebnis nach `purge_keys` zur Verankerung im Ledger durch den Orchestrator.
-/// Herkunft: ffeb79555:crates/contextra-crypto/src/scope_keyring.rs:220 (DestructionReceipt)
+/// Herkunft: ffeb79555:crates/acta-crypto/src/scope_keyring.rs:220 (DestructionReceipt)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyPurgeReceipt {
     /// Bereinigte Gruppen-ID.
@@ -909,7 +909,7 @@ impl KeyRegistry {
 
     /// Physische und kryptographische Schlüsselvernichtung (`purge_keys`) für eine Gruppe und Epoche.
     ///
-    /// Herkunft: ffeb79555:crates/contextra-crypto/src/scope_keyring.rs:600 (ScopeKeyring::destroy)
+    /// Herkunft: ffeb79555:crates/acta-crypto/src/scope_keyring.rs:600 (ScopeKeyring::destroy)
     ///
     /// Vernichtet den KEK, nullt alle Rohschlüssel und gewrappten DEKs via Zeroize,
     /// markiert die Epoche unwiderruflich als widerrufen (INV-NO-RESURRECTION-1)

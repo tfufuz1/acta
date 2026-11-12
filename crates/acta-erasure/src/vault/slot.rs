@@ -26,7 +26,7 @@ use sha2::Sha256;
 /// Größe des F.1-Dateikopfs in Bytes.
 pub const VAULT_HEADER_SIZE: usize = 64;
 
-/// F.1 Magic-Bytes für Contextra-Dateien.
+/// F.1 Magic-Bytes für Acta-Dateien.
 pub const CTX_FILE_MAGIC: &[u8; 8] = b"CTXFILE\0";
 
 /// F.1 Format-Version (v1 = 1).

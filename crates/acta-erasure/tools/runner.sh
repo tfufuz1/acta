@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Granular Test-, Mess- und Audit-Runner für Crate: contextra-erasure
+# Granular Test-, Mess- und Audit-Runner für Crate: acta-erasure
 # zsh- und bash-kompatibel.
 
 set -euo pipefail
@@ -7,7 +7,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CRATE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 WORKSPACE_ROOT="$(cd "${CRATE_DIR}/../.." && pwd)"
-CRATE_NAME="contextra-erasure"
+CRATE_NAME="acta-erasure"
 
 usage() {
     echo "Benutzung: $0 <Kommando> [Optionen]"

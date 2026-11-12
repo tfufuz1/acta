@@ -8,12 +8,12 @@
     dead_code
 )]
 
-use contextra_erasure::measure::field::{scan_mk1_structures, scan_mk2_raw, scan_mk3_keys};
-use contextra_erasure::measure::positive_control::run_positive_control;
-use contextra_erasure::measure::witness::{arm_scanner, finish_scan};
-use contextra_erasure::types_local::Vfs;
-use contextra_erasure::types_local::{LayerId, MeasureClass, Scanner, Unarmed};
-use contextra_erasure::types_local::{VfsFile, VfsOpenOptions};
+use acta_erasure::measure::field::{scan_mk1_structures, scan_mk2_raw, scan_mk3_keys};
+use acta_erasure::measure::positive_control::run_positive_control;
+use acta_erasure::measure::witness::{arm_scanner, finish_scan};
+use acta_erasure::types_local::Vfs;
+use acta_erasure::types_local::{LayerId, MeasureClass, Scanner, Unarmed};
+use acta_erasure::types_local::{VfsFile, VfsOpenOptions};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -94,10 +94,10 @@ impl MemoryVfsFile {
 }
 
 impl Vfs for MemoryVfs {
-    fn read(&self, path: &Path) -> Result<Vec<u8>, contextra_erasure::error::ErasureError> {
+    fn read(&self, path: &Path) -> Result<Vec<u8>, acta_erasure::error::ErasureError> {
         let files = self.files.lock().unwrap();
         files.get(path).cloned().ok_or_else(|| {
-            contextra_erasure::error::ErasureError::Io(std::io::Error::new(
+            acta_erasure::error::ErasureError::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 path.display().to_string(),
             ))
@@ -108,31 +108,31 @@ impl Vfs for MemoryVfs {
         &self,
         path: &Path,
         data: &[u8],
-    ) -> Result<(), contextra_erasure::error::ErasureError> {
+    ) -> Result<(), acta_erasure::error::ErasureError> {
         let mut files = self.files.lock().unwrap();
         files.insert(path.to_path_buf(), data.to_vec());
         Ok(())
     }
 
-    fn create_dir_all(&self, _path: &Path) -> Result<(), contextra_erasure::error::ErasureError> {
+    fn create_dir_all(&self, _path: &Path) -> Result<(), acta_erasure::error::ErasureError> {
         Ok(())
     }
 
-    fn remove_file(&self, path: &Path) -> Result<(), contextra_erasure::error::ErasureError> {
+    fn remove_file(&self, path: &Path) -> Result<(), acta_erasure::error::ErasureError> {
         let mut files = self.files.lock().unwrap();
         files.remove(path);
         Ok(())
     }
 
-    fn exists(&self, path: &Path) -> Result<bool, contextra_erasure::error::ErasureError> {
+    fn exists(&self, path: &Path) -> Result<bool, acta_erasure::error::ErasureError> {
         let files = self.files.lock().unwrap();
         Ok(files.contains_key(path))
     }
 
-    fn len(&self, path: &Path) -> Result<u64, contextra_erasure::error::ErasureError> {
+    fn len(&self, path: &Path) -> Result<u64, acta_erasure::error::ErasureError> {
         let files = self.files.lock().unwrap();
         let content = files.get(path).ok_or_else(|| {
-            contextra_erasure::error::ErasureError::Io(std::io::Error::new(
+            acta_erasure::error::ErasureError::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 path.display().to_string(),
             ))
@@ -140,7 +140,7 @@ impl Vfs for MemoryVfs {
         Ok(content.len() as u64)
     }
 
-    fn list_dir(&self, path: &Path) -> Result<Vec<String>, contextra_erasure::error::ErasureError> {
+    fn list_dir(&self, path: &Path) -> Result<Vec<String>, acta_erasure::error::ErasureError> {
         let files = self.files.lock().unwrap();
         let mut names = Vec::new();
         for k in files.keys() {
@@ -156,7 +156,7 @@ impl Vfs for MemoryVfs {
         Ok(names)
     }
 
-    fn sync_dir(&self, _path: &Path) -> Result<(), contextra_erasure::error::ErasureError> {
+    fn sync_dir(&self, _path: &Path) -> Result<(), acta_erasure::error::ErasureError> {
         Ok(())
     }
 }
@@ -172,7 +172,7 @@ fn test_t_raw_2_armed_scanner_and_positive_control() {
     assert!(run_positive_control(b"").is_none());
 
     // 3. Echtes Muster ergibt ControlEvidence
-    let pattern = b"contextra-canary-sample-data";
+    let pattern = b"acta-canary-sample-data";
     let ev = run_positive_control(pattern).expect("must observe canary");
 
     let armed = arm_scanner(unarmed, ev);
@@ -265,7 +265,7 @@ fn test_t_raw_3_mk3_key_probe() {
 /// SPEC: T-VERIFY-1, T-VERIFY-2
 #[test]
 fn test_t_verify_1_and_2_medium_verification() {
-    use contextra_erasure::measure::field::VerifiedVia;
+    use acta_erasure::measure::field::VerifiedVia;
 
     let scan = scan_mk3_keys(true, true, true);
     // T-VERIFY-2: verified_via korrekt im Scan-Ergebnis

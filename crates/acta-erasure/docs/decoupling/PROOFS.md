@@ -1,7 +1,7 @@
-# PROOFS.md — Beweisbericht contextra-erasure (Auftrag ERASURE-B)
+# PROOFS.md — Beweisbericht acta-erasure (Auftrag ERASURE-B)
 
 Stand: 2026-11-11
-Rolle: Beweis-Auftrag für `contextra-erasure`: Crash-/Saga-Beweise, Gate-Fail-closed, Ledger-Konsistenz, Loom/Property, Fuzzing.
+Rolle: Beweis-Auftrag für `acta-erasure`: Crash-/Saga-Beweise, Gate-Fail-closed, Ledger-Konsistenz, Loom/Property, Fuzzing.
 
 ## 1. Bestandsaufnahme & Matrizen
 
@@ -39,9 +39,9 @@ Rolle: Beweis-Auftrag für `contextra-erasure`: Crash-/Saga-Beweise, Gate-Fail-c
 ## 2. Übergaben an ERASURE-A (src/ Bearbeiter)
 
 Aufgrund der strikten Eigentumstrennung (ERASURE-B darf `src/` nicht editieren) sind am HEAD 882aada72 folgende 3 Zeilen in `src/` durch den Parallel-Auftrag ERASURE-A anzupassen:
-1. `crates/contextra-erasure/src/ledger.rs`:
+1. `crates/acta-erasure/src/ledger.rs`:
    - Zeile 6-7: Hinzufügen von `pub mod error;` und `pub mod record;`.
    - Zeile 13: Entfernen von `pub use persistent::ErasureLedger;` (da `ErasureLedger` bereits aus `durable` exportiert wird).
-2. `crates/contextra-erasure/src/purge.rs`:
+2. `crates/acta-erasure/src/purge.rs`:
    - Zeile 13: Entfernen von `pub use phase::PurgePhase;` (da `PurgePhase` in Zeile 16 bereits aus `phase::{...}` importiert wird).
-Sobald diese 3 Zeilen gesetzt sind, baut `contextra-erasure` vollkommen fehlerfrei.
+Sobald diese 3 Zeilen gesetzt sind, baut `acta-erasure` vollkommen fehlerfrei.

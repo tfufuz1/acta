@@ -11,9 +11,9 @@
     clippy::indexing_slicing
 )]
 
-use contextra_erasure::error::ErasureError;
-use contextra_erasure::revocation_log::{RevocationLog, RevocationTarget};
-use contextra_erasure::types_local::{Clock, SystemClock, Vfs, VfsFile, VfsOpenOptions};
+use acta_erasure::error::ErasureError;
+use acta_erasure::revocation_log::{RevocationLog, RevocationTarget};
+use acta_erasure::types_local::{Clock, SystemClock, Vfs, VfsFile, VfsOpenOptions};
 use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
 use std::collections::BTreeMap;

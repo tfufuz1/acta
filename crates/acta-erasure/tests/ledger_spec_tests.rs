@@ -4,10 +4,10 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use contextra_erasure::ledger::{finalize_erasure, FinalizeParams};
-use contextra_erasure::types_local::ErasureId;
-use contextra_erasure::types_local::LedgerSink;
-use contextra_erasure::types_local::Vfs;
+use acta_erasure::ledger::{finalize_erasure, FinalizeParams};
+use acta_erasure::types_local::ErasureId;
+use acta_erasure::types_local::LedgerSink;
+use acta_erasure::types_local::Vfs;
 use ed25519_dalek::SigningKey;
 use std::path::Path;
 use std::sync::Arc;
@@ -18,14 +18,14 @@ struct LocalMemVfs {
     files: std::sync::Mutex<std::collections::BTreeMap<std::path::PathBuf, Vec<u8>>>,
 }
 
-impl contextra_erasure::types_local::Vfs for LocalMemVfs {
+impl acta_erasure::types_local::Vfs for LocalMemVfs {
     fn read(
         &self,
         path: &Path,
-    ) -> std::result::Result<Vec<u8>, contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<Vec<u8>, acta_erasure::error::ErasureError> {
         let files = self.files.lock().unwrap();
         files.get(path).cloned().ok_or_else(|| {
-            contextra_erasure::error::ErasureError::Io(std::io::Error::new(
+            acta_erasure::error::ErasureError::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 path.display().to_string(),
             ))
@@ -35,7 +35,7 @@ impl contextra_erasure::types_local::Vfs for LocalMemVfs {
         &self,
         path: &Path,
         data: &[u8],
-    ) -> std::result::Result<(), contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<(), acta_erasure::error::ErasureError> {
         let mut files = self.files.lock().unwrap();
         files.insert(path.to_path_buf(), data.to_vec());
         Ok(())
@@ -43,13 +43,13 @@ impl contextra_erasure::types_local::Vfs for LocalMemVfs {
     fn create_dir_all(
         &self,
         _path: &Path,
-    ) -> std::result::Result<(), contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<(), acta_erasure::error::ErasureError> {
         Ok(())
     }
     fn remove_file(
         &self,
         path: &Path,
-    ) -> std::result::Result<(), contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<(), acta_erasure::error::ErasureError> {
         let mut files = self.files.lock().unwrap();
         files.remove(path);
         Ok(())
@@ -57,24 +57,24 @@ impl contextra_erasure::types_local::Vfs for LocalMemVfs {
     fn exists(
         &self,
         path: &Path,
-    ) -> std::result::Result<bool, contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<bool, acta_erasure::error::ErasureError> {
         let files = self.files.lock().unwrap();
         Ok(files.contains_key(path))
     }
-    fn len(&self, path: &Path) -> std::result::Result<u64, contextra_erasure::error::ErasureError> {
+    fn len(&self, path: &Path) -> std::result::Result<u64, acta_erasure::error::ErasureError> {
         let files = self.files.lock().unwrap();
         Ok(files.get(path).map(|c| c.len() as u64).unwrap_or(0))
     }
     fn list_dir(
         &self,
         _path: &Path,
-    ) -> std::result::Result<Vec<String>, contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<Vec<String>, acta_erasure::error::ErasureError> {
         Ok(vec![])
     }
     fn sync_dir(
         &self,
         _path: &Path,
-    ) -> std::result::Result<(), contextra_erasure::error::ErasureError> {
+    ) -> std::result::Result<(), acta_erasure::error::ErasureError> {
         Ok(())
     }
 }
@@ -85,7 +85,7 @@ fn test_t_restore_1_finalize_sequence_and_ledger_failure() {
     let vfs = Arc::new(LocalMemVfs::default());
     let erasure_id = ErasureId::new([0x77; 16]);
     let signing_key = SigningKey::from_bytes(&[0x33; 32]);
-    let ledger = Arc::new(contextra_erasure::ledger::InMemoryLedger::new());
+    let ledger = Arc::new(acta_erasure::ledger::InMemoryLedger::new());
 
     let params = FinalizeParams {
         erasure_id,
@@ -124,7 +124,7 @@ fn test_t_restore_1_finalize_sequence_and_ledger_failure() {
     let outcome_no_ledger = finalize_erasure(&*vfs, None, &params);
     assert!(outcome_no_ledger.is_err());
     match outcome_no_ledger.unwrap_err() {
-        contextra_erasure::error::ErasureError::Io(err) => {
+        acta_erasure::error::ErasureError::Io(err) => {
             assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
         }
         other => panic!("Erwartet Io(NotFound), erhalten: {:?}", other),
@@ -134,8 +134,8 @@ fn test_t_restore_1_finalize_sequence_and_ledger_failure() {
 /// SPEC: T-RESTORE-2, T-RESTORE-3
 #[test]
 fn test_t_restore_2_and_3_guard_monotonic_sequence() {
-    use contextra_erasure::ledger::sink::InMemoryLedger;
-    use contextra_erasure::restore::guard::{FileRestoreChecker, GuardOutcome};
+    use acta_erasure::ledger::sink::InMemoryLedger;
+    use acta_erasure::restore::guard::{FileRestoreChecker, GuardOutcome};
 
     let mut ledger = InMemoryLedger::new([0x33; 32]);
     ledger

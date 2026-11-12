@@ -11,11 +11,11 @@
 //!   - INV-VAULT-FAILCLOSED-1: Scanner-Fehler führen fail-closed zum Abbruch
 //!   - INV-CLAIM-BIND-1: Keine rechtsverbindlichen Garantiezusagen im Code/Bericht
 
-use contextra_erasure::measure::residue::{
+use acta_erasure::measure::residue::{
     IndexCorruptionKind, InMemoryVectorIndexStub, ResidueMeasurementCoordinator,
     ResidueMeasurementError, ResiduePhase, ResidueQuery, ScannerFaultKind,
 };
-use contextra_erasure::types_local::{DocId, LayerId, SystemClock};
+use acta_erasure::types_local::{DocId, LayerId, SystemClock};
 
 const TEST_LAYER: LayerId = LayerId([0x12; 16]);
 
@@ -239,7 +239,7 @@ trait TestHelper {
 
 impl TestHelper for InMemoryVectorIndexStub {
     fn active_docs_count_for_test(&self, query: &ResidueQuery) -> u64 {
-        use contextra_erasure::measure::residue::ResidueScanner;
+        use acta_erasure::measure::residue::ResidueScanner;
         self.scan_residue(query)
             .map(|r| r.total_matches)
             .unwrap_or(0)

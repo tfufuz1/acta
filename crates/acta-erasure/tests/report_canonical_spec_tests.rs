@@ -6,11 +6,11 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use contextra_erasure::report::build::build_report;
-use contextra_erasure::report::canonical::{to_canonical_json_string, verify_canonical_nfc};
-use contextra_erasure::report::signing::{DerivedReportSigner, ReportSigner};
-use contextra_erasure::types_local::ErasureId;
-use contextra_erasure::types_local::ReportSigner as ReportSignerPort;
+use acta_erasure::report::build::build_report;
+use acta_erasure::report::canonical::{to_canonical_json_string, verify_canonical_nfc};
+use acta_erasure::report::signing::{DerivedReportSigner, ReportSigner};
+use acta_erasure::types_local::ErasureId;
+use acta_erasure::types_local::ReportSigner as ReportSignerPort;
 use ed25519_dalek::SigningKey;
 use futures_util::FutureExt;
 
@@ -141,12 +141,12 @@ fn test_t_class_1_lattice_independent_eval() {
 #[test]
 fn test_t_class_1_unrecorded_layer_marked_not_recorded() {
     let erasure_id = ErasureId::new([0x35; 16]);
-    let w = contextra_erasure::types_local::Scanner::new(
-        contextra_erasure::types_local::LayerId::new([1; 16]),
-        contextra_erasure::types_local::MeasureClass::Mk1,
+    let w = acta_erasure::types_local::Scanner::new(
+        acta_erasure::types_local::LayerId::new([1; 16]),
+        acta_erasure::types_local::MeasureClass::Mk1,
         1,
     )
-    .arm(contextra_erasure::types_local::ControlEvidence::observed())
+    .arm(acta_erasure::types_local::ControlEvidence::observed())
     .finish(0, std::time::Duration::from_millis(5), [0u8; 32])
     .expect("witness");
 
@@ -187,7 +187,7 @@ fn test_t_lint_1_wording_mandatory_texts() {
     // Außenaussage nach 6.4
     assert!(report
         .scope_notice
-        .contains("Contextra entfernt die Daten eines Löschziels aus dem Datenverzeichnis"));
+        .contains("Acta entfernt die Daten eines Löschziels aus dem Datenverzeichnis"));
 }
 
 /// T-ID: T-REPORT-1

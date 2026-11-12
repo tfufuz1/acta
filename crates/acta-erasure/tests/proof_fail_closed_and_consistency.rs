@@ -4,12 +4,12 @@
 //! 2. Property-Tests für Ledger-Invarianten (Kettenintegrität, Monotonie, Fail-Closed bei Kettenbruch).
 //! 3. Reproduzierbarer kanonischer Bericht (Golden Report mit festem Seed & Zeit).
 
-use contextra_erasure::gate::fence::{FenceGate, FenceGateError, FenceRange, InMemoryFenceGate};
-use contextra_erasure::journal::wal::{MemoryWalSink, WalSink};
-use contextra_erasure::report::build::{
+use acta_erasure::gate::fence::{FenceGate, FenceGateError, FenceRange, InMemoryFenceGate};
+use acta_erasure::journal::wal::{MemoryWalSink, WalSink};
+use acta_erasure::report::build::{
     build_report, canonicalize_report, ErasureReport,
 };
-use contextra_erasure::types_local::{DocId, ErasureId, LayerWitness};
+use acta_erasure::types_local::{DocId, ErasureId, LayerWitness};
 use proptest::prelude::*;
 
 #[test]
@@ -126,8 +126,8 @@ fn test_canonical_report_golden_reproducibility() {
     let gated_at = 1_000_000u64;
     let completed_at = 2_000_000u64;
     let witnesses = vec![
-        LayerWitness::from_hash(contextra_erasure::types_local::WitnessLayer::DocStore, 10, 2048, [0xaa; 32]),
-        LayerWitness::from_hash(contextra_erasure::types_local::WitnessLayer::VectorPayload, 5, 1024, [0xbb; 32]),
+        LayerWitness::from_hash(acta_erasure::types_local::WitnessLayer::DocStore, 10, 2048, [0xaa; 32]),
+        LayerWitness::from_hash(acta_erasure::types_local::WitnessLayer::VectorPayload, 5, 1024, [0xbb; 32]),
     ];
 
     let report = build_report(
@@ -141,7 +141,7 @@ fn test_canonical_report_golden_reproducibility() {
     );
 
     let canonical_bytes = canonicalize_report(&report).expect("Canonical serialization must succeed");
-    let golden_path = "crates/contextra-erasure/tests/golden/canonical_report_v1.golden";
+    let golden_path = "crates/acta-erasure/tests/golden/canonical_report_v1.golden";
     
     // Prüfen gegen das Golden Fixture
     let expected_golden = std::fs::read(golden_path).expect("Golden fixture must be readable");

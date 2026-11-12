@@ -98,7 +98,7 @@ pub struct ErasureReport {
     pub failure: Option<ErasureFailure>,
 }
 
-/// Default excluded scopes for Contextra deletion proofs (§20.4).
+/// Default excluded scopes for Acta deletion proofs (§20.4).
 pub const DEFAULT_EXCLUDED_SCOPES: &[ExcludedScope] = &[
     ExcludedScope::LlmParameterMemory,
     ExcludedScope::ConsolidatedAndDistilled,

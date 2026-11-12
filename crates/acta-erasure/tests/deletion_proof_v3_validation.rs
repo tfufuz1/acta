@@ -7,11 +7,11 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use contextra_erasure::deletion_proof::{
+use acta_erasure::deletion_proof::{
     DeletionLayer, DeletionProof, DeletionProofKeyPair, DeletionScope, ExcludedScope,
     GraphRepairAttestation, LayerCleanupProof,
 };
-use contextra_erasure::types_local::{DocId, TenantId, TxId};
+use acta_erasure::types_local::{DocId, TenantId, TxId};
 
 #[test]
 fn test_create_v3_with_empty_graph_repair_for_hnsw_layer_fails() {
@@ -45,11 +45,11 @@ fn test_create_v3_with_empty_graph_repair_for_hnsw_layer_fails() {
     );
 
     match res {
-        Err(contextra_erasure::error::ErasureError::Internal(msg)) => {
+        Err(acta_erasure::error::ErasureError::Internal(msg)) => {
             assert!(msg.contains("remaining_pointers: 1"));
         }
         other => panic!(
-            "Expected contextra_erasure::error::ErasureError::Internal, got {:?}",
+            "Expected acta_erasure::error::ErasureError::Internal, got {:?}",
             other
         ),
     }
@@ -95,8 +95,8 @@ fn test_create_v3_with_non_empty_graph_repair_for_hnsw_layer_succeeds() {
 
 #[test]
 fn test_valid_signature_with_unknown_version_is_rejected_fail_closed() {
-    use contextra_erasure::deletion_proof::CryptoError;
-    use contextra_erasure::ed25519_proof::{DeletionProofError, SignatureVersion};
+    use acta_erasure::deletion_proof::CryptoError;
+    use acta_erasure::ed25519_proof::{DeletionProofError, SignatureVersion};
 
     let keypair = DeletionProofKeyPair::generate();
     let tenant_id = TenantId(1);
@@ -147,7 +147,7 @@ fn test_valid_signature_with_unknown_version_is_rejected_fail_closed() {
         // verify() MUST fail with an Err containing the version message (cannot be bypassed by valid sig)
         let verify_res = tampered_version_proof.verify(&keypair.verifying_key);
         assert!(
-            matches!(verify_res, Err(contextra_erasure::error::ErasureError::Internal(ref msg)) if msg.contains(&format!("Unsupported DeletionProof signature_version: {unknown_byte}"))),
+            matches!(verify_res, Err(acta_erasure::error::ErasureError::Internal(ref msg)) if msg.contains(&format!("Unsupported DeletionProof signature_version: {unknown_byte}"))),
             "verify() MUST reject unknown version byte {unknown_byte} fail-closed"
         );
 
@@ -180,7 +180,7 @@ fn test_valid_signature_with_unknown_version_is_rejected_fail_closed() {
 
         let verify_res = tampered_v2.verify(hmac_key);
         assert!(
-            matches!(verify_res, Err(contextra_erasure::error::ErasureError::Internal(ref msg)) if msg.contains(&format!("Unsupported DeletionProof signature_version: {unknown_byte}"))),
+            matches!(verify_res, Err(acta_erasure::error::ErasureError::Internal(ref msg)) if msg.contains(&format!("Unsupported DeletionProof signature_version: {unknown_byte}"))),
             "verify() for HMAC proof MUST reject unknown version byte {unknown_byte} fail-closed"
         );
     }

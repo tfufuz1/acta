@@ -17,7 +17,7 @@
 //! Abwärtskompatibilität: V1-Format ohne Prüfsumme (12 Byte Kopf) wird beim Dekodieren
 //! weiterhin unterstützt, wenn die Bytes exakt validiert werden können.
 
-// Herkunft: 4b98cf91b:crates/contextra-store/src/lsm/purge/scope_file.rs:43
+// Herkunft: 4b98cf91b:crates/acta-store/src/lsm/purge/scope_file.rs:43
 
 use super::set::{LayerScopeSet, ResolvedLayerScope};
 use crate::error::ErasureError;

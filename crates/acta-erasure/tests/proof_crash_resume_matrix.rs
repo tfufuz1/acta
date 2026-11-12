@@ -7,14 +7,14 @@
 //! 3. Idempotenz: Wiederholte Ausführung nach erfolgreichem Abschluss führt zum
 //!    identischen Endzustand ohne Doppelwirkung.
 
-use contextra_erasure::gate::fence::{FenceGate, FenceRange, InMemoryFenceGate};
-use contextra_erasure::journal::wal::MemoryWalSink;
-use contextra_erasure::orchestrator::{
+use acta_erasure::gate::fence::{FenceGate, FenceRange, InMemoryFenceGate};
+use acta_erasure::journal::wal::MemoryWalSink;
+use acta_erasure::orchestrator::{
     ErasureCoordinator, MemoryKeyStore, MemoryResidueScanner,
 };
-use contextra_erasure::purge::phase::PurgePhase;
-use contextra_erasure::restore::replay::resume_and_execute_purge;
-use contextra_erasure::types_local::{
+use acta_erasure::purge::phase::PurgePhase;
+use acta_erasure::restore::replay::resume_and_execute_purge;
+use acta_erasure::types_local::{
     Clock, DocId, ErasureTarget, LayerId,
 };
 use std::sync::atomic::{AtomicU64, Ordering};

@@ -12,12 +12,12 @@
     clippy::indexing_slicing
 )]
 
-use contextra_erasure::error::ErasureError;
-use contextra_erasure::kv_shredding::{
+use acta_erasure::error::ErasureError;
+use acta_erasure::kv_shredding::{
     derive_subkey, EncryptedRecordPayload, KeyRegistry, DEFAULT_SHRED_KEY_GROUP_SIZE,
 };
-use contextra_erasure::revocation_log::{RevocationLog, RevocationTarget};
-use contextra_erasure::types_local::{Clock, SystemClock};
+use acta_erasure::revocation_log::{RevocationLog, RevocationTarget};
+use acta_erasure::types_local::{Clock, SystemClock};
 use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
 use std::sync::Arc;

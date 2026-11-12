@@ -1,7 +1,7 @@
 //! Löschkern: Saga, Gate, Journal, Tresor, Messung, signierter Bericht.
 //!
 //! Ring 3 (SPEC §5.1, §5.2, §11). Abhängigkeitsregel AR-3 (SPEC §5.3): Erlaubte Abhängigkeiten
-//! sind ausschließlich `contextra-types`, `contextra-ports` und `contextra-crypto`.
+//! sind ausschließlich `acta-types`, `acta-ports` und `acta-crypto`.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

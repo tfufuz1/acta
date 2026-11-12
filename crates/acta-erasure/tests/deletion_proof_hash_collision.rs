@@ -10,10 +10,10 @@
 // INVARIANTEN: Key sets ["ab", "c"] and ["a", "bc"] MUST produce distinct deleted_keys_hash values.
 // STAND: TS:2026-09-27T00:00:00Z
 
-use contextra_erasure::deletion_proof::{
+use acta_erasure::deletion_proof::{
     DeletionLayer, DeletionProof, DeletionScope, ExcludedScope, LayerCleanupProof,
 };
-use contextra_erasure::types_local::{DocId, TenantId, TxId};
+use acta_erasure::types_local::{DocId, TenantId, TxId};
 
 #[test]
 fn test_length_prefixed_hash_prevents_collision_ab_c_vs_a_bc() {

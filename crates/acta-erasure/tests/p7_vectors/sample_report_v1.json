@@ -68,13 +68,13 @@
     {
       "id": "RISK-EXTERNAL-COPIES",
       "name": "ExternalCopies",
-      "description": "Kopien ausserhalb von Contextra (Backups, Exporte, Logs)",
+      "description": "Kopien ausserhalb von Acta (Backups, Exporte, Logs)",
       "operator_guidance": "Checkliste 16"
     },
     {
       "id": "RISK-EXTERNAL-PROCESSORS",
       "name": "ExternalProcessors",
-      "description": "Empfaenger und Auftragsverarbeiter ausserhalb von Contextra",
+      "description": "Empfaenger und Auftragsverarbeiter ausserhalb von Acta",
       "operator_guidance": "Information nach Art. 17 Abs. 2, 19"
     },
     {
@@ -133,5 +133,5 @@
   },
   "signature_scope_notice": "Die Signatur beweist Integrität und Herkunft aus dieser Installation, nicht die Wahrheit des Inhalts.",
   "legal_notice": "Keine Rechtsberatung; die rechtliche Wertung obliegt dem Betreiber.",
-  "scope_notice": "Contextra entfernt die Daten eines Löschziels aus dem Datenverzeichnis, aus den Indexen und aus den gespeicherten Zeitreise-Versionen und weist den Zustand je Schicht messtechnisch nach. Für jedes Ziel wird zusätzlich der zugehörige Schlüssel aus dem Schlüsseltresor entfernt; ob und wie das rechtlich zu werten ist, entscheidet der Betreiber. Nicht erfasst sind externe Sicherungen, Flash-Remanenz, Dateisystem-Journale, Prozessspeicher und externe Verarbeiter. Der Bericht listet diese Restrisiken."
+  "scope_notice": "Acta entfernt die Daten eines Löschziels aus dem Datenverzeichnis, aus den Indexen und aus den gespeicherten Zeitreise-Versionen und weist den Zustand je Schicht messtechnisch nach. Für jedes Ziel wird zusätzlich der zugehörige Schlüssel aus dem Schlüsseltresor entfernt; ob und wie das rechtlich zu werten ist, entscheidet der Betreiber. Nicht erfasst sind externe Sicherungen, Flash-Remanenz, Dateisystem-Journale, Prozessspeicher und externe Verarbeiter. Der Bericht listet diese Restrisiken."
 }

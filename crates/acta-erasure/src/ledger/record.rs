@@ -1,5 +1,5 @@
 //! CTRALEDG v1 Framing, Serialisierung und Deserialisierung (SPEC §11.8, Anhang F.9, ER-30).
-//! Herkunft: e67ea4e55:crates/contextra-store/src/erasure_ledger/entry.rs:16
+//! Herkunft: e67ea4e55:crates/acta-store/src/erasure_ledger/entry.rs:16
 
 use super::error::LedgerError;
 

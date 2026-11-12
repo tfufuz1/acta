@@ -1,7 +1,7 @@
 //! Generische Abstraktionen für Speicher- und Löschziele.
 //!
-//! Entkoppelt `contextra-erasure` vollständig von konkreten Datenhaltern wie `contextra-store`,
-//! `contextra-vector`, `contextra-text` oder `contextra-db`.
+//! Entkoppelt `acta-erasure` vollständig von konkreten Datenhaltern wie `acta-store`,
+//! `acta-vector`, `acta-text` oder `acta-db`.
 
 use crate::error::ErasureError;
 use crate::types_local::{LayerId, PurgeCx, PurgeOutcome};

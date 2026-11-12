@@ -7,10 +7,10 @@
     clippy::indexing_slicing
 )]
 
-use contextra_erasure::gate::batch::evaluate_restricted_access;
-use contextra_erasure::saga::{derive_open_key, EraseSaga, SagaState};
-use contextra_erasure::types_local::ErasureId;
-use contextra_erasure::vault::slot::{
+use acta_erasure::gate::batch::evaluate_restricted_access;
+use acta_erasure::saga::{derive_open_key, EraseSaga, SagaState};
+use acta_erasure::types_local::ErasureId;
+use acta_erasure::vault::slot::{
     encode_slot, off, SlotType, STATUS_ACTIVE, STATUS_TOMBSTONE, VAULT_SLOT_SIZE,
 };
 
@@ -132,7 +132,7 @@ fn test_saga_state_transition_matrix_exhaustive() {
                     to
                 );
                 match res.unwrap_err() {
-                    contextra_erasure::error::ErasureError::InvalidTransition {
+                    acta_erasure::error::ErasureError::InvalidTransition {
                         from: err_from,
                         to: err_to,
                     } => {

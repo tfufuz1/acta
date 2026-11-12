@@ -151,7 +151,7 @@ impl FileKeyring for VaultKeyring {
 pub type InMemoryKeyring = VaultKeyring;
 
 // --- Port-Definitionen für WP-K (KeyStore, KeyStoreError, KeyPurgeReceipt) ---
-// Herkunft: ffeb79555:crates/contextra-crypto/src/scope_keyring.rs
+// Herkunft: ffeb79555:crates/acta-crypto/src/scope_keyring.rs
 
 #[path = "key_store.rs"]
 pub mod key_store;

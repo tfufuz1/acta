@@ -8,7 +8,7 @@
 
 // FILE-CONTEXT
 // ZWECK: Standalone Ed25519 asymmetric signature creation and external verification for deletion proofs (version 3).
-// INVARIANTEN: Zero dependency on internal Contextra state in verification path — runnable by third parties with only public key, payload, and signature.
+// INVARIANTEN: Zero dependency on internal Acta state in verification path — runnable by third parties with only public key, payload, and signature.
 // HOTSPOTS: [sign_deletion_proof_v3, verify_deletion_proof_v3]
 
 #![forbid(unsafe_code)]
@@ -17,7 +17,7 @@
 //! Asymmetrische Ed25519-Attestationsbeweis-Signierung und externe Verifikation (Version 3).
 //!
 //! Ermöglicht Dritten (z. B. Datenschutz-Aufsichtsbehörden) die unabhängige Prüfung
-//! von Contextra-Attestationsbeweisen ohne Zugriff auf interne Systemgeheimnisse.
+//! von Acta-Attestationsbeweisen ohne Zugriff auf interne Systemgeheimnisse.
 
 use rand::{CryptoRng, RngCore};
 use thiserror::Error;
@@ -108,7 +108,7 @@ pub fn sign_deletion_proof_v3(keypair: &DeletionProofKeyPair, proof_payload: &[u
     signature.to_bytes()
 }
 
-/// Verifiziert die Ed25519-Signatur eines DeletionProofs unabhängig von internem Contextra-State (Version 3).
+/// Verifiziert die Ed25519-Signatur eines DeletionProofs unabhängig von internem Acta-State (Version 3).
 pub fn verify_deletion_proof_v3(
     verifying_key_bytes: &[u8; 32],
     proof_payload: &[u8],

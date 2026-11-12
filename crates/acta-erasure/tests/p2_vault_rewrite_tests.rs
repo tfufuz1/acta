@@ -8,7 +8,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use contextra_erasure::vault::sealer::{SealerError, VaultSealer};
+use acta_erasure::vault::sealer::{SealerError, VaultSealer};
 
 /// WP-5a: Test `swap_error_leaves_no_plaintext`
 ///
@@ -70,10 +70,10 @@ fn swap_error_leaves_no_plaintext() {
 #[cfg(feature = "async")]
 mod async_rewrite_tests {
 
-    use contextra_erasure::backend::StorageBackend;
-    use contextra_erasure::error::ErasureError;
-    use contextra_erasure::types_local::{LayerId, PurgeCx, PurgeOutcome, SystemClock};
-    use contextra_erasure::vault::sealer::rewrite::{
+    use acta_erasure::backend::StorageBackend;
+    use acta_erasure::error::ErasureError;
+    use acta_erasure::types_local::{LayerId, PurgeCx, PurgeOutcome, SystemClock};
+    use acta_erasure::vault::sealer::rewrite::{
         BlobRewriter, RewriteError, RewriteJournal, RewriteManifest, RewriteState,
     };
     use futures_util::future::BoxFuture;

@@ -34,7 +34,7 @@ use crate::types_local::{
 pub type Result<T> = std::result::Result<T, crate::error::ErasureError>;
 use serde::{Deserialize, Serialize};
 
-/// Extension trait providing accessors for `LayerWitness` without mutating `contextra-ports`.
+/// Extension trait providing accessors for `LayerWitness` without mutating `acta-ports`.
 pub trait LayerWitnessExt {
     /// Extracts the `wal_seq_after` if layer is `WalAllSegments`, or `None`.
     fn wal_seq_after(&self) -> Option<u64>;
@@ -1247,7 +1247,7 @@ pub fn compute_wal_delete_receipt(
 ) -> Result<[u8; 32]> {
     compute_hmac_sha256(
         integrity_key,
-        &[b"contextra-wal-delete-v1", prev_hmac, delete_event_payload],
+        &[b"acta-wal-delete-v1", prev_hmac, delete_event_payload],
     )
 }
 

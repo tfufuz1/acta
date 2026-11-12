@@ -2,11 +2,11 @@
 
 //! Tests für Erase-Observer und Plattenreserve (SPEC §11.4, D-118, T-OBS-1..3, T-CRASH-3).
 
-use contextra_erasure::purge::reserve::{check_disk_reserve, ReserveCheck};
-use contextra_erasure::purge::{
+use acta_erasure::purge::reserve::{check_disk_reserve, ReserveCheck};
+use acta_erasure::purge::{
     ErasureEvent, ErasureObserver, ObservedPhase, ObserverError, TargetKind,
 };
-use contextra_erasure::types_local::ErasureId;
+use acta_erasure::types_local::ErasureId;
 use futures_util::future::BoxFuture;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;

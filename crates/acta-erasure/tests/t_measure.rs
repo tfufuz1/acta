@@ -3,13 +3,13 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #![allow(deprecated)]
 
-use contextra_erasure::measure::positive_control::{
+use acta_erasure::measure::positive_control::{
     run_positive_control, verify_scanner_integrity,
 };
-use contextra_erasure::measure::{
+use acta_erasure::measure::{
     arm_scanner, finish_scan, EvidenceKind, MeasurementCoordinator, UnarmedScanner,
 };
-use contextra_erasure::types_local::{LayerId, MeasureClass, Scanner, Unarmed};
+use acta_erasure::types_local::{LayerId, MeasureClass, Scanner, Unarmed};
 use std::time::Duration;
 
 /// T-ID: T-RAW-2
@@ -52,7 +52,7 @@ fn t_raw_2_positive_control_genuine_scan_and_mutants() {
     assert!(run_positive_control(b"").is_none());
 
     // Echtes Muster muss gelingen
-    let pattern = b"contextra-canary-sequence-42";
+    let pattern = b"acta-canary-sequence-42";
     let ev = run_positive_control(pattern);
     assert!(ev.is_some(), "Echtes Muster muss gefunden werden");
 

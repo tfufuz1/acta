@@ -8,7 +8,7 @@
 
 #[cfg(not(loom))]
 mod standard_tests {
-    use contextra_erasure::gate::fence::{
+    use acta_erasure::gate::fence::{
         FenceGate, FenceGateError, FenceRange, FenceToken, InMemoryFenceGate,
     };
     use std::sync::atomic::{AtomicBool, Ordering};

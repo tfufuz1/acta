@@ -2,14 +2,14 @@
 workspace = true
 
 [package]
-name = "contextra-erasure"
+name = "acta-erasure"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 description = "Löschkern: Saga, Gate, Journal, Tresor, Messung, signierter Bericht."
 
-[package.metadata.contextra]
+[package.metadata.acta]
 ring = "3"
 
 [features]

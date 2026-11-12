@@ -11,23 +11,23 @@
     clippy::indexing_slicing
 )]
 
-use contextra_erasure::error::ErasureError;
-use contextra_erasure::journal::{ErasureJournal, JournalEntry};
-use contextra_erasure::purge::reserve::{check_disk_reserve, ReserveCheck};
-use contextra_erasure::saga::core::{ErasureConfig, ErasureCore, ErasureDeps};
-use contextra_erasure::saga::machine::{EraseSaga, SagaState};
-use contextra_erasure::saga::seams::{
+use acta_erasure::error::ErasureError;
+use acta_erasure::journal::{ErasureJournal, JournalEntry};
+use acta_erasure::purge::reserve::{check_disk_reserve, ReserveCheck};
+use acta_erasure::saga::core::{ErasureConfig, ErasureCore, ErasureDeps};
+use acta_erasure::saga::machine::{EraseSaga, SagaState};
+use acta_erasure::saga::seams::{
     SagaGate, SagaJournal, SagaLedger, SagaMeasure, SagaReport, SagaVault, SnapshotRevoker,
 };
-use contextra_erasure::types_local::Clock;
-use contextra_erasure::types_local::ErasureId;
-use contextra_erasure::types_local::GateDecision;
-use contextra_erasure::types_local::IdGen;
-use contextra_erasure::types_local::PendingReason;
-use contextra_erasure::types_local::{
+use acta_erasure::types_local::Clock;
+use acta_erasure::types_local::ErasureId;
+use acta_erasure::types_local::GateDecision;
+use acta_erasure::types_local::IdGen;
+use acta_erasure::types_local::PendingReason;
+use acta_erasure::types_local::{
     BarrierExclusive, BarrierShared, CommitBarrier, CompactionPermit, PurgeBarrier, PurgePermit,
 };
-use contextra_erasure::types_local::{EraseTarget, LayerId, LayerWitness};
+use acta_erasure::types_local::{EraseTarget, LayerId, LayerWitness};
 use futures_util::future::BoxFuture;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -42,7 +42,7 @@ impl SagaJournal for MatrixJournal {
         &'a self,
         _erasure_id: ErasureId,
         _target: &'a EraseTarget,
-        _attestation: &'a contextra_erasure::types_local::RetentionAttestation,
+        _attestation: &'a acta_erasure::types_local::RetentionAttestation,
     ) -> BoxFuture<'a, Result<(), ErasureError>> {
         Box::pin(async move { Ok(()) })
     }
@@ -133,7 +133,7 @@ impl SagaReport for DummyReport {
         &'a self,
         _id: ErasureId,
         _t: &'a EraseTarget,
-        _att: &'a contextra_erasure::types_local::RetentionAttestation,
+        _att: &'a acta_erasure::types_local::RetentionAttestation,
         _w: &'a [LayerWitness],
     ) -> BoxFuture<'a, Result<Vec<u8>, ErasureError>> {
         Box::pin(async move { Ok(vec![1, 2, 3]) })

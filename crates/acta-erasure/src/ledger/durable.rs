@@ -1,5 +1,5 @@
 //! Persistente, hash-verkettete ErasureLedger-Implementierung (WP-8, SPEC §11.8, ER-30).
-//! Herkunft: e0a7395f1:crates/contextra-store/src/erasure_ledger/mod.rs:540
+//! Herkunft: e0a7395f1:crates/acta-store/src/erasure_ledger/mod.rs:540
 
 use super::entry::GENESIS_HASH;
 use super::error::LedgerError;

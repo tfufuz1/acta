@@ -4,13 +4,13 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use contextra_erasure::report::build::{
+use acta_erasure::report::build::{
     build_report, build_report_with_options, try_build_report_with_options, LedgerConfirmation,
     ReportBuildOptions,
 };
-use contextra_erasure::report::canonical::to_canonical_json_string;
-use contextra_erasure::report::signing::ReportSigner;
-use contextra_erasure::types_local::{
+use acta_erasure::report::canonical::to_canonical_json_string;
+use acta_erasure::report::signing::ReportSigner;
+use acta_erasure::types_local::{
     ControlEvidence, ErasureId, LayerId, LayerWitness, MeasureClass, Scanner,
 };
 use ed25519_dalek::SigningKey;
@@ -249,26 +249,26 @@ fn report_text_contains_no_binding_guarantee_phrases() {
 /// Regressionstest: Externer Verify-Test für DeletionProof bleibt grün.
 #[test]
 fn existing_external_verify_test_still_green() {
-    let keypair = contextra_erasure::deletion_proof::DeletionProofKeyPair::generate();
-    let tenant_id = contextra_erasure::types_local::TenantId(1);
-    let scope = contextra_erasure::deletion_proof::DeletionScope::Document {
-        doc_id: contextra_erasure::types_local::DocId(42),
+    let keypair = acta_erasure::deletion_proof::DeletionProofKeyPair::generate();
+    let tenant_id = acta_erasure::types_local::TenantId(1);
+    let scope = acta_erasure::deletion_proof::DeletionScope::Document {
+        doc_id: acta_erasure::types_local::DocId(42),
         tenant_id,
     };
     #[allow(deprecated)]
     let layer_proof =
-        contextra_erasure::deletion_proof::LayerCleanupProof::new_after_verified_empty(
-            contextra_erasure::deletion_proof::DeletionLayer::LsmMemtable,
+        acta_erasure::deletion_proof::LayerCleanupProof::new_after_verified_empty(
+            acta_erasure::deletion_proof::DeletionLayer::LsmMemtable,
             0,
         )
         .unwrap();
 
-    let proof = contextra_erasure::deletion_proof::DeletionProof::create_v3(
+    let proof = acta_erasure::deletion_proof::DeletionProof::create_v3(
         scope,
         vec![b"key1".to_vec(), b"key2".to_vec()],
-        contextra_erasure::types_local::TxId::new(100),
+        acta_erasure::types_local::TxId::new(100),
         vec![layer_proof],
-        vec![contextra_erasure::deletion_proof::ExcludedScope::LlmParameterMemory],
+        vec![acta_erasure::deletion_proof::ExcludedScope::LlmParameterMemory],
         1700000000,
         &[],
         keypair.signing_key(),

@@ -9,7 +9,7 @@ mod scope_purge;
 use scope_purge::dispose_scope_wal;
 use wal_sink::{InMemoryWalSink, WalDisposalMethod, WalEntryId, WalScope, WalSink, WalSinkError};
 
-use contextra_erasure::types_local::Clock;
+use acta_erasure::types_local::Clock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 struct MockClock {

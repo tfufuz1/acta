@@ -9,7 +9,7 @@
 // ZWECK: Integration tests for external verification of Ed25519 deletion proofs (version 3).
 // INVARIANTEN: Zero internal state required for verification. Injected deterministic RNGs only.
 
-use contextra_erasure::ed25519_proof::{
+use acta_erasure::ed25519_proof::{
     sign_deletion_proof_v3, verify_deletion_proof_v3, DeletionProofError, DeletionProofKeyPair,
 };
 use rand::rngs::StdRng;
@@ -73,7 +73,7 @@ fn test_negative_wrong_verifying_key_fails_verification() {
 
 #[test]
 fn test_property_like_random_payloads_with_injected_rng() {
-    // Contextra-Konvention P28: Injizierte RNGs, KEIN rand::thread_rng()
+    // Acta-Konvention P28: Injizierte RNGs, KEIN rand::thread_rng()
     let mut rng = StdRng::seed_from_u64(0xDEADBEEF);
     let keypair = DeletionProofKeyPair::generate_with_rng(&mut rng);
     let vk_bytes = keypair.verifying_key_bytes();

@@ -1,4 +1,4 @@
-//! # Golden-Korpus-Verifikation und Rückwärts-Lesetest für `contextra-erasure`
+//! # Golden-Korpus-Verifikation und Rückwärts-Lesetest für `acta-erasure`
 //!
 //! Stellt sicher, dass kanonische Formate, Signaturen und Typ-Serialisierungen
 //! byteweise stabil bleiben und ohne Panic deserialisiert werden können.
@@ -9,8 +9,8 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::Path;
 
-use contextra_erasure::deletion_proof::DeletionProof;
-use contextra_erasure::error::ErasureError;
+use acta_erasure::deletion_proof::DeletionProof;
+use acta_erasure::error::ErasureError;
 
 #[test]
 fn test_golden_manifest_checksums() {
@@ -18,7 +18,7 @@ fn test_golden_manifest_checksums() {
     let golden_dir = if manifest_path.exists() {
         Path::new("tests/golden")
     } else {
-        Path::new("crates/contextra-erasure/tests/golden")
+        Path::new("crates/acta-erasure/tests/golden")
     };
     assert!(
         golden_dir.join("MANIFEST.sha256").exists(),
@@ -59,7 +59,7 @@ fn test_golden_backward_read() {
     let golden_dir = if Path::new("tests/golden").exists() {
         Path::new("tests/golden")
     } else {
-        Path::new("crates/contextra-erasure/tests/golden")
+        Path::new("crates/acta-erasure/tests/golden")
     };
 
     // 1. DeletionProof v1/v2/v3 JSON rückwärts lesen
@@ -88,7 +88,7 @@ fn test_golden_corruption_bitflip_and_truncation() {
     let golden_dir = if Path::new("tests/golden").exists() {
         Path::new("tests/golden")
     } else {
-        Path::new("crates/contextra-erasure/tests/golden")
+        Path::new("crates/acta-erasure/tests/golden")
     };
 
     // 1. Bitflip Test auf DeletionProof JSON
@@ -117,17 +117,17 @@ fn test_golden_corruption_bitflip_and_truncation() {
 #[test]
 #[ignore]
 fn generate_golden_files() {
-    use contextra_erasure::deletion_proof::{
+    use acta_erasure::deletion_proof::{
         DeletionLayer, DeletionProof, DeletionScope, ExcludedScope, LayerCleanupProof,
     };
-    use contextra_erasure::ed25519_proof::DeletionProofKeyPair;
-    use contextra_erasure::types_local::{DocId, TenantId, TxId};
+    use acta_erasure::ed25519_proof::DeletionProofKeyPair;
+    use acta_erasure::types_local::{DocId, TenantId, TxId};
     use rand::SeedableRng;
 
     let golden_dir = if Path::new("tests/golden").exists() {
         Path::new("tests/golden").to_path_buf()
     } else {
-        Path::new("crates/contextra-erasure/tests/golden").to_path_buf()
+        Path::new("crates/acta-erasure/tests/golden").to_path_buf()
     };
     fs::create_dir_all(&golden_dir).unwrap();
 

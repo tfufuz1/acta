@@ -34,7 +34,7 @@ impl VerifiedVia {
 /// Strukturdecoder-Schnittstelle zur Prüfung schichtspezifischer Strukturen (SPEC 12.1, AR-3).
 ///
 /// Ermöglicht die Injektion von Decodern für Manifeste, SSTable-Indizes, Segmentwörterbücher
-/// und Slot-Tabellen, ohne dass `contextra-erasure` von `store`, `text` oder `vector` abhängt.
+/// und Slot-Tabellen, ohne dass `acta-erasure` von `store`, `text` oder `vector` abhängt.
 pub trait StructureDecoder: Send + Sync {
     /// Name oder Typ des Decoders für Berichte/Traceability.
     fn name(&self) -> &str;

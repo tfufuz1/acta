@@ -5,13 +5,13 @@
 //! Validiert die kryptographischen Invarianten und Sicherheitsanforderungen für `deletion_proof_signature_version_serde`.
 //! Prüft Zero-Panic, deterministische Ausführung und Fail-Closed-Verhalten.
 
-use contextra_erasure::deletion_proof::{
+use acta_erasure::deletion_proof::{
     DeletionLayer, DeletionProof, DeletionScope, ExcludedScope, LayerCleanupProof,
 };
-use contextra_erasure::ed25519_proof::{
+use acta_erasure::ed25519_proof::{
     DeletionProofError, DeletionProofKeyPair, SignatureVersion,
 };
-use contextra_erasure::types_local::{DocId, TenantId, TxId};
+use acta_erasure::types_local::{DocId, TenantId, TxId};
 
 #[test]
 fn test_signature_version_try_from_u8() {
@@ -49,7 +49,7 @@ fn test_deletion_proof_typed_signature_version_accessor() {
         graph_repair: vec![],
         wal_chain_receipt: None,
         audit_chain_position: None,
-        custody: contextra_erasure::deletion_proof::CustodyLevel::Local,
+        custody: acta_erasure::deletion_proof::CustodyLevel::Local,
         measurements: vec![],
         uncovered_layers: vec![],
         integrity_warning: None,
@@ -153,21 +153,21 @@ fn test_golden_json_v1_v2_v3_serde_roundtrip() {
     assert!(proof_v3_de.verify(&keypair.verifying_key).unwrap());
 
     // Golden JSON V5
-    use contextra_erasure::types_local::ScanTechnique;
-    use contextra_erasure::types_local::SystemClock;
+    use acta_erasure::types_local::ScanTechnique;
+    use acta_erasure::types_local::SystemClock;
     fn mint_witness_for_tests(
         layer: &str,
         scanned: u64,
         remaining: u64,
-        tech: contextra_erasure::types_local::ScanTechnique,
-    ) -> contextra_erasure::types_local::ScanWitness {
-        use contextra_erasure::types_local::{ScanSession, ScanTarget, SystemClock, WitnessLayer};
+        tech: acta_erasure::types_local::ScanTechnique,
+    ) -> acta_erasure::types_local::ScanWitness {
+        use acta_erasure::types_local::{ScanSession, ScanTarget, SystemClock, WitnessLayer};
 
         let target = ScanTarget::new("target", [0x11; 32]);
         let mut session = ScanSession::begin(WitnessLayer::from(layer), target, tech.clone());
         if !matches!(
             tech,
-            contextra_erasure::types_local::ScanTechnique::FeatureDisabled
+            acta_erasure::types_local::ScanTechnique::FeatureDisabled
         ) {
             session.record_control_match();
             for i in 0..scanned {
@@ -177,7 +177,7 @@ fn test_golden_json_v1_v2_v3_serde_roundtrip() {
         let clock = SystemClock::new();
         session.finish(&clock).unwrap()
     }
-    use contextra_erasure::types_local::{RequestContext, SagaRecord};
+    use acta_erasure::types_local::{RequestContext, SagaRecord};
 
     let clock = SystemClock::new();
     let ctx = RequestContext::new(tenant_id, TxId(50));
@@ -196,7 +196,7 @@ fn test_golden_json_v1_v2_v3_serde_roundtrip() {
             ExcludedScope::LlmParameterMemory,
             ExcludedScope::ConsolidatedAndDistilled,
         ],
-        contextra_erasure::deletion_proof::CustodyLevel::Sovereign,
+        acta_erasure::deletion_proof::CustodyLevel::Sovereign,
         keypair.signing_key(),
         &clock,
     )
@@ -231,7 +231,7 @@ fn test_verify_rejects_unknown_versions_fail_closed() {
         graph_repair: vec![],
         wal_chain_receipt: None,
         audit_chain_position: None,
-        custody: contextra_erasure::deletion_proof::CustodyLevel::Local,
+        custody: acta_erasure::deletion_proof::CustodyLevel::Local,
         measurements: vec![],
         uncovered_layers: vec![],
         integrity_warning: None,

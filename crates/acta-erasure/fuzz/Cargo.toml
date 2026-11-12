@@ -1,5 +1,5 @@
 [package]
-name = "contextra-erasure-fuzz"
+name = "acta-erasure-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2021"
@@ -9,7 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-contextra-erasure = { path = ".." }
+acta-erasure = { path = ".." }
 
 [[bin]]
 name = "fuzz_ledger_record"

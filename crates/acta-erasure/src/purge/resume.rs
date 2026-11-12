@@ -3,7 +3,7 @@
 //! Stellt getypte Methoden zur Verfügung, um den Fortschritt eines Purge-Laufes
 //! nach einem Crash wiederherzustellen, zu validieren und schrittweise voranzutreiben.
 
-// Herkunft: 4b98cf91b:crates/contextra-store/src/lsm/purge/resume.rs:24
+// Herkunft: 4b98cf91b:crates/acta-store/src/lsm/purge/resume.rs:24
 
 use super::phase::{PurgePhase, PurgePhaseError};
 use serde::{Deserialize, Serialize};

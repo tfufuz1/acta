@@ -27,7 +27,7 @@
 //! `revocation_log` stellt die kryptographische Widerrufs-Engine und Durchsetzung für Schlüssel und Gruppen bereit.
 //!
 //! # Abgrenzung zu Prompt 12 (Audit-Hash-Kette)
-//! Prompt 12 regelt die globale Audit-Hash-Kette von Contextra. Der Widerrufslog dient der
+//! Prompt 12 regelt die globale Audit-Hash-Kette von Acta. Der Widerrufslog dient der
 //! Audit-Kette als optionale Eingabequelle, bleibt aber als eigenständiges, isoliertes Artefakt bestehen.
 
 use crate::error::ErasureError;
@@ -123,7 +123,7 @@ pub fn compute_entry_hash(
 }
 
 /// Thread-sicherer, persistierter, Ed25519-signierter Widerrufslog.
-// ANCHOR[contextra-crypto:REV-001]
+// ANCHOR[acta-crypto:REV-001]
 /// Persistentes Protokoll über widerrufene Schlüsselgruppen.
 pub struct RevocationLog {
     storage: Option<(Arc<dyn Vfs>, PathBuf)>,

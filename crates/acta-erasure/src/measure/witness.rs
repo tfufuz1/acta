@@ -45,7 +45,7 @@ pub fn validate_witness(witness: &LayerWitness) -> Result<(), crate::error::Eras
 /// Berechnet einen kryptografischen BLAKE3-Digest eines `LayerWitness` (SPEC §12.2, INV-ERA-7).
 ///
 /// Bindet Schicht-ID, Messklasse, Methoden-ID, Dateien, Bytes, Scandauer und den Scan-Hash.
-/// // Herkunft: d835c682d:crates/contextra-crypto/src/deletion_proof/issuer.rs:112
+/// // Herkunft: d835c682d:crates/acta-crypto/src/deletion_proof/issuer.rs:112
 pub fn compute_witness_digest(witness: &LayerWitness) -> [u8; 32] {
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"ctx/witness/v1\n");

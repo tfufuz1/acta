@@ -94,9 +94,9 @@ mod loom_model {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod stress_tests {
-    use contextra_erasure::gate::erased_set::ErasedSet;
-    use contextra_erasure::gate::read_gate::GateGuard;
-    use contextra_erasure::types_local::{GateDecision, KeyBuf, ReadGate, Seq};
+    use acta_erasure::gate::erased_set::ErasedSet;
+    use acta_erasure::gate::read_gate::GateGuard;
+    use acta_erasure::types_local::{GateDecision, KeyBuf, ReadGate, Seq};
     use parking_lot::RwLock;
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::Arc;

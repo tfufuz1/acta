@@ -10,11 +10,11 @@
     clippy::cast_sign_loss
 )]
 
-use contextra_erasure::vault::{FileVault, SlotType, VAULT_NUM_SHARDS};
+use acta_erasure::vault::{FileVault, SlotType, VAULT_NUM_SHARDS};
 use std::time::Instant;
 
 fn main() {
-    println!("Running contextra-erasure benchmarks...");
+    println!("Running acta-erasure benchmarks...");
 
     // BM-VAULT-OPEN: Öffnen des 16-Shard-Tresors
     let start_open = Instant::now();

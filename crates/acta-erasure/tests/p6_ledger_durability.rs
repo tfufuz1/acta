@@ -7,13 +7,13 @@
 
 //! P6 Integrationstests: Ledger-Durability, Hash-Verkettung, Verankerung und Fail-Closed (WP-8, INV-ERA-4).
 
-use contextra_erasure::ledger::durable::{BatchRecordItem, ErasureLedger, LedgerAnchorProof};
-use contextra_erasure::ledger::entry::GENESIS_HASH;
-use contextra_erasure::ledger::error::LedgerError;
-use contextra_erasure::ledger::record::{FramedRecord, LedgerFileHeader, RecordType};
-use contextra_erasure::ledger::sink::InMemoryLedger;
-use contextra_erasure::ledger::storage::{FileLedgerStorage, LedgerStorage, MemLedgerStorage};
-use contextra_erasure::types_local::ErasureId;
+use acta_erasure::ledger::durable::{BatchRecordItem, ErasureLedger, LedgerAnchorProof};
+use acta_erasure::ledger::entry::GENESIS_HASH;
+use acta_erasure::ledger::error::LedgerError;
+use acta_erasure::ledger::record::{FramedRecord, LedgerFileHeader, RecordType};
+use acta_erasure::ledger::sink::InMemoryLedger;
+use acta_erasure::ledger::storage::{FileLedgerStorage, LedgerStorage, MemLedgerStorage};
+use acta_erasure::types_local::ErasureId;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 

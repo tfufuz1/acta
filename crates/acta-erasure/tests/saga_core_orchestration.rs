@@ -11,32 +11,32 @@
     clippy::indexing_slicing
 )]
 
-use contextra_erasure::error::ErasureError;
-use contextra_erasure::purge::order::PurgePriority;
-use contextra_erasure::saga::core::{
+use acta_erasure::error::ErasureError;
+use acta_erasure::purge::order::PurgePriority;
+use acta_erasure::saga::core::{
     EraseExecutionRequest, ErasureConfig, ErasureCore, ErasureDeps,
 };
-use contextra_erasure::saga::machine::{EraseSaga, SagaState};
-use contextra_erasure::saga::seams::{
+use acta_erasure::saga::machine::{EraseSaga, SagaState};
+use acta_erasure::saga::seams::{
     SagaGate, SagaJournal, SagaLedger, SagaMeasure, SagaReport, SagaVault, SnapshotRevoker,
 };
-use contextra_erasure::types_local::Clock;
-use contextra_erasure::types_local::GateDecision;
-use contextra_erasure::types_local::IdGen;
-use contextra_erasure::types_local::OperatorRef;
-use contextra_erasure::types_local::{
+use acta_erasure::types_local::Clock;
+use acta_erasure::types_local::GateDecision;
+use acta_erasure::types_local::IdGen;
+use acta_erasure::types_local::OperatorRef;
+use acta_erasure::types_local::{
     Armed, EraseTarget, ErasureLayer, KeyCoverage, LayerId, LayerScope, LayerWitness, PurgeCx,
     PurgeOutcome, Scanner,
 };
-use contextra_erasure::types_local::{
+use acta_erasure::types_local::{
     BarrierExclusive, BarrierShared, CommitBarrier, CompactionPermit, PurgeBarrier, PurgePermit,
 };
-use contextra_erasure::types_local::{
+use acta_erasure::types_local::{
     EraseMode, ErasureStatus, PendingReason, Phase, RefusalReason, RetentionAttestation,
     RetentionCode, Timing,
 };
-use contextra_erasure::types_local::{ErasureEvent, ErasureObserver, ObservedPhase, ObserverError};
-use contextra_erasure::types_local::{ErasureId, Timestamp};
+use acta_erasure::types_local::{ErasureEvent, ErasureObserver, ObservedPhase, ObserverError};
+use acta_erasure::types_local::{ErasureId, Timestamp};
 use futures_util::future::BoxFuture;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

@@ -16,9 +16,9 @@
     clippy::indexing_slicing
 )]
 
-use contextra_erasure::kv_shredding::{GroupEpochKey, KeyPurgeReceipt, KeyRegistry};
-use contextra_erasure::types_local::{Clock, SystemClock};
-use contextra_erasure::vault::keyring::key_store::{KeyStore, KeyStoreError, LocalDek};
+use acta_erasure::kv_shredding::{GroupEpochKey, KeyPurgeReceipt, KeyRegistry};
+use acta_erasure::types_local::{Clock, SystemClock};
+use acta_erasure::vault::keyring::key_store::{KeyStore, KeyStoreError, LocalDek};
 use std::sync::Arc;
 use zeroize::Zeroize;
 
