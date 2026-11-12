@@ -4,8 +4,10 @@ pub mod appendlog;
 pub mod epoch;
 pub mod record;
 pub mod reduce;
+pub mod wal;
 
 pub use crate::saga::SagaState;
+pub use wal::MemoryWalSink;
 pub use appendlog::{AppendLog, DurableJournal};
 pub use epoch::{compute_commitment, Epoch, EpochKeys};
 pub use record::{JournalEntry, JournalRecord, RecordCode, TargetType};
@@ -13,8 +15,8 @@ pub use reduce::reduce;
 
 use crate::error::ErasureError;
 use crate::saga::EraseSaga;
-use acta_ports::vfs::Vfs;
-use acta_types::ids::ErasureId;
+use crate::types_local::ErasureId;
+use crate::types_local::Vfs;
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;

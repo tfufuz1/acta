@@ -1,3 +1,5 @@
+#![cfg(feature = "async")]
+
 //! Crash-Matrix Tests FM-1 bis FM-14 und Wiederanlauf (SPEC §11.2, §15.1, FM-1..14, T-CRASH-1..6).
 //!
 //! T-ID: T-CRASH-1, T-CRASH-2, T-CRASH-3, T-CRASH-4, T-CRASH-5, T-CRASH-6
@@ -9,25 +11,25 @@
     clippy::indexing_slicing
 )]
 
-use acta_erasure::error::ErasureError;
-use acta_erasure::journal::{ErasureJournal, JournalEntry};
-use acta_erasure::purge::reserve::{check_disk_reserve, ReserveCheck};
-use acta_erasure::saga::core::{ErasureConfig, ErasureCore, ErasureDeps};
-use acta_erasure::saga::machine::{EraseSaga, SagaState};
-use acta_erasure::saga::seams::{
+use contextra_erasure::error::ErasureError;
+use contextra_erasure::journal::{ErasureJournal, JournalEntry};
+use contextra_erasure::purge::reserve::{check_disk_reserve, ReserveCheck};
+use contextra_erasure::saga::core::{ErasureConfig, ErasureCore, ErasureDeps};
+use contextra_erasure::saga::machine::{EraseSaga, SagaState};
+use contextra_erasure::saga::seams::{
     SagaGate, SagaJournal, SagaLedger, SagaMeasure, SagaReport, SagaVault, SnapshotRevoker,
 };
-use acta_ports::barrier::{
+use contextra_erasure::types_local::Clock;
+use contextra_erasure::types_local::ErasureId;
+use contextra_erasure::types_local::GateDecision;
+use contextra_erasure::types_local::IdGen;
+use contextra_erasure::types_local::PendingReason;
+use contextra_erasure::types_local::{
     BarrierExclusive, BarrierShared, CommitBarrier, CompactionPermit, PurgeBarrier, PurgePermit,
 };
-use acta_ports::clock::Clock;
-use acta_ports::erasure::{EraseTarget, LayerId, LayerWitness};
-use acta_ports::gate::GateDecision;
-use acta_ports::id_gen::IdGen;
-use acta_ports::BoxFuture;
-use acta_types::erasure::PendingReason;
-use acta_types::ids::ErasureId;
-use std::collections::HashMap;
+use contextra_erasure::types_local::{EraseTarget, LayerId, LayerWitness};
+use futures_util::future::BoxFuture;
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
@@ -40,7 +42,7 @@ impl SagaJournal for MatrixJournal {
         &'a self,
         _erasure_id: ErasureId,
         _target: &'a EraseTarget,
-        _attestation: &'a acta_types::erasure::RetentionAttestation,
+        _attestation: &'a contextra_erasure::types_local::RetentionAttestation,
     ) -> BoxFuture<'a, Result<(), ErasureError>> {
         Box::pin(async move { Ok(()) })
     }
@@ -131,7 +133,7 @@ impl SagaReport for DummyReport {
         &'a self,
         _id: ErasureId,
         _t: &'a EraseTarget,
-        _att: &'a acta_types::erasure::RetentionAttestation,
+        _att: &'a contextra_erasure::types_local::RetentionAttestation,
         _w: &'a [LayerWitness],
     ) -> BoxFuture<'a, Result<Vec<u8>, ErasureError>> {
         Box::pin(async move { Ok(vec![1, 2, 3]) })
@@ -217,7 +219,7 @@ async fn t_crash_1_fm_matrix_recovery_step_progression() {
         ledger: Arc::new(DummyLedger),
         snapshots: Arc::new(DummySnapshotRevoker),
         layers: vec![],
-        layer_priorities: HashMap::new(),
+        layer_priorities: BTreeMap::new(),
         commit_barrier: Arc::new(DummyCommitBarrier),
         purge_barrier: Arc::new(DummyPurgeBarrier),
         clock: Arc::new(DummyClock),

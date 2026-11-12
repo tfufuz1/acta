@@ -1,3 +1,5 @@
+#![cfg(feature = "async")]
+
 //! Zusätzliche Konformitäts- und Eigenschaftstests für den Tresor (T-VAULT-1..9, T-FK-1..3).
 //!
 //! Validiert:
@@ -14,14 +16,17 @@
     clippy::panic,
     clippy::indexing_slicing,
     clippy::cast_possible_truncation,
-    clippy::cast_sign_loss
+    clippy::cast_sign_loss,
+    unused_imports,
+    dead_code,
+    clippy::disallowed_types
 )]
 
-use acta_erasure::vault::{
+use contextra_erasure::types_local::{FileId, FileKeyring, FileKind};
+use contextra_erasure::vault::{
     encode_metablock, open_vault_shard, rehash_shard, FileVault, MetablockParams, SlotType,
     VaultShard, VaultSlotData, VAULT_NUM_SHARDS, VAULT_SLOT_BASE, VAULT_SLOT_SIZE,
 };
-use acta_ports::keys::{FileId, FileKeyring, FileKind};
 
 /// SPEC: T-VAULT-1
 /// T-ID: T-VAULT-1
@@ -200,7 +205,7 @@ fn test_t_vault_shard_poisoning_d55() {
 /// T-ID: T-FK-1
 #[tokio::test]
 async fn test_t_fk_keyring_lifecycle_and_zeroize() {
-    let keyring = acta_erasure::vault::VaultKeyring::new_in_memory();
+    let keyring = contextra_erasure::vault::VaultKeyring::new_in_memory();
     let file_id = FileId::new(1001);
 
     // 1. Noch nicht angelegt -> open liefert Fehler
@@ -234,8 +239,10 @@ async fn test_t_fk_keyring_lifecycle_and_zeroize() {
 /// Modul für dauerhafte VFS-Tests mit Injektion
 mod durable_tests {
     use super::*;
-    use acta_ports::vfs::{VerifiedVia, Vfs, VfsFile, VfsOpenOptions};
-    use acta_ports::{ActaError, Result};
+    use contextra_erasure::error::ErasureError as ContextraError;
+    use contextra_erasure::types_local::Vfs;
+    use contextra_erasure::types_local::{VerifiedVia, VfsFile, VfsOpenOptions};
+    pub type Result<T> = std::result::Result<T, ContextraError>;
     use parking_lot::Mutex;
     use std::collections::HashMap;
     use std::io::{Error, ErrorKind};
@@ -322,7 +329,7 @@ mod durable_tests {
         fn sync_data(&self) -> std::io::Result<()> {
             self.sync_count.fetch_add(1, Ordering::Relaxed);
             if self.fail_sync.load(Ordering::Acquire) {
-                return Err(Error::new(ErrorKind::Other, "injected sync_data failure"));
+                return Err(Error::other("injected sync_data failure"));
             }
             Ok(())
         }
@@ -333,41 +340,22 @@ mod durable_tests {
     }
 
     impl Vfs for MockVfs {
-        fn open(&self, path: &Path, opts: &VfsOpenOptions) -> Result<Box<dyn VfsFile>> {
-            let mut files = self.files.lock();
-            if opts.create_new && files.contains_key(path) {
-                return Err(ActaError::Io(Error::new(
-                    ErrorKind::AlreadyExists,
-                    "file exists",
-                )));
-            }
-
-            let entry = files
-                .entry(path.to_path_buf())
-                .or_insert_with(|| Arc::new(Mutex::new(Vec::new())));
-
-            if opts.truncate {
-                entry.lock().clear();
-            }
-
-            Ok(Box::new(MockVfsFile {
-                data: Arc::clone(entry),
-                fail_sync: Arc::clone(&self.fail_sync),
-                sync_count: Arc::clone(&self.sync_count),
-                read_count: Arc::clone(&self.read_count),
-            }))
-        }
-
         fn read(&self, path: &Path) -> Result<Vec<u8>> {
             let files = self.files.lock();
             if let Some(data) = files.get(path) {
                 Ok(data.lock().clone())
             } else {
-                Err(ActaError::NotFound(path.display().to_string()))
+                Err(ContextraError::Io(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    path.display().to_string(),
+                )))
             }
         }
 
         fn write_atomic(&self, path: &Path, data: &[u8]) -> Result<()> {
+            if self.fail_sync.load(Ordering::Acquire) {
+                return Err(ContextraError::Io(Error::other("injected sync failure")));
+            }
             let mut files = self.files.lock();
             files.insert(path.to_path_buf(), Arc::new(Mutex::new(data.to_vec())));
             Ok(())
@@ -378,7 +366,10 @@ mod durable_tests {
             if let Some(data) = files.get(path) {
                 Ok(data.lock().len() as u64)
             } else {
-                Err(ActaError::NotFound(path.display().to_string()))
+                Err(ContextraError::Io(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    path.display().to_string(),
+                )))
             }
         }
 
@@ -401,19 +392,6 @@ mod durable_tests {
             Ok(())
         }
 
-        fn rename(&self, from: &Path, to: &Path) -> Result<()> {
-            let mut files = self.files.lock();
-            if let Some(data) = files.remove(from) {
-                files.insert(to.to_path_buf(), data);
-                Ok(())
-            } else {
-                Err(ActaError::Io(Error::new(
-                    ErrorKind::NotFound,
-                    "source file not found",
-                )))
-            }
-        }
-
         fn sync_dir(&self, _path: &Path) -> Result<()> {
             Ok(())
         }
@@ -429,7 +407,7 @@ mod durable_tests {
     #[test]
     fn test_t_vault_1_durable_creation_open_and_destroy() {
         let vfs: Arc<dyn Vfs> = MockVfs::new();
-        let vault_dir = Path::new("/data/.acta-vault/store1");
+        let vault_dir = Path::new("/data/.contextra-vault/store1");
         let vault_id = [0x42u8; 16];
         let mac_key = [0x99u8; 32];
 
@@ -473,7 +451,7 @@ mod durable_tests {
             .expect("destroy failed");
         assert_eq!(
             destroyed.verified_via,
-            acta_erasure::vault::VerifiedVia::Direct
+            contextra_erasure::vault::VerifiedVia::Direct
         );
 
         assert!(reopened
@@ -488,7 +466,7 @@ mod durable_tests {
     fn test_t_vault_7_durable_sync_failure_poisons_shard() {
         let mock = MockVfs::new();
         let vfs: Arc<dyn Vfs> = mock.clone();
-        let vault_dir = Path::new("/data/.acta-vault/store_poison");
+        let vault_dir = Path::new("/data/.contextra-vault/store_poison");
         let vault_id = [0x33u8; 16];
         let mac_key = [0x44u8; 32];
 
@@ -518,7 +496,7 @@ mod durable_tests {
     #[test]
     fn test_t_vault_7_durable_rehash_cancellation_and_overwriting() {
         let vfs: Arc<dyn Vfs> = MockVfs::new();
-        let vault_dir = Path::new("/data/.acta-vault/store_rehash");
+        let vault_dir = Path::new("/data/.contextra-vault/store_rehash");
         let vault_id = [0x55u8; 16];
         let mac_key = [0x66u8; 32];
 
@@ -529,7 +507,7 @@ mod durable_tests {
 
         // 1. Abbruch durch wartendes erase (D-111 Abs. 6)
         let erase_pending = AtomicBool::new(true);
-        let res = acta_erasure::vault::rehash_durable_shard(shard, &vfs, Some(&erase_pending));
+        let res = contextra_erasure::vault::rehash_durable_shard(shard, &vfs, Some(&erase_pending));
         assert!(
             res.is_err(),
             "Hintergrund-Rehash muss bei wartendem erase abbrechen"
@@ -538,7 +516,7 @@ mod durable_tests {
         // 2. Regulärer Rehash
         erase_pending.store(false, Ordering::Release);
         let (new_shard, outcome) =
-            acta_erasure::vault::rehash_durable_shard(shard, &vfs, Some(&erase_pending))
+            contextra_erasure::vault::rehash_durable_shard(shard, &vfs, Some(&erase_pending))
                 .expect("rehash_durable_shard failed");
 
         assert!(
@@ -549,7 +527,7 @@ mod durable_tests {
     }
 
     struct MockScrubCtx;
-    impl acta_erasure::vault::VaultScrubContext for MockScrubCtx {
+    impl contextra_erasure::vault::VaultScrubContext for MockScrubCtx {
         fn file_exists(&self, file_id: &[u8; 16]) -> bool {
             file_id[0] != 0xFF
         }
@@ -581,7 +559,7 @@ mod durable_tests {
             .expect("put D");
 
         let s_idx = vault.shard_index(SlotType::File, &orphan_file_tag);
-        let outcome = acta_erasure::vault::scrub_shard_step(&mut vault, s_idx, 64, &ctx)
+        let outcome = contextra_erasure::vault::scrub_shard_step(&mut vault, s_idx, 64, &ctx)
             .expect("scrub step");
 
         assert!(outcome.slots_scanned > 0);

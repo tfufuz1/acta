@@ -6,13 +6,17 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
-    clippy::indexing_slicing
+    clippy::indexing_slicing,
+    unused_imports,
+    dead_code,
+    clippy::cast_possible_truncation
 )]
 
-use acta_erasure::journal::appendlog::DurableJournal;
-use acta_erasure::journal::epoch::{compute_commitment, EpochKeys};
-use acta_erasure::journal::record::{JournalRecord, RecordCode, TargetType};
-use acta_ports::vfs::{Vfs, VfsFile, VfsOpenOptions};
+use contextra_erasure::journal::appendlog::DurableJournal;
+use contextra_erasure::journal::epoch::{compute_commitment, EpochKeys};
+use contextra_erasure::journal::record::{JournalRecord, RecordCode, TargetType};
+use contextra_erasure::types_local::Vfs;
+use contextra_erasure::types_local::{VfsFile, VfsOpenOptions};
 use parking_lot::RwLock;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -84,67 +88,79 @@ impl TrackingVfs {
 }
 
 impl Vfs for TrackingVfs {
-    fn open(
+    fn read(
         &self,
         path: &Path,
-        opts: &VfsOpenOptions,
-    ) -> acta_ports::Result<Box<dyn VfsFile>> {
-        let mut files = self.files.write();
-        let entry = files
-            .entry(path.to_path_buf())
-            .or_insert_with(|| Arc::new(RwLock::new(Vec::new())));
-
-        if opts.truncate {
-            entry.write().clear();
-        }
-
-        Ok(Box::new(MemFile {
-            data: Arc::clone(entry),
-            sync_count: Arc::clone(&self.sync_counter),
-        }))
-    }
-
-    fn read(&self, path: &Path) -> acta_ports::Result<Vec<u8>> {
+    ) -> std::result::Result<Vec<u8>, contextra_erasure::error::ErasureError> {
         let files = self.files.read();
         files
             .get(path)
             .map(|data| data.read().clone())
-            .ok_or_else(|| acta_ports::ActaError::NotFound(path.display().to_string()))
+            .ok_or_else(|| {
+                contextra_erasure::error::ErasureError::Io(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    path.display().to_string(),
+                ))
+            })
     }
 
-    fn write_atomic(&self, path: &Path, data: &[u8]) -> acta_ports::Result<()> {
+    fn write_atomic(
+        &self,
+        path: &Path,
+        data: &[u8],
+    ) -> std::result::Result<(), contextra_erasure::error::ErasureError> {
         let mut files = self.files.write();
         files.insert(path.to_path_buf(), Arc::new(RwLock::new(data.to_vec())));
         self.sync_counter.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
-    fn create_dir_all(&self, _path: &Path) -> acta_ports::Result<()> {
+    fn create_dir_all(
+        &self,
+        _path: &Path,
+    ) -> std::result::Result<(), contextra_erasure::error::ErasureError> {
         Ok(())
     }
 
-    fn remove_file(&self, path: &Path) -> acta_ports::Result<()> {
+    fn remove_file(
+        &self,
+        path: &Path,
+    ) -> std::result::Result<(), contextra_erasure::error::ErasureError> {
         self.files.write().remove(path);
         Ok(())
     }
 
-    fn exists(&self, path: &Path) -> acta_ports::Result<bool> {
+    fn exists(
+        &self,
+        path: &Path,
+    ) -> std::result::Result<bool, contextra_erasure::error::ErasureError> {
         Ok(self.files.read().contains_key(path))
     }
 
-    fn len(&self, path: &Path) -> acta_ports::Result<u64> {
+    fn len(&self, path: &Path) -> std::result::Result<u64, contextra_erasure::error::ErasureError> {
         let files = self.files.read();
         files
             .get(path)
             .map(|data| data.read().len() as u64)
-            .ok_or_else(|| acta_ports::ActaError::NotFound(path.display().to_string()))
+            .ok_or_else(|| {
+                contextra_erasure::error::ErasureError::Io(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    path.display().to_string(),
+                ))
+            })
     }
 
-    fn list_dir(&self, _path: &Path) -> acta_ports::Result<Vec<String>> {
+    fn list_dir(
+        &self,
+        _path: &Path,
+    ) -> std::result::Result<Vec<String>, contextra_erasure::error::ErasureError> {
         Ok(Vec::new())
     }
 
-    fn sync_dir(&self, _path: &Path) -> acta_ports::Result<()> {
+    fn sync_dir(
+        &self,
+        _path: &Path,
+    ) -> std::result::Result<(), contextra_erasure::error::ErasureError> {
         self.sync_counter.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }

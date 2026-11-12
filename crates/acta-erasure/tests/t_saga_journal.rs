@@ -1,3 +1,5 @@
+#![cfg(feature = "async")]
+
 //! Tests für Saga State Machine und Journal (T-CRASH-1..6, T-CANCEL-1, T-FSYNC-1).
 
 #![allow(
@@ -7,10 +9,10 @@
     clippy::indexing_slicing
 )]
 
-use acta_erasure::journal::{ErasureJournal, JournalEntry};
-use acta_erasure::saga::{EraseSaga, SagaDriver, SagaState, StepOutcome};
-use acta_types::erasure::PendingReason;
-use acta_types::ids::ErasureId;
+use contextra_erasure::journal::{ErasureJournal, JournalEntry};
+use contextra_erasure::saga::{EraseSaga, SagaDriver, SagaState, StepOutcome};
+use contextra_erasure::types_local::ErasureId;
+use contextra_erasure::types_local::PendingReason;
 
 #[tokio::test]
 async fn t_crash_1_and_idempotence() {

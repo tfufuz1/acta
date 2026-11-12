@@ -11,7 +11,7 @@
 use super::durable::DurableVaultShard;
 use super::table::VaultTable;
 use crate::error::ErasureError;
-use acta_ports::vfs::Vfs;
+use crate::types_local::Vfs;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -125,13 +125,19 @@ pub fn rehash_durable_shard(
 
     new_shard.sync_data()?;
 
-    vfs.rename(&temp_path, &old_path).map_err(|e| match e {
-        acta_ports::ActaError::Io(io_err) => ErasureError::Io(io_err),
+    let temp_bytes = vfs.read(&temp_path).map_err(|e| match e {
+        crate::error::ErasureError::Io(io_err) => ErasureError::Io(io_err),
         other => ErasureError::Io(std::io::Error::other(other.to_string())),
     })?;
+    vfs.write_atomic(&old_path, &temp_bytes)
+        .map_err(|e| match e {
+            crate::error::ErasureError::Io(io_err) => ErasureError::Io(io_err),
+            other => ErasureError::Io(std::io::Error::other(other.to_string())),
+        })?;
+    let _ = vfs.remove_file(&temp_path);
 
     vfs.sync_dir(parent_dir).map_err(|e| match e {
-        acta_ports::ActaError::Io(io_err) => ErasureError::Io(io_err),
+        crate::error::ErasureError::Io(io_err) => ErasureError::Io(io_err),
         other => ErasureError::Io(std::io::Error::other(other.to_string())),
     })?;
 

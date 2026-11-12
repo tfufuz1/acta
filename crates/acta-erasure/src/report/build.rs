@@ -22,8 +22,8 @@
 use super::canonical::to_canonical_json;
 use super::risk::{evaluate_residual_risks_with_context, ResidualRiskContext, ResidualRiskEntry};
 use crate::error::ErasureError;
-use acta_types::erasure::LayerWitness;
-use acta_types::ids::ErasureId;
+use crate::types_local::ErasureId;
+use crate::types_local::LayerWitness;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -85,9 +85,9 @@ impl LayerWitnessReport {
         };
 
         let class_str = match w.class() {
-            acta_types::erasure::MeasureClass::Mk1 => "MK1".to_string(),
-            acta_types::erasure::MeasureClass::Mk2 => "MK2".to_string(),
-            acta_types::erasure::MeasureClass::Mk3 => "MK3".to_string(),
+            crate::types_local::MeasureClass::Mk1 => "MK1".to_string(),
+            crate::types_local::MeasureClass::Mk2 => "MK2".to_string(),
+            crate::types_local::MeasureClass::Mk3 => "MK3".to_string(),
         };
 
         Self {
@@ -98,7 +98,7 @@ impl LayerWitnessReport {
             scanned_bytes: w.bytes(),
             matches: w.matches(),
             control_ok: true, // LayerWitness kann nur aus Armed erzeugt werden
-            duration_us: w.duration().as_micros() as u64,
+            duration_us: u64::try_from(w.duration().as_micros()).unwrap_or(u64::MAX),
             hash: hex_encode(w.hash()),
         }
     }
@@ -116,6 +116,85 @@ pub struct FieldMeasurementSection {
     pub mk2: ReachStatus,
     /// MK3 Status.
     pub mk3: ReachStatus,
+}
+
+/// Kryptografische Zeugenkette und Wurzel-Digest (SPEC §11.7, §12.2, INV-ERA-7).
+///
+/// Jeder Zeuge wird über seinen deterministischen BLAKE3-Digest gebunden.
+/// Die Kette aggregiert die Einzel-Digests zu einem gemeinsamen Wurzel-Digest (`chain_root`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct WitnessChainReport {
+    /// Liste hexadezimaler Digests der Zeugen in kanonischer Reihenfolge.
+    pub witness_digests: Vec<String>,
+    /// Hexadezimaler Wurzel-Digest der Hash-Kette.
+    pub chain_root: String,
+}
+
+impl WitnessChainReport {
+    /// Berechnet die Zeugenkette aus einer geordneten Liste von Zeugendigests (INV-ERA-7).
+    ///
+    /// Bei leerer Liste ist der Wurzel-Digest 32 Nullbytes.
+    /// Bei n Zeugen wird die Kette deterministisch kaskadiert:
+    /// `H_0 = witness_digests[0]`, `H_{i} = BLAKE3(H_{i-1} || witness_digests[i])`.
+    pub fn compute_from_digests(digests: &[[u8; 32]]) -> Self {
+        if digests.is_empty() {
+            return Self {
+                witness_digests: Vec::new(),
+                chain_root: hex_encode(&[0u8; 32]),
+            };
+        }
+
+        let mut witness_digests = Vec::with_capacity(digests.len());
+        for d in digests {
+            witness_digests.push(hex_encode(d));
+        }
+
+        let first = match digests.first() {
+            Some(&d) => d,
+            None => {
+                return Self {
+                    witness_digests: Vec::new(),
+                    chain_root: hex_encode(&[0u8; 32]),
+                };
+            }
+        };
+
+        let mut current_root = first;
+        for d in digests.iter().skip(1) {
+            let mut hasher = blake3::Hasher::new();
+            hasher.update(b"ctx/witness_chain/v1\n");
+            hasher.update(&current_root);
+            hasher.update(d);
+            current_root = *hasher.finalize().as_bytes();
+        }
+
+        Self {
+            witness_digests,
+            chain_root: hex_encode(&current_root),
+        }
+    }
+}
+
+/// Ledger-Verankerungsbestätigung für den Löschbericht (SPEC §11.8, ER-30).
+///
+/// Opaker lokaler Typ, der die Bestätigung der Ledger-Verankerung festhält,
+/// ohne direkt vom Ledger-Modul abzuhängen.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LedgerConfirmation {
+    /// Sequenznummer des Ledger-Eintrags.
+    pub seq: u64,
+    /// Hexadezimaler Kettenhash des Ledger-Eintrags.
+    pub chain_hash: String,
+}
+
+impl LedgerConfirmation {
+    /// Erstellt eine neue Ledger-Verankerungsbestätigung.
+    pub fn new(seq: u64, chain_hash: [u8; 32]) -> Self {
+        Self {
+            seq,
+            chain_hash: hex_encode(&chain_hash),
+        }
+    }
 }
 
 /// Schlüsselabdeckung einer Schicht im Bericht.
@@ -211,6 +290,12 @@ pub struct ErasureReport {
     pub residual_risks: Vec<ResidualRiskEntry>,
     /// Zeugenliste je Schicht.
     pub witnesses: Vec<LayerWitnessReport>,
+    /// Zeugen-Hash-Kette und Wurzel-Digest (SPEC §11.7, INV-ERA-7).
+    #[serde(default)]
+    pub witness_chain: WitnessChainReport,
+    /// Optionale Ledger-Verankerungsbestätigung (SPEC §11.8).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub ledger_confirmation: Option<LedgerConfirmation>,
     /// Pflichtsatz zum Signaturumfang (SPEC Anhang D, E-L11).
     pub signature_scope_notice: String,
     /// Pflichttext „keine Rechtsberatung“ (SPEC Anhang D).
@@ -296,6 +381,8 @@ pub struct ReportBuildOptions {
     pub process_hardening: String,
     /// Kontext für Restrisiken.
     pub risk_context: ResidualRiskContext,
+    /// Optionale Ledger-Verankerungsbestätigung.
+    pub ledger_confirmation: Option<LedgerConfirmation>,
 }
 
 impl Default for ReportBuildOptions {
@@ -325,6 +412,7 @@ impl Default for ReportBuildOptions {
             signer_id: 0,
             process_hardening: "Full".to_string(),
             risk_context: ResidualRiskContext::default(),
+            ledger_confirmation: None,
         }
     }
 }
@@ -415,6 +503,13 @@ pub fn build_report_with_options(
         mk3: mk3_status,
     };
 
+    // Zeugenkette berechnen (INV-ERA-7)
+    let witness_digests: Vec<[u8; 32]> = witnesses
+        .iter()
+        .map(crate::measure::witness::compute_witness_digest)
+        .collect();
+    let witness_chain = WitnessChainReport::compute_from_digests(&witness_digests);
+
     let witness_list: Vec<LayerWitnessReport> = witnesses
         .iter()
         .map(LayerWitnessReport::from_witness)
@@ -432,7 +527,7 @@ pub fn build_report_with_options(
     let legal_notice =
         "Keine Rechtsberatung; die rechtliche Wertung obliegt dem Betreiber.".to_string();
     let scope_notice =
-        "Acta entfernt die Daten eines Löschziels aus dem Datenverzeichnis, aus den Indexen und aus den gespeicherten Zeitreise-Versionen und weist den Zustand je Schicht messtechnisch nach. Für jedes Ziel wird zusätzlich der zugehörige Schlüssel aus dem Schlüsseltresor entfernt; ob und wie das rechtlich zu werten ist, entscheidet der Betreiber. Nicht erfasst sind externe Sicherungen, Flash-Remanenz, Dateisystem-Journale, Prozessspeicher und externe Verarbeiter. Der Bericht listet diese Restrisiken."
+        "Contextra entfernt die Daten eines Löschziels aus dem Datenverzeichnis, aus den Indexen und aus den gespeicherten Zeitreise-Versionen und weist den Zustand je Schicht messtechnisch nach. Für jedes Ziel wird zusätzlich der zugehörige Schlüssel aus dem Schlüsseltresor entfernt; ob und wie das rechtlich zu werten ist, entscheidet der Betreiber. Nicht erfasst sind externe Sicherungen, Flash-Remanenz, Dateisystem-Journale, Prozessspeicher und externe Verarbeiter. Der Bericht listet diese Restrisiken."
             .to_string();
 
     let superseded_purge_notice = if opts.risk_context.is_superseded_with_same_key {
@@ -472,12 +567,47 @@ pub fn build_report_with_options(
         process_hardening: opts.process_hardening,
         residual_risks,
         witnesses: witness_list,
+        witness_chain,
+        ledger_confirmation: opts.ledger_confirmation,
         signature_scope_notice,
         legal_notice,
         scope_notice,
         superseded_purge_notice,
         fields: BTreeMap::new(),
     }
+}
+
+/// Erstellt einen normativen Löschbericht mit strenger Validierung (fail-closed, INV-CLASS-MEASURED-1).
+///
+/// Schlägt fehl (`Err`), wenn:
+/// - keine Zeugen übergeben wurden (`witnesses.is_empty()`)
+/// - ein Zeuge unbewaffnet ist oder `matches > 0` hat
+/// - ein Zeuge ungültige Null-Hashes aufweist.
+pub fn try_build_report_with_options(
+    erasure_id: ErasureId,
+    witnesses: Vec<LayerWitness>,
+    segments_rewritten: u64,
+    bytes_rewritten: u64,
+    opts: ReportBuildOptions,
+) -> Result<ErasureReport, ErasureError> {
+    if witnesses.is_empty() {
+        return Err(ErasureError::Internal(
+            "INV-CLASS-MEASURED-1 violation: report cannot be created without verified scanner witnesses"
+                .to_string(),
+        ));
+    }
+
+    for w in &witnesses {
+        crate::measure::witness::validate_witness(w)?;
+    }
+
+    Ok(build_report_with_options(
+        erasure_id,
+        witnesses,
+        segments_rewritten,
+        bytes_rewritten,
+        opts,
+    ))
 }
 
 /// Erstellt einen Löschbericht mit Standardoptionen (ER-27).
@@ -490,12 +620,17 @@ pub fn build_report(
     bytes_rewritten: u64,
     purge_complete: bool,
 ) -> ErasureReport {
-    let mut opts = ReportBuildOptions::default();
-    opts.requested_at = gated_at.saturating_sub(100);
-    opts.gated_at = gated_at;
-    opts.key_destroyed_at = gated_at.saturating_add(50);
-    opts.completed_at = completed_at;
-    opts.risk_context.purge_complete = purge_complete;
+    let opts = ReportBuildOptions {
+        requested_at: gated_at.saturating_sub(100),
+        gated_at,
+        key_destroyed_at: gated_at.saturating_add(50),
+        completed_at,
+        risk_context: ResidualRiskContext {
+            purge_complete,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
 
     build_report_with_options(
         erasure_id,

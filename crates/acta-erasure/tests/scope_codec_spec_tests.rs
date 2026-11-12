@@ -1,3 +1,5 @@
+#![cfg(feature = "async")]
+
 //! Tests für Scope-Codec und persistente Scope-Dateien (SPEC §11.1, D-75, D-85, Anhang F.1, F.9).
 //!
 //! T-ID: T-CRASH-1, T-ERID-1
@@ -9,12 +11,12 @@
     clippy::indexing_slicing
 )]
 
-use acta_erasure::scope::codec::{decode_scope, encode_scope};
-use acta_erasure::scope::set::{LayerScopeSet, ResolvedLayerScope};
-use acta_erasure::scope::{load_scope_file, store_scope_file};
-use acta_ports::keys::{FileId, FileKey, FileKeyring, FileKind};
-use acta_ports::vfs::Vfs;
-use acta_ports::BoxFuture;
+use contextra_erasure::scope::codec::{decode_scope, encode_scope};
+use contextra_erasure::scope::set::{LayerScopeSet, ResolvedLayerScope};
+use contextra_erasure::scope::{load_scope_file, store_scope_file};
+use contextra_erasure::types_local::Vfs;
+use contextra_erasure::types_local::{FileId, FileKey, FileKeyring, FileKind};
+use futures_util::future::BoxFuture;
 use parking_lot::RwLock;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -73,45 +75,71 @@ impl MemVfs {
 }
 
 impl Vfs for MemVfs {
-    fn read(&self, path: &Path) -> acta_ports::Result<Vec<u8>> {
+    fn read(
+        &self,
+        path: &Path,
+    ) -> std::result::Result<Vec<u8>, contextra_erasure::error::ErasureError> {
         let guard = self.files.read();
-        guard
-            .get(path)
-            .cloned()
-            .ok_or_else(|| acta_ports::ActaError::NotFound(path.display().to_string()))
+        guard.get(path).cloned().ok_or_else(|| {
+            contextra_erasure::error::ErasureError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                path.display().to_string(),
+            ))
+        })
     }
 
-    fn write_atomic(&self, path: &Path, data: &[u8]) -> acta_ports::Result<()> {
+    fn write_atomic(
+        &self,
+        path: &Path,
+        data: &[u8],
+    ) -> std::result::Result<(), contextra_erasure::error::ErasureError> {
         self.files.write().insert(path.to_path_buf(), data.to_vec());
         Ok(())
     }
 
-    fn create_dir_all(&self, _path: &Path) -> acta_ports::Result<()> {
+    fn create_dir_all(
+        &self,
+        _path: &Path,
+    ) -> std::result::Result<(), contextra_erasure::error::ErasureError> {
         Ok(())
     }
 
-    fn remove_file(&self, path: &Path) -> acta_ports::Result<()> {
+    fn remove_file(
+        &self,
+        path: &Path,
+    ) -> std::result::Result<(), contextra_erasure::error::ErasureError> {
         self.files.write().remove(path);
         Ok(())
     }
 
-    fn exists(&self, path: &Path) -> acta_ports::Result<bool> {
+    fn exists(
+        &self,
+        path: &Path,
+    ) -> std::result::Result<bool, contextra_erasure::error::ErasureError> {
         Ok(self.files.read().contains_key(path))
     }
 
-    fn len(&self, path: &Path) -> acta_ports::Result<u64> {
+    fn len(&self, path: &Path) -> std::result::Result<u64, contextra_erasure::error::ErasureError> {
         let guard = self.files.read();
-        guard
-            .get(path)
-            .map(|v| v.len() as u64)
-            .ok_or_else(|| acta_ports::ActaError::NotFound(path.display().to_string()))
+        guard.get(path).map(|v| v.len() as u64).ok_or_else(|| {
+            contextra_erasure::error::ErasureError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                path.display().to_string(),
+            ))
+        })
     }
 
-    fn list_dir(&self, _path: &Path) -> acta_ports::Result<Vec<String>> {
+    fn list_dir(
+        &self,
+        _path: &Path,
+    ) -> std::result::Result<Vec<String>, contextra_erasure::error::ErasureError> {
         Ok(Vec::new())
     }
 
-    fn sync_dir(&self, _path: &Path) -> acta_ports::Result<()> {
+    fn sync_dir(
+        &self,
+        _path: &Path,
+    ) -> std::result::Result<(), contextra_erasure::error::ErasureError> {
         Ok(())
     }
 }

@@ -1,13 +1,13 @@
 //! Persistentes Append-Log des Löschjournals journal.log (SPEC §11.6, Anhang F.1 kind=6, F.9, ER-29).
 
 use super::record::{JournalEntry, JournalRecord, RecordCode};
+use crate::crypto_local::Dek;
+use crate::crypto_local::SecretKey;
+use crate::crypto_local::{open_record, seal_record};
 use crate::error::ErasureError;
 use crate::saga::{EraseSaga, SagaState};
-use acta_crypto::aead::{open_record, seal_record};
-use acta_crypto::dek::Dek;
-use acta_crypto::secret::SecretKey;
-use acta_ports::vfs::{Vfs, VfsOpenOptions};
-use acta_types::ids::ErasureId;
+use crate::types_local::ErasureId;
+use crate::types_local::Vfs;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -17,7 +17,7 @@ const FILE_HEADER_MAGIC: &[u8; 8] = b"CTXFILE\0";
 const FILE_KIND_JOURNAL: u8 = 6;
 const JOURNAL_GENESIS_CHAIN: [u8; 32] = [0u8; 32];
 
-fn vfs_err(e: acta_ports::ActaError) -> ErasureError {
+fn vfs_err(e: crate::error::ErasureError) -> ErasureError {
     ErasureError::Io(std::io::Error::other(e.to_string()))
 }
 
@@ -206,26 +206,11 @@ impl DurableJournal {
         block.extend_from_slice(&next_chain);
 
         // Vfs-Schreibzugriff und fsync
-        let vfs_file = self
-            .vfs
-            .open(
-                &self.path,
-                &VfsOpenOptions {
-                    read: true,
-                    write: true,
-                    create: false,
-                    create_new: false,
-                    truncate: false,
-                    append: true,
-                },
-            )
+        let mut cur_bytes = self.vfs.read(&self.path).unwrap_or_default();
+        cur_bytes.extend_from_slice(&block);
+        self.vfs
+            .write_atomic(&self.path, &cur_bytes)
             .map_err(vfs_err)?;
-
-        let cur_len = vfs_file.len().map_err(ErasureError::Io)?;
-        vfs_file
-            .write_at(&block, cur_len)
-            .map_err(ErasureError::Io)?;
-        vfs_file.sync_data().map_err(ErasureError::Io)?;
 
         self.records.push(rec.clone());
         let mut next_arr = [0u8; 32];
@@ -314,7 +299,7 @@ impl DurableJournal {
             new_chain = next_arr;
         }
 
-        // write_atomic garantiert tmp + fsync + rename + dir-fsync
+        // write_atomic sichert tmp + fsync + rename + dir-fsync
         self.vfs
             .write_atomic(&self.path, &new_bytes)
             .map_err(vfs_err)?;

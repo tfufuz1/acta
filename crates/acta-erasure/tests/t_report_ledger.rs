@@ -1,12 +1,14 @@
+#![cfg(feature = "signing")]
+
 //! Tests für Report, Ledger und Restore-Guard (T-REPORT-1, T-PROOF-1, T-RESTORE-1..3).
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use acta_erasure::ledger::InMemoryLedger;
-use acta_erasure::report::{canonicalize_json, ErasureReport, SignedReport};
-use acta_erasure::restore::RestoreGuard;
-use acta_ports::gate::{KeyBuf, Seq};
-use acta_ports::ledger::{LedgerEntry, LedgerSink, RangeSet, Timestamp};
+use contextra_erasure::ledger::InMemoryLedger;
+use contextra_erasure::report::{canonicalize_json, ErasureReport, SignedReport};
+use contextra_erasure::restore::RestoreGuard;
+use contextra_erasure::types_local::{KeyBuf, Seq};
+use contextra_erasure::types_local::{LedgerEntry, LedgerSink, RangeSet, Timestamp};
 use ed25519_dalek::SigningKey;
 
 #[test]
@@ -53,8 +55,8 @@ fn t_restore_1_ledger_and_guard() {
 
 #[test]
 fn t_report_residual_risks_and_appendix_d() {
-    use acta_erasure::report::build::{build_report, ReachStatus};
-    use acta_types::ids::ErasureId;
+    use contextra_erasure::report::build::{build_report, ReachStatus};
+    use contextra_erasure::types_local::ErasureId;
 
     let id = ErasureId::new([0x33; 16]);
     let report = build_report(id, 1000, 2000, vec![], 0, 0, false);

@@ -26,7 +26,7 @@ use sha2::Sha256;
 /// Größe des F.1-Dateikopfs in Bytes.
 pub const VAULT_HEADER_SIZE: usize = 64;
 
-/// F.1 Magic-Bytes für Acta-Dateien.
+/// F.1 Magic-Bytes für Contextra-Dateien.
 pub const CTX_FILE_MAGIC: &[u8; 8] = b"CTXFILE\0";
 
 /// F.1 Format-Version (v1 = 1).
@@ -211,7 +211,7 @@ pub fn mask_epoch_key(raw_key: &[u8; 32], epoch_id: &[u8; 16], k_enc: &[u8; 32])
     info.extend_from_slice(epoch_id);
 
     let mut okm = [0u8; 32];
-    if acta_crypto::hkdf_expand(k_enc, &info, &mut okm).is_err() {
+    if crate::crypto_local::hkdf_expand(k_enc, &info, &mut okm).is_err() {
         let hash = blake3::keyed_hash(k_enc, &info);
         if let (Some(dest), Some(src)) = (okm.get_mut(..), hash.as_bytes().get(..)) {
             dest.copy_from_slice(src);

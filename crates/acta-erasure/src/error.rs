@@ -5,9 +5,28 @@ use thiserror::Error;
 /// Oberster Fehlertyp des Löschkerns.
 #[derive(Debug, Error)]
 pub enum ErasureError {
+    /// Nicht unterstützte Beweis-Version.
+    #[error("unsupported proof version: {0}")]
+    UnsupportedProofVersion(u8),
+    /// Ungültige Beweis-Signatur.
+    #[error("invalid proof signature")]
+    InvalidProofSignature,
+    /// Schlüssel wurde widerrufen.
+    #[error("key revoked: {0}")]
+    KeyRevoked(String),
+
     /// I/O-Fehler (D-55): nach diesem Fehler darf derselbe Handle nie wieder verwendet werden.
     #[error("erasure-io: {0}")]
     Io(#[from] std::io::Error),
+    /// Speicherfehler.
+    #[error("storage error: {0}")]
+    Storage(String),
+    /// Integritätsverletzung.
+    #[error("integrity violation")]
+    IntegrityViolation,
+    /// Krypto-Fehler.
+    #[error("crypto error: {0}")]
+    CryptoError(String),
 
     /// Kryptografischer Fehler (AEAD, MAC-Verifizierung fehlgeschlagen).
     #[error("erasure-crypto: {0}")]
@@ -85,4 +104,22 @@ pub enum ErasureError {
     /// Vor Auslieferung eingeschränkter Daten ist zwingend ein Audit-Eintrag erforderlich (SPEC D-116, I-26).
     #[error("erasure-restricted: audit entry required before read")]
     RestrictedReadAuditRequired,
+
+    /// Unzulässiger Übergang in der Purge-Zustandsmaschine (WP-1 / WP-2).
+    #[error("purge-phase: illegal transition from {from:?} to {to:?}")]
+    PurgePhaseTransition {
+        /// Ausgangsphase.
+        from: crate::purge::PurgePhase,
+        /// Zielphase.
+        to: crate::purge::PurgePhase,
+    },
+
+    /// Fehler während einer spezifischen Purge-Phase (WP-1).
+    #[error("purge-phase-error during {phase:?}: {reason}")]
+    PurgePhaseError {
+        /// Betroffene Purge-Phase.
+        phase: crate::purge::PurgePhase,
+        /// Fehlerbegründung.
+        reason: String,
+    },
 }

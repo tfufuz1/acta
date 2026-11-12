@@ -9,7 +9,7 @@
     clippy::cast_sign_loss
 )]
 
-use acta_erasure::vault::{
+use contextra_erasure::vault::{
     FileVault, SlotType, VaultShard, VAULT_NUM_SHARDS, VAULT_SLOT_BASE, VAULT_SLOT_SIZE,
 };
 
@@ -34,7 +34,7 @@ fn t_vault_1_slot_destruction_and_verification() {
         .expect("destroy failed");
     assert_eq!(
         destroyed.verified_via,
-        acta_erasure::vault::VerifiedVia::Direct
+        contextra_erasure::vault::VerifiedVia::Direct
     );
 
     let slot_after = vault
@@ -67,7 +67,7 @@ fn t_vault_5_probing_and_load_factor() {
         let mut tag = [0u8; 16];
         tag[0] = i as u8;
         tag[1] = 0xAA;
-        let sd = acta_erasure::vault::VaultSlotData {
+        let sd = contextra_erasure::vault::VaultSlotData {
             slot_type: SlotType::Document,
             tag,
             payload: [i as u8; 32],
@@ -80,7 +80,7 @@ fn t_vault_5_probing_and_load_factor() {
     let mut tag15 = [0u8; 16];
     tag15[0] = 15;
     tag15[1] = 0xAA;
-    let sd15 = acta_erasure::vault::VaultSlotData {
+    let sd15 = contextra_erasure::vault::VaultSlotData {
         slot_type: SlotType::Document,
         tag: tag15,
         payload: [15u8; 32],

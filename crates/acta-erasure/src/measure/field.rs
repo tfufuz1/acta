@@ -5,8 +5,8 @@
 //! MK3: Schlüsselabwesenheit – Slot der höchsten Ebene genullt, DEK-Ableitung scheitert.
 
 use crate::error::ErasureError;
-use acta_ports::vfs::{Vfs, VfsOpenOptions};
-use acta_types::erasure::{LayerId, MeasureClass};
+use crate::types_local::Vfs;
+use crate::types_local::{LayerId, MeasureClass};
 use std::path::{Path, PathBuf};
 
 /// Art der Leseverifikation gemäß SPEC D-113.
@@ -34,7 +34,7 @@ impl VerifiedVia {
 /// Strukturdecoder-Schnittstelle zur Prüfung schichtspezifischer Strukturen (SPEC 12.1, AR-3).
 ///
 /// Ermöglicht die Injektion von Decodern für Manifeste, SSTable-Indizes, Segmentwörterbücher
-/// und Slot-Tabellen, ohne dass `acta-erasure` von `store`, `text` oder `vector` abhängt.
+/// und Slot-Tabellen, ohne dass `contextra-erasure` von `store`, `text` oder `vector` abhängt.
 pub trait StructureDecoder: Send + Sync {
     /// Name oder Typ des Decoders für Berichte/Traceability.
     fn name(&self) -> &str;
@@ -203,33 +203,10 @@ pub fn read_file_verified(
     vfs: &dyn Vfs,
     path: &Path,
 ) -> Result<(Vec<u8>, VerifiedVia), ErasureError> {
-    let opts = VfsOpenOptions::read_only();
-    if let Ok(file) = vfs.open(path, &opts) {
-        let file_len = file.len().map_err(ErasureError::Io)?;
-        let len = usize::try_from(file_len).map_err(|e| ErasureError::Internal(e.to_string()))?;
-        let mut buf = vec![0u8; len];
-        let mut read_bytes = 0usize;
-        while read_bytes < len {
-            if let Some(target) = buf.get_mut(read_bytes..) {
-                let n = file
-                    .read_at(target, read_bytes as u64)
-                    .map_err(ErasureError::Io)?;
-                if n == 0 {
-                    break;
-                }
-                read_bytes = read_bytes.saturating_add(n);
-            } else {
-                break;
-            }
-        }
-        buf.truncate(read_bytes);
-        Ok((buf, VerifiedVia::Cached))
-    } else {
-        let content = vfs
-            .read(path)
-            .map_err(|e| ErasureError::Internal(e.to_string()))?;
-        Ok((content, VerifiedVia::Cached))
-    }
+    let content = vfs
+        .read(path)
+        .map_err(|e| ErasureError::Internal(e.to_string()))?;
+    Ok((content, VerifiedVia::Cached))
 }
 
 /// Rekursives Sammeln aller Dateipfade über Vfs (ohne Verzeichnisse selbst als Dateien einzufügen).

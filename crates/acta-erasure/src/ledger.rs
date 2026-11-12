@@ -2,20 +2,33 @@
 //!
 //! Ledger-Einträge, Hash-Kette und In-Memory/Datei-Sink außerhalb des Datenverzeichnisses.
 
+pub mod durable;
 pub mod entry;
+pub mod error;
+pub mod persistent;
+pub mod record;
 pub mod sink;
+pub mod storage;
 
+pub use durable::{BatchRecordItem, LedgerAnchorProof};
 pub use entry::{LedgerEntry as ChainedLedgerEntry, GENESIS_HASH};
+pub use error::LedgerError;
+pub use persistent::ErasureLedger;
+pub use durable::ErasureLedger as DurableErasureLedger;
+pub use record::{FramedRecord, LedgerFileHeader, RecordType};
 pub use sink::InMemoryLedger as FileLedger;
+pub use storage::{FileLedgerStorage, LedgerStorage, MemLedgerStorage};
 
 use crate::error::ErasureError;
 use crate::report::build::{build_report, ErasureReport};
+#[cfg(feature = "signing")]
 use crate::report::signing::ReportSigner;
-use acta_ports::gate::{KeyBuf, Seq};
-use acta_ports::ledger::{LedgerEntry, LedgerSink, RangeSet, Timestamp};
-use acta_ports::vfs::Vfs;
-use acta_types::erasure::LayerWitness;
-use acta_types::ids::ErasureId;
+use crate::types_local::ErasureId;
+use crate::types_local::LayerWitness;
+use crate::types_local::Vfs;
+use crate::types_local::{KeyBuf, Seq};
+use crate::types_local::{LedgerEntry, LedgerSink, RangeSet, Timestamp};
+#[cfg(feature = "signing")]
 use ed25519_dalek::SigningKey;
 use parking_lot::RwLock;
 use std::path::PathBuf;
@@ -41,6 +54,7 @@ pub struct FinalizeParams {
     /// Gesammelte Schicht-Zeugen (MK1, MK2, MK3).
     pub witnesses: Vec<LayerWitness>,
     /// Signaturschlüssel für den Bericht.
+    #[cfg(feature = "signing")]
     pub signing_key: SigningKey,
     /// Zielverzeichnis für den Bericht (z. B. `erasure/report`).
     pub report_dir: PathBuf,
@@ -99,8 +113,6 @@ pub fn finalize_erasure(
         true,
     );
 
-    let signed_report = ReportSigner::sign_report(&report, &params.signing_key)?;
-
     // Schritt 3: Bericht unter erasure/report/<id>.json schreiben und syncen
     let id_hex = params
         .erasure_id
@@ -111,7 +123,16 @@ pub fn finalize_erasure(
     let report_filename = format!("{}.json", id_hex);
     let report_path = params.report_dir.join(report_filename);
 
-    ReportSigner::persist_signed_report(vfs, &report_path, &signed_report)?;
+    #[cfg(feature = "signing")]
+    {
+        let signed_report = ReportSigner::sign_report(&report, &params.signing_key)?;
+        ReportSigner::persist_signed_report(vfs, &report_path, &signed_report)?;
+    }
+    #[cfg(not(feature = "signing"))]
+    {
+        let canonical_bytes = crate::report::build::canonicalize_report(&report)?;
+        vfs.write_atomic(&report_path, &canonical_bytes)?;
+    }
 
     // Schritt 4: Idempotenter Ledger-Eintrag (außerhalb des Datenverzeichnisses)
     // Prüfe ob bereits ein Eintrag mit diesem Commitment existiert (Idempotenz)

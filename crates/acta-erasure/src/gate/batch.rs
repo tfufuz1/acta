@@ -15,8 +15,8 @@
 use crate::error::ErasureError;
 use crate::gate::erased_set::ErasedSet;
 use crate::gate::log::{GateLog, GateLogEntry, GatePredicate};
-use acta_ports::barrier::CommitBarrier;
-use acta_ports::gate::{KeyBuf, Seq};
+use crate::types_local::CommitBarrier;
+use crate::types_local::{KeyBuf, Seq};
 use parking_lot::RwLock;
 use std::sync::Arc;
 
@@ -114,7 +114,7 @@ impl GateBatchCoordinator {
 
     /// Führt den Gruppen-Commit für die übergebenen Anfragen unter `CommitBarrier::exclusive` aus.
     ///
-    /// Garantiert:
+    /// Invarianten und Zusicherungen:
     /// - `gate_epoch += 1` vor Schlüsselvernichtung (I-21)
     /// - Gate-Log-Append mit `gated_seq` (D-58)
     /// - Genau EIN fsync / Persistierungsschritt je Gruppe (D-78, T-GATEGROUP-1)

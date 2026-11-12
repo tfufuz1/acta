@@ -1,3 +1,5 @@
+#![cfg(feature = "async")]
+
 //! Integrationstests für Lesesperre/Gate (SPEC §11.3, D-57, D-58, D-78, D-120, D-123, I-1, I-2, I-21, I-22).
 //!
 //! Test-IDs:
@@ -9,15 +11,15 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use acta_erasure::gate::batch::{
+use contextra_erasure::gate::batch::{
     add_batch, bind_global_erased_set, BatchGateRequest, GateBatchCoordinator,
 };
-use acta_erasure::gate::erased_set::ErasedSet;
-use acta_erasure::gate::log::GateLog;
-use acta_erasure::gate::read_gate::GateGuard;
-use acta_ports::barrier::{BarrierExclusive, BarrierShared, CommitBarrier};
-use acta_ports::gate::{GateDecision, KeyBuf, ReadGate, Seq};
-use acta_ports::BoxFuture;
+use contextra_erasure::gate::erased_set::ErasedSet;
+use contextra_erasure::gate::log::GateLog;
+use contextra_erasure::gate::read_gate::GateGuard;
+use contextra_erasure::types_local::{BarrierExclusive, BarrierShared, CommitBarrier};
+use contextra_erasure::types_local::{GateDecision, KeyBuf, ReadGate, Seq};
+use futures_util::future::BoxFuture;
 use parking_lot::RwLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;

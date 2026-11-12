@@ -5,8 +5,9 @@
 
 use crate::error::ErasureError;
 use crate::saga::machine::{EraseSaga, SagaState};
-use acta_types::erasure::PendingReason;
-use acta_types::ids::ErasureId;
+use crate::types_local::ErasureId;
+use crate::types_local::PendingReason;
+#[cfg(feature = "async")]
 use std::sync::Arc;
 
 /// Ereignis der Treiber-Pipeline (SPEC §11.2).
@@ -34,21 +35,31 @@ pub enum StepOutcome {
 /// Treiber-Kontext für einen einzelnen Saga-Schritt.
 #[derive(Default)]
 pub struct SagaDriver {
+    #[cfg(feature = "async")]
     core: Option<Arc<super::core::ErasureCore>>,
 }
 
 impl SagaDriver {
     /// Erstellt einen neuen Treiber.
     pub fn new() -> Self {
-        Self { core: None }
+        #[cfg(feature = "async")]
+        {
+            Self { core: None }
+        }
+        #[cfg(not(feature = "async"))]
+        {
+            Self {}
+        }
     }
 
     /// Erstellt einen Treiber mit Anbindung an den `ErasureCore`.
+    #[cfg(feature = "async")]
     pub fn with_core(core: Arc<super::core::ErasureCore>) -> Self {
         Self { core: Some(core) }
     }
 
     /// Liefert die Core-Referenz, falls vorhanden.
+    #[cfg(feature = "async")]
     pub fn core(&self) -> Option<&Arc<super::core::ErasureCore>> {
         self.core.as_ref()
     }
@@ -87,6 +98,7 @@ impl SagaDriver {
     }
 
     /// Asynchrone Ausführung des nächsten Treiberschritts unter Nutzung des `ErasureCore`.
+    #[cfg(feature = "async")]
     pub async fn step_async(&self, saga: &mut EraseSaga) -> Result<StepOutcome, ErasureError> {
         if let Some(core) = &self.core {
             let id = saga.erasure_id();
@@ -118,7 +130,7 @@ impl SagaDriver {
                 if id != saga.erasure_id() {
                     return Err(ErasureError::Internal("erasure id mismatch".into()));
                 }
-                saga.transition_with_reason(SagaState::Pending, Some(reason.clone()))?;
+                saga.transition_with_reason(SagaState::Pending, Some(reason))?;
                 Ok(StepOutcome::Pending(reason))
             }
             SagaEvent::Complete(id) => {

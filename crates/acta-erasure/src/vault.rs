@@ -52,7 +52,7 @@ pub struct FileVault {
     shards: Vec<ShardBackend>,
     vault_id: [u8; 16],
     mac_key: [u8; 32],
-    vfs: Option<Arc<dyn acta_ports::vfs::Vfs>>,
+    vfs: Option<Arc<dyn crate::types_local::Vfs>>,
     vault_dir: Option<PathBuf>,
 }
 
@@ -105,14 +105,20 @@ impl FileVault {
     /// Berechnet die Anfangskapazität je Shard nach SPEC D-111 Abs. 7:
     /// `nextpow2(planned_docs * 1.3 / 16 / 0.5).max(1024)`
     pub fn initial_shard_capacity(planned_docs: usize) -> usize {
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::cast_precision_loss
+        )]
         let val = ((planned_docs as f64) * 1.3) / 16.0 / 0.5;
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let p2 = (val as usize).next_power_of_two();
         p2.max(1024)
     }
 
     /// Erstellt einen neuen dauerhaften Tresor mit 16 Shards in `vault_dir` über VFS (SPEC D-111, D-112).
     pub fn create_dir(
-        vfs: &Arc<dyn acta_ports::vfs::Vfs>,
+        vfs: &Arc<dyn crate::types_local::Vfs>,
         vault_dir: &Path,
         vault_id: [u8; 16],
         mac_key: [u8; 32],
@@ -120,7 +126,7 @@ impl FileVault {
         created_seq: u64,
     ) -> Result<Self, ErasureError> {
         vfs.create_dir_all(vault_dir).map_err(|e| match e {
-            acta_ports::ActaError::Io(io_err) => ErasureError::Io(io_err),
+            crate::error::ErasureError::Io(io_err) => ErasureError::Io(io_err),
             other => ErasureError::Io(std::io::Error::other(other.to_string())),
         })?;
 
@@ -145,7 +151,7 @@ impl FileVault {
         }
 
         vfs.sync_dir(vault_dir).map_err(|e| match e {
-            acta_ports::ActaError::Io(io_err) => ErasureError::Io(io_err),
+            crate::error::ErasureError::Io(io_err) => ErasureError::Io(io_err),
             other => ErasureError::Io(std::io::Error::other(other.to_string())),
         })?;
 
@@ -160,7 +166,7 @@ impl FileVault {
 
     /// Öffnet einen bestehenden dauerhaften Tresor über VFS nach SPEC D-111 Abs. 8 / D-112:
     pub fn open_dir(
-        vfs: &Arc<dyn acta_ports::vfs::Vfs>,
+        vfs: &Arc<dyn crate::types_local::Vfs>,
         vault_dir: &Path,
         expected_vault_id: &[u8; 16],
         mac_key: &[u8; 32],
@@ -371,7 +377,7 @@ impl FileVault {
     }
 
     /// Vfs-Instanz (falls dauerhaft).
-    pub fn vfs(&self) -> Option<&Arc<dyn acta_ports::vfs::Vfs>> {
+    pub fn vfs(&self) -> Option<&Arc<dyn crate::types_local::Vfs>> {
         self.vfs.as_ref()
     }
 }

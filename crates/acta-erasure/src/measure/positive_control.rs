@@ -3,8 +3,8 @@
 //! Vor dem echten Scan muss der Scanner beweisen, dass er das Kontrollmuster findet.
 //! Nur `measure`-intern erlaubt (L-5).
 
-use acta_ports::vfs::Vfs;
-use acta_types::erasure::ControlEvidence;
+use crate::types_local::ControlEvidence;
+use crate::types_local::Vfs;
 use std::path::Path;
 
 /// Führt eine echte Positivkontrolle im Speicher durch:

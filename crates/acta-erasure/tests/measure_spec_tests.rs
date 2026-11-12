@@ -1,12 +1,19 @@
 //! Spezifikationstests für Messung und Zeugenerzeugung (T-RAW-1..6, T-CLASS-1, D-72, D-113, I-19).
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    unused_imports,
+    dead_code
+)]
 
-use acta_erasure::measure::field::{scan_mk1_structures, scan_mk2_raw, scan_mk3_keys};
-use acta_erasure::measure::positive_control::run_positive_control;
-use acta_erasure::measure::witness::{arm_scanner, finish_scan};
-use acta_ports::vfs::{Vfs, VfsFile, VfsOpenOptions};
-use acta_types::erasure::{LayerId, MeasureClass, Scanner, Unarmed};
+use contextra_erasure::measure::field::{scan_mk1_structures, scan_mk2_raw, scan_mk3_keys};
+use contextra_erasure::measure::positive_control::run_positive_control;
+use contextra_erasure::measure::witness::{arm_scanner, finish_scan};
+use contextra_erasure::types_local::Vfs;
+use contextra_erasure::types_local::{LayerId, MeasureClass, Scanner, Unarmed};
+use contextra_erasure::types_local::{VfsFile, VfsOpenOptions};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -87,55 +94,53 @@ impl MemoryVfsFile {
 }
 
 impl Vfs for MemoryVfs {
-    fn open(
+    fn read(&self, path: &Path) -> Result<Vec<u8>, contextra_erasure::error::ErasureError> {
+        let files = self.files.lock().unwrap();
+        files.get(path).cloned().ok_or_else(|| {
+            contextra_erasure::error::ErasureError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                path.display().to_string(),
+            ))
+        })
+    }
+
+    fn write_atomic(
         &self,
         path: &Path,
-        _opts: &VfsOpenOptions,
-    ) -> acta_ports::Result<Box<dyn VfsFile>> {
-        Ok(Box::new(MemoryVfsFile {
-            path: path.to_path_buf(),
-            vfs: self.clone(),
-        }))
-    }
-
-    fn read(&self, path: &Path) -> acta_ports::Result<Vec<u8>> {
-        let files = self.files.lock().unwrap();
-        files
-            .get(path)
-            .cloned()
-            .ok_or_else(|| acta_types::ActaError::NotFound(path.display().to_string()))
-    }
-
-    fn write_atomic(&self, path: &Path, data: &[u8]) -> acta_ports::Result<()> {
+        data: &[u8],
+    ) -> Result<(), contextra_erasure::error::ErasureError> {
         let mut files = self.files.lock().unwrap();
         files.insert(path.to_path_buf(), data.to_vec());
         Ok(())
     }
 
-    fn create_dir_all(&self, _path: &Path) -> acta_ports::Result<()> {
+    fn create_dir_all(&self, _path: &Path) -> Result<(), contextra_erasure::error::ErasureError> {
         Ok(())
     }
 
-    fn remove_file(&self, path: &Path) -> acta_ports::Result<()> {
+    fn remove_file(&self, path: &Path) -> Result<(), contextra_erasure::error::ErasureError> {
         let mut files = self.files.lock().unwrap();
         files.remove(path);
         Ok(())
     }
 
-    fn exists(&self, path: &Path) -> acta_ports::Result<bool> {
+    fn exists(&self, path: &Path) -> Result<bool, contextra_erasure::error::ErasureError> {
         let files = self.files.lock().unwrap();
         Ok(files.contains_key(path))
     }
 
-    fn len(&self, path: &Path) -> acta_ports::Result<u64> {
+    fn len(&self, path: &Path) -> Result<u64, contextra_erasure::error::ErasureError> {
         let files = self.files.lock().unwrap();
-        let content = files
-            .get(path)
-            .ok_or_else(|| acta_types::ActaError::NotFound(path.display().to_string()))?;
+        let content = files.get(path).ok_or_else(|| {
+            contextra_erasure::error::ErasureError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                path.display().to_string(),
+            ))
+        })?;
         Ok(content.len() as u64)
     }
 
-    fn list_dir(&self, path: &Path) -> acta_ports::Result<Vec<String>> {
+    fn list_dir(&self, path: &Path) -> Result<Vec<String>, contextra_erasure::error::ErasureError> {
         let files = self.files.lock().unwrap();
         let mut names = Vec::new();
         for k in files.keys() {
@@ -151,7 +156,7 @@ impl Vfs for MemoryVfs {
         Ok(names)
     }
 
-    fn sync_dir(&self, _path: &Path) -> acta_ports::Result<()> {
+    fn sync_dir(&self, _path: &Path) -> Result<(), contextra_erasure::error::ErasureError> {
         Ok(())
     }
 }
@@ -167,7 +172,7 @@ fn test_t_raw_2_armed_scanner_and_positive_control() {
     assert!(run_positive_control(b"").is_none());
 
     // 3. Echtes Muster ergibt ControlEvidence
-    let pattern = b"acta-canary-sample-data";
+    let pattern = b"contextra-canary-sample-data";
     let ev = run_positive_control(pattern).expect("must observe canary");
 
     let armed = arm_scanner(unarmed, ev);
@@ -260,7 +265,7 @@ fn test_t_raw_3_mk3_key_probe() {
 /// SPEC: T-VERIFY-1, T-VERIFY-2
 #[test]
 fn test_t_verify_1_and_2_medium_verification() {
-    use acta_erasure::measure::field::VerifiedVia;
+    use contextra_erasure::measure::field::VerifiedVia;
 
     let scan = scan_mk3_keys(true, true, true);
     // T-VERIFY-2: verified_via korrekt im Scan-Ergebnis

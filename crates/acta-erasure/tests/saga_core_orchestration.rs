@@ -1,3 +1,5 @@
+#![cfg(feature = "async")]
+
 //! Tests für ErasureCore Orchestrierung, Schritte 1–6, Cancel-Safety, Observer und Retention-Matrix.
 //!
 //! T-ID: T-CRASH-1, T-CANCEL-1, T-SLA-1, T-OBS-1, T-OBS-2, T-OBS-3, T-STATUS-1
@@ -9,34 +11,34 @@
     clippy::indexing_slicing
 )]
 
-use acta_erasure::error::ErasureError;
-use acta_erasure::purge::order::PurgePriority;
-use acta_erasure::saga::core::{
+use contextra_erasure::error::ErasureError;
+use contextra_erasure::purge::order::PurgePriority;
+use contextra_erasure::saga::core::{
     EraseExecutionRequest, ErasureConfig, ErasureCore, ErasureDeps,
 };
-use acta_erasure::saga::machine::{EraseSaga, SagaState};
-use acta_erasure::saga::seams::{
+use contextra_erasure::saga::machine::{EraseSaga, SagaState};
+use contextra_erasure::saga::seams::{
     SagaGate, SagaJournal, SagaLedger, SagaMeasure, SagaReport, SagaVault, SnapshotRevoker,
 };
-use acta_ports::barrier::{
-    BarrierExclusive, BarrierShared, CommitBarrier, CompactionPermit, PurgeBarrier, PurgePermit,
-};
-use acta_ports::clock::Clock;
-use acta_ports::erasure::{
+use contextra_erasure::types_local::Clock;
+use contextra_erasure::types_local::GateDecision;
+use contextra_erasure::types_local::IdGen;
+use contextra_erasure::types_local::OperatorRef;
+use contextra_erasure::types_local::{
     Armed, EraseTarget, ErasureLayer, KeyCoverage, LayerId, LayerScope, LayerWitness, PurgeCx,
     PurgeOutcome, Scanner,
 };
-use acta_ports::gate::GateDecision;
-use acta_ports::id_gen::IdGen;
-use acta_ports::observer::{ErasureEvent, ErasureObserver, ObservedPhase, ObserverError};
-use acta_ports::BoxFuture;
-use acta_types::erasure::{
+use contextra_erasure::types_local::{
+    BarrierExclusive, BarrierShared, CommitBarrier, CompactionPermit, PurgeBarrier, PurgePermit,
+};
+use contextra_erasure::types_local::{
     EraseMode, ErasureStatus, PendingReason, Phase, RefusalReason, RetentionAttestation,
     RetentionCode, Timing,
 };
-use acta_types::ids::{ErasureId, Timestamp};
-use acta_types::refs::OperatorRef;
-use std::collections::HashMap;
+use contextra_erasure::types_local::{ErasureEvent, ErasureObserver, ObservedPhase, ObserverError};
+use contextra_erasure::types_local::{ErasureId, Timestamp};
+use futures_util::future::BoxFuture;
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -76,9 +78,9 @@ impl SagaJournal for MockJournal {
     fn recover_open_sagas<'a>(&'a self) -> BoxFuture<'a, Result<Vec<EraseSaga>, ErasureError>> {
         Box::pin(async move {
             let guard = self.states.lock().unwrap();
-            let mut map: HashMap<ErasureId, (SagaState, Option<PendingReason>)> = HashMap::new();
+            let mut map: BTreeMap<ErasureId, (SagaState, Option<PendingReason>)> = BTreeMap::new();
             for (id, state, reason) in guard.iter() {
-                map.insert(*id, (*state, reason.clone()));
+                map.insert(*id, (*state, *reason));
             }
             let mut list = Vec::new();
             for (id, (state, reason)) in map {
@@ -144,8 +146,7 @@ impl SagaVault for MockVault {
     ) -> BoxFuture<'a, Result<(), ErasureError>> {
         Box::pin(async move {
             if self.fail_destroy.load(Ordering::SeqCst) {
-                return Err(ErasureError::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                return Err(ErasureError::Io(std::io::Error::other(
                     "vault destroy failure",
                 )));
             }
@@ -343,7 +344,7 @@ fn build_test_core() -> (
     let gate = Arc::new(MockGate::default());
     let vault = Arc::new(MockVault::default());
     let measure = Arc::new(MockMeasure::default());
-    let report = Arc::new(MockReport::default());
+    let report = Arc::new(MockReport);
     let ledger = Arc::new(MockLedger::default());
     let snapshots = Arc::new(MockSnapshotRevoker::default());
     let observer = Arc::new(MockObserver::default());
@@ -359,7 +360,7 @@ fn build_test_core() -> (
         fail_purge: AtomicBool::new(false),
     });
 
-    let mut priorities = HashMap::new();
+    let mut priorities = BTreeMap::new();
     priorities.insert([1u8; 16], PurgePriority::TEXT_REWRITE);
     priorities.insert([2u8; 16], PurgePriority::SSTABLE_REWRITE);
 

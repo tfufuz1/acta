@@ -1,14 +1,16 @@
+#![cfg(all(feature = "async", feature = "signing"))]
+
 //! Tests für kanonische Löschberichte nach SPEC §11.7, §12.5, F.10, Anhang D.
 //!
 //! SPEC: T-REPORT-1, T-PROOF-1, T-CLASS-1, T-LINT-1
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use acta_erasure::report::build::build_report;
-use acta_erasure::report::canonical::{to_canonical_json_string, verify_canonical_nfc};
-use acta_erasure::report::signing::{DerivedReportSigner, ReportSigner};
-use acta_ports::report_signer::ReportSigner as ReportSignerPort;
-use acta_types::ids::ErasureId;
+use contextra_erasure::report::build::build_report;
+use contextra_erasure::report::canonical::{to_canonical_json_string, verify_canonical_nfc};
+use contextra_erasure::report::signing::{DerivedReportSigner, ReportSigner};
+use contextra_erasure::types_local::ErasureId;
+use contextra_erasure::types_local::ReportSigner as ReportSignerPort;
 use ed25519_dalek::SigningKey;
 use futures_util::FutureExt;
 
@@ -124,7 +126,7 @@ fn test_t_class_1_lattice_independent_eval() {
     assert!(report.classes.contains_key("P"));
 
     // Fehlende Schicht wird als "nicht erfasst" ausgewiesen (P17)
-    for (_layer, status) in &report.key_coverage {
+    for status in report.key_coverage.values() {
         assert!(
             status == "full"
                 || status == "unlinked"
@@ -139,12 +141,12 @@ fn test_t_class_1_lattice_independent_eval() {
 #[test]
 fn test_t_class_1_unrecorded_layer_marked_not_recorded() {
     let erasure_id = ErasureId::new([0x35; 16]);
-    let w = acta_types::erasure::Scanner::new(
-        acta_types::erasure::LayerId::new([1; 16]),
-        acta_types::erasure::MeasureClass::Mk1,
+    let w = contextra_erasure::types_local::Scanner::new(
+        contextra_erasure::types_local::LayerId::new([1; 16]),
+        contextra_erasure::types_local::MeasureClass::Mk1,
         1,
     )
-    .arm(acta_types::erasure::ControlEvidence::observed())
+    .arm(contextra_erasure::types_local::ControlEvidence::observed())
     .finish(0, std::time::Duration::from_millis(5), [0u8; 32])
     .expect("witness");
 
@@ -185,7 +187,7 @@ fn test_t_lint_1_wording_mandatory_texts() {
     // Außenaussage nach 6.4
     assert!(report
         .scope_notice
-        .contains("Acta entfernt die Daten eines Löschziels aus dem Datenverzeichnis"));
+        .contains("Contextra entfernt die Daten eines Löschziels aus dem Datenverzeichnis"));
 }
 
 /// T-ID: T-REPORT-1

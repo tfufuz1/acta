@@ -6,11 +6,16 @@
 
 use crate::error::ErasureError;
 use crate::saga::machine::{EraseSaga, SagaState};
-use acta_ports::erasure::{EraseTarget, LayerId, LayerWitness};
-use acta_ports::gate::GateDecision;
-use acta_ports::BoxFuture;
-use acta_types::erasure::{PendingReason, RetentionAttestation};
-use acta_types::ids::ErasureId;
+use crate::types_local::ErasureId;
+use crate::types_local::GateDecision;
+use crate::types_local::{EraseTarget, LayerId, LayerWitness};
+use crate::types_local::{PendingReason, RetentionAttestation};
+#[cfg(feature = "async")]
+use futures_util::future::BoxFuture;
+
+#[cfg(not(feature = "async"))]
+/// Type-Alias für gepinnte ge-boxte Futures ohne Tokio/Futures-Util.
+pub type BoxFuture<'a, T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'a>>;
 
 /// Naht für das Intent-Journal (SPEC §11.6, ER-29).
 pub trait SagaJournal: Send + Sync {
@@ -53,6 +58,14 @@ pub trait SagaGate: Send + Sync {
         &'a self,
         target: &'a EraseTarget,
     ) -> BoxFuture<'a, Result<GateDecision, ErasureError>>;
+}
+
+/// Öffentlicher Delegator für `decision_for_target`.
+pub async fn query_target_gate(
+    gate: &dyn SagaGate,
+    target: &EraseTarget,
+) -> Result<GateDecision, ErasureError> {
+    gate.decision_for_target(target).await
 }
 
 /// Naht für den Schlüsseltresor (SPEC §11.5, ER-05, ER-06).
