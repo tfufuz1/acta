@@ -2,8 +2,9 @@
 
 use acta_ports::SeededRng;
 use acta_ports::VectorIndex;
-use acta_types::{DistanceMetric, DocId, TxId};
+use acta_types::{DocId, TxId};
 use acta_vector::hnsw::{HnswConfigBuilder, HnswIndex};
+use acta_vector::types::DistanceMetric;
 use std::sync::Arc;
 
 struct SimpleRng {
@@ -78,7 +79,6 @@ async fn test_veto_f02_guard_partial_rebuild_tombstone_pruning() {
     // Execute local rebuild on region containing deleted node indices
     let region_node_indices: Vec<u64> = (0..20).collect();
     idx.rebuild_region(region_node_indices)
-        .await
         .expect("rebuild_region");
 
     // Verify deleted documents are completely excluded from search results

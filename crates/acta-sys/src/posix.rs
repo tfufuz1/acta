@@ -1,8 +1,10 @@
-// FILE-CONTEXT
-// STAND: 2026-10-28T00:00:00Z
-// ZWECK: Low-level POSIX syscall wrappers (Ring 0 / SPEC 7.7)
-// INVARIANTEN: Zero panic; typed io::Error propagation; single safe abstractions over libc syscalls
-// SIEHE AUCH: AGENTS.md, docs/SPEC.md §7.7
+// =========================================================================
+// ANCHOR[id=sys-posix-main,epic=sys-posix,seq=0] POSIX Systemaufrufe & Limits
+// =========================================================================
+// LINK crates/acta-sys/src/lib.rs
+// NOTE: Low-level POSIX syscall wrappers (Ring 0 / E0 / docs/SPEC.md §10.1).
+// Invariante: Zero panic; typed error propagation; bounds checked descriptors; safe wrappers over libc syscalls.
+// Keine unzulässigen Garantieversprechen (SPEC §6.4).
 
 //! # Modul: POSIX-Systemaufrufe (`posix`)
 //!
@@ -10,7 +12,7 @@
 //! und Prozess-Ressourcenlimits.
 //!
 //! ## Ring-Zugehörigkeit und Zweck
-//! - **Ring 0 (Kern / Unsafe-Insel):** Direkte FFI-Aufrufe an `libc` (`open`, `dup2`, `close`, `getrlimit`, `setrlimit`).
+//! - **Ring 0 / Ebene E0 (Kern / Unsafe-Insel):** Direkte FFI-Aufrufe an `libc` (`open`, `dup2`, `close`, `getrlimit`, `setrlimit`).
 //! - **Verwendung im System:**
 //!   - `ensure_fd_limit` / `set_fd_limit`: Datenbank- und Suchsysteme (wie LSM-Trees und Vektorindizes) halten
 //!     oft hunderte bis tausende SSTable- und WAL-Dateien gleichzeitig geöffnet. Diese Funktionen stellen
@@ -19,33 +21,35 @@
 
 use std::path::Path;
 
-// ANCHOR[acta-sys:POSIX-DUP2-001]
+// SECTION Descriptor Redirection
+// ANCHOR[id=sys-posix-dup2,epic=sys-posix,seq=1] reopen_and_dup2
+
 /// Öffnet den Pfad `path` mit den angegebenen POSIX-Flags (z. B. `O_RDONLY`) und ersetzt atomar `target_fd` via `dup2`.
 ///
-/// # Ablauf
-/// 1. Konvertiert den Dateipfad `path` in einen nullterminierten C-String ([`std::ffi::CString`]).
-/// 2. Öffnet die Datei mittels `libc::open(path_c.as_ptr(), flags)`. Schlägt dies fehl (`fd < 0`), wird der OS-Fehler zurückgegeben.
-/// 3. Dupliziert den neu erhaltenen Deskriptor mit `libc::dup2(fd, target_fd)` auf das Ziellimit.
-/// 4. Schließt den temporären Zwischendeskriptor `fd` über `libc::close(fd)`.
+/// # Argumente
+/// * `path`: Pfad zur neu zu öffnenden Datei.
+/// * `target_fd`: Ziel-Dateideskriptor (muss >= 0 sein).
+/// * `flags`: POSIX-Öffnungsflags für `libc::open`.
 ///
-/// # Vorbedingungen
-/// - `path` darf kein Null-Byte (`\0`) im Dateipfad enthalten.
-/// - `target_fd` muss ein gültiger Deskriptorindex sein.
-///
-/// # Nachbedingungen
-/// - `target_fd` zeigt nun auf dieselbe offene Dateitabelle wie der neu geöffnete Pfad.
-///
-/// # Fehlerfälle
-/// Gibt einen [`std::io::Error`] zurück, wenn die Pfadkonvertierung ungültig ist oder einer der Systemaufrufe fehlschlägt.
+/// # Fehler
+/// Liefert [`std::io::Error`], wenn der Pfad ein ungültiges Format aufweist oder Systemaufrufe fehlschlagen.
 #[cfg(target_os = "linux")]
 pub fn reopen_and_dup2(path: &Path, target_fd: i32, flags: i32) -> std::io::Result<()> {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
 
+    if target_fd < 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "target_fd must be non-negative",
+        ));
+    }
+
     let path_c = CString::new(path.as_os_str().as_bytes())
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string()))?;
 
-    // SAFETY: `path_c` ist ein gültiger nullterminierter C-String. `target_fd` ist eine ganzzahlige Deskriptornummer. `libc::open`, `libc::dup2` und `libc::close` sind Standard-POSIX-Syscalls, deren Rückgabewerte unmittelbar auf Fehler geprüft werden.
+    // SAFETY: `path_c` ist ein gültiger nullterminierter C-String. `target_fd` ist validiert >= 0.
+    // `libc::open`, `libc::dup2` und `libc::close` sind Standard-POSIX-Syscalls, deren Rückgabewerte unmittelbar auf Fehler geprüft werden.
     unsafe {
         let fd = libc::open(path_c.as_ptr(), flags);
         if fd < 0 {
@@ -60,11 +64,7 @@ pub fn reopen_and_dup2(path: &Path, target_fd: i32, flags: i32) -> std::io::Resu
     Ok(())
 }
 
-// ANCHOR[acta-sys:POSIX-DUP2-FALLBACK-001]
 /// Fallback für Nicht-Linux-Systeme, auf denen `reopen_and_dup2` nicht unterstützt wird.
-///
-/// # Fehlerfälle
-/// Liefert stets [`std::io::ErrorKind::Unsupported`].
 #[cfg(not(target_os = "linux"))]
 pub fn reopen_and_dup2(_path: &Path, _target_fd: i32, _flags: i32) -> std::io::Result<()> {
     Err(std::io::Error::new(
@@ -72,20 +72,15 @@ pub fn reopen_and_dup2(_path: &Path, _target_fd: i32, _flags: i32) -> std::io::R
         "reopen_and_dup2 is only supported on Linux target OS",
     ))
 }
+// !SECTION Descriptor Redirection
 
-// ANCHOR[acta-sys:POSIX-ENSURE-FD-001]
+// SECTION Resource Limits
+// ANCHOR[id=sys-posix-rlimit,epic=sys-posix,seq=2] ensure_fd_limit und set_fd_limit
+
 /// Stellt sicher, dass das weiche Limit für offene Dateideskriptoren (`RLIMIT_NOFILE`) mindestens `min_fds` beträgt.
 ///
-/// # Ablauf
-/// 1. Liest das aktuelle Limit des Prozesses über `libc::getrlimit(RLIMIT_NOFILE, ...)`.
-/// 2. Ist das weiche Limit (`rlim_cur`) kleiner als `min_fds`:
-///    - Ermittelt das Ziel als Minimum aus `min_fds` und dem erlaubten harten Limit (`rlim_max`).
-///    - Versucht, das weiche Limit mittels `libc::setrlimit` heraufzusetzen.
-/// 3. Liest das Limit erneut aus und prüft, ob das aktuelle weiche Limit mindestens `min_fds` erreicht.
-/// 4. Gibt `true` zurück, wenn das geforderte Limit erreicht ist, andernfalls `false`.
-///
-/// # Nebenwirkungen
-/// Modifiziert das Prozessressourcenlimit für offene Dateien im Erfolgsfall.
+/// Versucht das Limit bis zum maximal erlaubten harten Limit (`rlim_max`) anzuheben.
+/// Liefert `true`, wenn das effektive Limit nach dem Aufruf mindestens `min_fds` beträgt.
 pub fn ensure_fd_limit(min_fds: u64) -> bool {
     #[cfg(unix)]
     {
@@ -118,13 +113,9 @@ pub fn ensure_fd_limit(min_fds: u64) -> bool {
     }
 }
 
-// ANCHOR[acta-sys:POSIX-SET-FD-001]
 /// Setzt das weiche und harte Dateideskriptorlimit (`RLIMIT_NOFILE`) des aktuellen Prozesses exakt auf `limit`.
 ///
-/// # Ablauf
-/// 1. Initialisiert eine `libc::rlimit`-Struktur mit `rlim_cur = limit` und `rlim_max = limit`.
-/// 2. Ruft `libc::setrlimit(RLIMIT_NOFILE, &rlim)` auf.
-/// 3. Liefert `true`, wenn der Rückgabewert `0` (Erfolg) ist, andernfalls `false`.
+/// Liefert `true`, wenn das Limit erfolgreich gesetzt werden konnte.
 pub fn set_fd_limit(limit: u64) -> bool {
     #[cfg(unix)]
     {
@@ -132,7 +123,7 @@ pub fn set_fd_limit(limit: u64) -> bool {
             rlim_cur: limit as libc::rlim_t,
             rlim_max: limit as libc::rlim_t,
         };
-        // SAFETY: `rlim` ist eine vollständig initialisierte C-Struktur auf dem Stack. `setrlimit` liest diese sicher ein.
+        // SAFETY: `rlim` ist eine vollständig initialisierte C-Struktur auf dem Stack. `setrlimit` liest diese ein.
         let res = unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &rlim) };
         res == 0
     }
@@ -142,41 +133,35 @@ pub fn set_fd_limit(limit: u64) -> bool {
         true
     }
 }
+// !SECTION Resource Limits
 
-// ANCHOR[acta-sys:POSIX-TESTS-001]
+// SECTION Unit Tests
+// ANCHOR[id=sys-posix-tests,epic=sys-posix,seq=3] POSIX-Modultests
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs::File;
     use std::io::{Read, Write};
 
-    // ANCHOR[acta-sys:POSIX-TEST-ENSURE-FD-001]
-    // Prüft, dass ein moderates Deskriptorlimit (64) problemlos zugesichert werden kann.
     #[test]
     fn test_ensure_fd_limit() {
         let ok = ensure_fd_limit(64);
         assert!(ok);
     }
 
-    // ANCHOR[acta-sys:POSIX-TEST-ENSURE-FD-HIGH-001]
-    // Prüft den Aufruf mit einem hohen Deskriptorlimit (8192), ohne abzustürzen.
     #[test]
     fn test_ensure_fd_limit_high() {
         let _ = ensure_fd_limit(8192);
     }
 
-    // ANCHOR[acta-sys:POSIX-TEST-SET-FD-001]
-    // Prüft das Setzen bzw. Sicherstellen des Deskriptorlimits auf 1024 Deskriptoren.
     #[test]
     fn test_set_fd_limit() {
         let ok = ensure_fd_limit(1024);
         assert!(ok);
     }
 
-    // ANCHOR[acta-sys:POSIX-TEST-REOPEN-DUP2-001]
-    // Prüft das Ersetzen eines Dateideskriptors durch erneutes Öffnen einer Datei via `dup2`.
     #[test]
-    fn test_reopen_and_dup2() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_reopen_and_dup2() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let dir = std::env::temp_dir();
         let path = dir.join(format!(
             "acta_sys_posix_test_{}.bin",
@@ -198,7 +183,8 @@ mod tests {
             let target_fd = target_file.as_raw_fd();
             reopen_and_dup2(&path, target_fd, libc::O_RDONLY)?;
             let mut buf = Vec::new();
-            // SAFETY: `target_fd` wurde via `dup2` ersetzt und ist ein gültiger offener Deskriptor. `libc::dup` erzeugt ein neues dupliziertes Handle für die sichere Übergabe an Rusts `File::from_raw_fd`.
+            // SAFETY: `target_fd` wurde via `dup2` ersetzt und ist ein gültiger offener Deskriptor.
+            // `libc::dup` erzeugt ein neues dupliziertes Handle für die sichere Übergabe an Rusts `File::from_raw_fd`.
             let mut duped_file = unsafe {
                 <File as std::os::unix::io::FromRawFd>::from_raw_fd(libc::dup(target_fd))
             };
@@ -217,15 +203,14 @@ mod tests {
         Ok(())
     }
 
-    // ANCHOR[acta-sys:POSIX-TEST-REOPEN-INVALID-001]
-    // Prüft, dass `reopen_and_dup2` bei einem ungültigen Dateipfad sauber einen Fehler liefert.
     #[test]
     fn test_reopen_and_dup2_invalid_path() {
         let invalid_path = Path::new("/nonexistent/file/path/dup2_test");
         let res = reopen_and_dup2(invalid_path, 999, 0);
-        #[cfg(target_os = "linux")]
         assert!(res.is_err());
-        #[cfg(not(target_os = "linux"))]
-        assert!(res.is_err());
+
+        let neg_res = reopen_and_dup2(invalid_path, -1, 0);
+        assert!(neg_res.is_err());
     }
 }
+// !SECTION Unit Tests

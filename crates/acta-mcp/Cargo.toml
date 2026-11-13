@@ -18,14 +18,13 @@ onnx = ["dep:acta-infer-onnx"]
 test-utils = []
 
 [dependencies]
-acta = { workspace = true }
 acta-types = { workspace = true }
 acta-ports = { workspace = true }
-acta-license = { workspace = true }
 acta-wire = { workspace = true }
 acta-rank = { workspace = true }
 acta-crypto = { workspace = true }
 acta-privacy = { workspace = true }
+acta-prompt-guard = { path = "../acta-prompt-guard", features = ["file-audit"] }
 acta-router = { workspace = true }
 acta-infer-candle = { workspace = true, optional = true }
 acta-infer-ollama = { workspace = true, optional = true }

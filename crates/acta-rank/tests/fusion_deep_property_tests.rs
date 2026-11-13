@@ -7,7 +7,7 @@ use acta_rank::fusion::{
     MetadataMergePriority, ProvenanceBuilder, ResonanceConfig, SearchResult,
     SignalCalibrationContext,
 };
-use acta_types::{FusionStrategy, SignalFusionStrategies};
+use acta_rank::{FusionStrategy, SignalFusionStrategies};
 use proptest::prelude::*;
 
 fn make_doc_with_community(id: &str, score: f32, community_id: u64) -> SearchResult {
@@ -24,8 +24,6 @@ fn make_doc_with_community(id: &str, score: f32, community_id: u64) -> SearchRes
         provenance: None,
     }
 }
-
-// ANCHOR[acta-rank:FUS-TEST-001]
 proptest! {
     // Testet das erwartete Verhalten und mathematische Invarianten.
     #[test]
@@ -159,7 +157,7 @@ proptest! {
     }
 }
 
-    // Testet das erwartete Verhalten und mathematische Invarianten.
+// Testet das erwartete Verhalten und mathematische Invarianten.
 #[test]
 fn test_hybrid_strategies_rrf_and_score_normalized_mix() {
     let set1 = vec![
@@ -219,7 +217,7 @@ fn test_hybrid_strategies_rrf_and_score_normalized_mix() {
     assert!(fused.iter().all(|r| r.score.is_finite()));
 }
 
-    // Testet das erwartete Verhalten und mathematische Invarianten.
+// Testet das erwartete Verhalten und mathematische Invarianten.
 #[test]
 fn test_provenance_builder_synthesized_from_records() {
     let builder = ProvenanceBuilder::new(60.0)
@@ -239,7 +237,7 @@ fn test_provenance_builder_synthesized_from_records() {
     assert_eq!(prov.index_type.as_deref(), Some("hybrid"));
 }
 
-    // Testet das erwartete Verhalten und mathematische Invarianten.
+// Testet das erwartete Verhalten und mathematische Invarianten.
 #[test]
 fn test_resonance_config_boosting_behavior() {
     let cfg = ResonanceConfig {

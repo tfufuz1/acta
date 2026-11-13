@@ -1,5 +1,12 @@
 //! PPR Cost Model, Strategy Selection, and ShadowMode Calibration.
 
+// FILE-CONTEXT
+// STAND: 2026-11-15T12:00:00Z
+// ZWECK: Personalized PageRank (Forward-Push und dichte Matrix-Berechnung).
+// INVARIANTEN: Massenerhaltung der Residuen, Konvergenzgarantie.
+// HOTSPOTS: Keine kritischen Bottlenecks identifiziert
+// SIEHE AUCH: docs/SPEC.md, crates/acta-graph/SPEC.md
+
 use acta_types::{PprAlgorithm, PprConfig};
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -7,6 +14,8 @@ use std::sync::Arc;
 /// CSR Graph structural statistics used for PPR cost estimation.
 #[derive(Debug, Clone, Copy, PartialEq)]
 // ANCHOR[acta-graph:SRC-PPR-COST-001]
+
+// SECTION Cost Core Implementation
 pub struct GraphStats {
     /// Number of active/committed nodes |V|.
     pub node_count: usize,
@@ -18,7 +27,7 @@ pub struct GraphStats {
 
 impl GraphStats {
     /// Creates a new `GraphStats` from explicit counts.
-// ANCHOR[acta-graph:SRC-PPR-COST-002]
+    // ANCHOR[acta-graph:SRC-PPR-COST-002]
     pub fn new(node_count: usize, edge_count: usize) -> Self {
         let avg_degree = if node_count > 0 {
             edge_count as f64 / node_count as f64
@@ -47,7 +56,7 @@ impl PprCostEstimate {
     /// Selects the cheapest algorithm based on estimated cost.
     ///
     /// Tie-break rule: If `forward_push == power_iteration`, `ForwardPush` is deterministically chosen.
-// ANCHOR[acta-graph:SRC-PPR-COST-004]
+    // ANCHOR[acta-graph:SRC-PPR-COST-004]
     pub fn cheapest_strategy(&self) -> PprAlgorithm {
         if self.forward_push <= self.power_iteration {
             PprAlgorithm::ForwardPush
@@ -79,20 +88,20 @@ pub struct PprCostCalibrator {
 
 impl PprCostCalibrator {
     /// Creates a new empty `PprCostCalibrator`.
-// ANCHOR[acta-graph:SRC-PPR-COST-007]
+    // ANCHOR[acta-graph:SRC-PPR-COST-007]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Records a new calibration sample comparing estimated cost vs measured edge accesses.
-// ANCHOR[acta-graph:SRC-PPR-COST-008]
+    // ANCHOR[acta-graph:SRC-PPR-COST-008]
     pub fn record(&self, sample: PprCostSample) {
         let mut guard = self.samples.lock();
         guard.push(sample);
     }
 
     /// Returns the total number of recorded calibration samples.
-// ANCHOR[acta-graph:SRC-PPR-COST-009]
+    // ANCHOR[acta-graph:SRC-PPR-COST-009]
     pub fn sample_count(&self) -> usize {
         self.samples.lock().len()
     }
@@ -101,7 +110,7 @@ impl PprCostCalibrator {
     ///
     /// Returns `None` if no samples have been recorded.
     /// DOES NOT automatically apply the recommended factor.
-// ANCHOR[acta-graph:SRC-PPR-COST-010]
+    // ANCHOR[acta-graph:SRC-PPR-COST-010]
     pub fn recommended_multiplier(&self) -> Option<f64> {
         let guard = self.samples.lock();
         if guard.is_empty() {
@@ -127,7 +136,7 @@ impl PprCostCalibrator {
     }
 
     /// Clears all recorded samples.
-// ANCHOR[acta-graph:SRC-PPR-COST-011]
+    // ANCHOR[acta-graph:SRC-PPR-COST-011]
     pub fn clear(&self) {
         self.samples.lock().clear();
     }
@@ -198,7 +207,7 @@ pub fn estimate_ppr_cost(
 mod tests {
     use super::*;
 
-// ANCHOR[acta-graph:SRC-PPR-COST-013]
+    // ANCHOR[acta-graph:SRC-PPR-COST-013]
     #[test]
     fn test_estimate_ppr_cost_tie_break_prefers_forward_push() {
         let estimate = PprCostEstimate {
@@ -208,7 +217,7 @@ mod tests {
         assert_eq!(estimate.cheapest_strategy(), PprAlgorithm::ForwardPush);
     }
 
-// ANCHOR[acta-graph:SRC-PPR-COST-014]
+    // ANCHOR[acta-graph:SRC-PPR-COST-014]
     #[test]
     fn test_fallback_when_stats_none() {
         let config = PprConfig::default();
@@ -219,7 +228,7 @@ mod tests {
         assert_eq!(choice_large, PprAlgorithm::DensePowerIteration);
     }
 
-// ANCHOR[acta-graph:SRC-PPR-COST-015]
+    // ANCHOR[acta-graph:SRC-PPR-COST-015]
     #[test]
     fn test_cost_estimation_sparse_vs_dense() {
         let config = PprConfig::default();
@@ -235,7 +244,7 @@ mod tests {
         assert_eq!(choice_large, PprAlgorithm::ForwardPush);
     }
 
-// ANCHOR[acta-graph:SRC-PPR-COST-016]
+    // ANCHOR[acta-graph:SRC-PPR-COST-016]
     #[test]
     fn test_ppr_cost_calibrator() {
         let calibrator = PprCostCalibrator::new();
@@ -260,3 +269,5 @@ mod tests {
         assert!((mult - 1.0).abs() < 1e-6);
     }
 }
+
+// !SECTION Cost Core Implementation

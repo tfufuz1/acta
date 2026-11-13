@@ -14,7 +14,7 @@
 //! mit einem einzigen CPU-Befehl auszuführen.
 //!
 //! **Verbindung im System:**
-//! - **Abhängigkeiten (normal):** `acta-types` (für `ActaError` und `DistanceMetric`), `bytemuck`, `thiserror`, `tracing`.
+//! - **Abhängigkeiten (normal):** `bytemuck`, `thiserror`. Optional: `acta-types` (nur transitional via Feature `types-compat`), `serde`, `tracing`.
 //! - **Wird eingebunden von:** `acta-vector` (Ring 1) zur Beschleunigung von Ähnlichkeitssuchen in Vektorindizes
 //!   (z. B. HNSW = Hierarchical Navigable Small World).
 //!
@@ -24,17 +24,37 @@
 //! 3. `lib.rs`: Bietet die sichere öffentliche Schnittstelle mit Vorab-Validierung gegen ungültige Werte (NaN/Unendlich).
 
 #![allow(unsafe_code)]
+#![deny(unsafe_op_in_unsafe_fn)]
+#![deny(missing_docs)]
 #![allow(clippy::missing_safety_doc)]
 #![allow(unused_unsafe)]
 
+// SECTION MODULE-DECLARATIONS
 // ANCHOR[acta-simd:CORE-MOD-DISPATCH]
+pub mod contract;
 // Dynamische CPU-Erkennung und Funktionszeiger-Auswahl.
 pub mod dispatch;
+pub mod error;
 // ANCHOR[acta-simd:CORE-MOD-KERNELS]
 // Hardwarespezifische Rechenkerne (Scalar, AVX2, AVX-512, NEON).
 pub mod kernels;
+pub mod metric;
 
-pub use dispatch::*;
+#[cfg(feature = "workspace")]
+pub mod compat;
+// !SECTION MODULE-DECLARATIONS
+
+// SECTION RE-EXPORTS
+// ANCHOR[acta-simd:RE-EXPORTS]
+pub use contract::{DistanceFn, MetricDistanceFn};
+pub use dispatch::{
+    cosine_distance, cosine_distance_f32_bytes, cosine_similarity_parts_u8, dot_product_distance,
+    dot_product_distance_f32_bytes, dot_product_u8, euclidean_distance,
+    euclidean_distance_f32_bytes, euclidean_distance_sq_u8, Dispatcher, SimdTarget,
+};
+#[cfg(test)]
+pub use dispatch::{get_dispatch_override, set_dispatch_override, SimdPathOverride};
+pub use error::{Error, Result, SimdError};
 pub use kernels::scalar::{
     cosine_distance_f32_bytes_scalar, cosine_distance_scalar, cosine_similarity_parts_f32_u8,
     cosine_similarity_parts_u8_scalar, dot_product_f32_bytes_scalar, dot_product_f32_u8,
@@ -42,9 +62,10 @@ pub use kernels::scalar::{
     euclidean_distance_scalar, euclidean_distance_sq_f32_u8, euclidean_distance_sq_u8_scalar,
     normalize_inplace, CosineSimilarityPartsF32U8, CosineSimilarityPartsU8,
 };
+pub use metric::DistanceMetric;
+// !SECTION RE-EXPORTS
 
-use acta_types::{ActaError, DistanceMetric};
-
+// SECTION PUBLIC-API-FACADE
 // ANCHOR[acta-simd:CORE-VALIDATE-VEC]
 /// Prüft, ob ein Vektor gültige endliche Zahlen enthält (kein NaN und kein Unendlich).
 ///
@@ -54,11 +75,11 @@ use acta_types::{ActaError, DistanceMetric};
 /// # Ablauf von `validate_vector`:
 /// 1. Iteration über alle Elemente der `f32`-Slice.
 /// 2. Prüfung mittels `v.is_finite()`.
-/// 3. Abbruch mit Fehler (`ActaError::invalid_input`), falls mindestens ein Wert ungültig ist.
+/// 3. Abbruch mit Fehler (`Error::invalid_input`), falls mindestens ein Wert ungültig ist.
 /// 4. Rückgabe von `Ok(())`, wenn alle Werte endlich sind.
 ///
 /// # Fehlerfälle:
-/// - Gibt `Err(ActaError::InvalidInput)` zurück, wenn ein Wert `f32::NAN`, `f32::INFINITY` oder `f32::NEG_INFINITY` ist.
+/// - Gibt `Err(Error::InvalidInput)` zurück, wenn ein Wert `f32::NAN`, `f32::INFINITY` oder `f32::NEG_INFINITY` ist.
 ///
 /// # Nebenwirkungen:
 /// Keine (reine Speicherprüfung im RAM).
@@ -74,9 +95,10 @@ use acta_types::{ActaError, DistanceMetric};
 /// assert!(validate_vector(&invalid).is_err());
 /// ```
 #[inline]
-pub fn validate_vector(vec: &[f32]) -> acta_types::Result<()> {
+pub fn validate_vector(vec: &[f32]) -> Result<()> {
+    // NOTE: Iteration prüft jedes Element auf Endlichkeit
     if vec.iter().any(|v| !v.is_finite()) {
-        return Err(ActaError::invalid_input(
+        return Err(SimdError::InvalidInput(
             "NaN or Infinity detected in vector",
         ));
     }
@@ -94,9 +116,9 @@ pub fn validate_vector(vec: &[f32]) -> acta_types::Result<()> {
 /// 3. An [`compute_distance_trusted`] delegieren.
 ///
 /// # Fehlerfälle:
-/// - Gibt `Err(ActaError::InvalidInput)` zurück, wenn Vektor `a` oder `b` NaN/Unendlich enthält.
-/// - Gibt `Err(ActaError::InvalidInput)` zurück, wenn die Vektorlängen ungleich sind.
-/// - Gibt `Err(ActaError::InvalidInput)` zurück, wenn eine unbekannte oder nicht unterstützte Metrik übergeben wurde.
+/// - Gibt `Err(Error::InvalidInput)` zurück, wenn Vektor `a` oder `b` NaN/Unendlich enthält.
+/// - Gibt `Err(Error::InvalidInput)` zurück, wenn die Vektorlängen ungleich sind.
+/// - Gibt `Err(Error::InvalidInput)` zurück, wenn eine unbekannte oder nicht unterstützte Metrik übergeben wurde.
 ///
 /// # Nebenwirkungen:
 /// Keine.
@@ -104,21 +126,19 @@ pub fn validate_vector(vec: &[f32]) -> acta_types::Result<()> {
 /// # Beispiel:
 /// ```
 /// use acta_simd::compute_distance;
-/// use acta_types::DistanceMetric;
+/// use acta_simd::DistanceMetric;
 ///
 /// let a = [1.0, 0.0, 0.0];
 /// let b = [0.0, 1.0, 0.0];
 /// let dist = compute_distance(&a, &b, DistanceMetric::Cosine)?;
-/// # Ok::<(), acta_types::ActaError>(())
+/// # Ok::<(), acta_simd::SimdError>(())
 /// ```
 #[inline]
-pub fn compute_distance(
-    a: &[f32],
-    b: &[f32],
-    metric: DistanceMetric,
-) -> acta_types::Result<f32> {
+pub fn compute_distance(a: &[f32], b: &[f32], metric: DistanceMetric) -> Result<f32> {
+    // Schritt 1 & 2: Validierung beider Eingabevektoren gegen NaN / Inf
     validate_vector(a)?;
     validate_vector(b)?;
+    // Schritt 3: Delegation an trusted Pfad
     compute_distance_trusted(a, b, metric)
 }
 
@@ -134,21 +154,17 @@ pub fn compute_distance(
 /// 3. Längenabgleich und Ausführung im gewählten Hardware-Pfad.
 ///
 /// # Fehlerfälle:
-/// - Gibt `Err(ActaError::InvalidInput)` zurück, falls Längen abweichen oder eine nicht unterstützte Metrik gefordert wird.
+/// - Gibt `Err(Error::InvalidInput)` zurück, falls Längen abweichen oder eine nicht unterstützte Metrik gefordert wird.
 ///
 /// # Nebenwirkungen:
 /// Keine.
 #[inline]
-pub fn compute_distance_trusted(
-    a: &[f32],
-    b: &[f32],
-    metric: DistanceMetric,
-) -> acta_types::Result<f32> {
+pub fn compute_distance_trusted(a: &[f32], b: &[f32], metric: DistanceMetric) -> Result<f32> {
+    // NOTE: Schneller Match ohne erneute Allokation
     match metric {
         DistanceMetric::Cosine => cosine_distance(a, b),
         DistanceMetric::Euclidean => euclidean_distance(a, b),
         DistanceMetric::DotProduct => dot_product_distance(a, b),
-        _ => Err(ActaError::invalid_input("Unsupported distance metric")),
     }
 }
 
@@ -164,9 +180,9 @@ pub fn compute_distance_trusted(
 /// 3. Konvertierung/Reinterpretation der Bytes als `f32` im Ziel-Kernel.
 ///
 /// # Fehlerfälle:
-/// - Gibt `Err(ActaError::InvalidInput)` zurück, wenn die Byte-Länge kein Vielfaches von 4 (`sizeof(f32)`) ist
+/// - Gibt `Err(Error::InvalidInput)` zurück, wenn die Byte-Länge kein Vielfaches von 4 (`sizeof(f32)`) ist
 ///   oder die Dimensionen nicht übereinstimmen.
-/// - Gibt `Err(ActaError::InvalidInput)` bei unbekannter Metrik zurück.
+/// - Gibt `Err(Error::InvalidInput)` bei unbekannter Metrik zurück.
 ///
 /// # Nebenwirkungen:
 /// Keine.
@@ -175,11 +191,12 @@ pub fn compute_distance_f32_bytes_trusted(
     a: &[f32],
     b_bytes: &[u8],
     metric: DistanceMetric,
-) -> acta_types::Result<f32> {
+) -> Result<f32> {
+    // NOTE: Zero-Copy-Auswertung der Byte-Slice
     match metric {
         DistanceMetric::Cosine => cosine_distance_f32_bytes(a, b_bytes),
         DistanceMetric::Euclidean => euclidean_distance_f32_bytes(a, b_bytes),
         DistanceMetric::DotProduct => dot_product_distance_f32_bytes(a, b_bytes),
-        _ => Err(ActaError::invalid_input("Unsupported distance metric")),
     }
 }
+// !SECTION PUBLIC-API-FACADE

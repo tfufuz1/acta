@@ -1,0 +1,11 @@
+[crates.acta-types]
+group = "contracts"
+level = 2
+tier = "stable"
+path = "crates/acta-types"
+unsafe_island = false
+allowed_internal = ["acta-ids"]
+[crates.acta-types.feature_closure_allowed]
+docid-128 = ["acta-ids"]
+[crates.acta-types.dev_allowed]
+test = "cargo test -p acta-types --locked"

@@ -5,10 +5,8 @@
 use super::*;
 use crate::wal::KeyManager;
 use crate::wal::Wal;
-#[cfg(feature = "encryption-at-rest")]
 use acta_crypto::wal_crypto::WalHmac;
-use acta_types::TxId;
-#[cfg(feature = "encryption-at-rest")]
+use acta_ids::TxId;
 use std::sync::Arc;
 use tempfile::tempdir;
 use tokio::fs;
@@ -85,7 +83,7 @@ async fn test_wal_hash_chain_verification() {
     // Should fail due to CRC mismatch or HMAC chain failure
     assert!(matches!(
         result,
-        Err(ActaError::Serialization(_)) | Err(ActaError::WalCorruption { .. })
+        Err(StoreError::Serialization(_)) | Err(StoreError::WalCorruption { .. })
     ));
 }
 

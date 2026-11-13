@@ -1,0 +1,12 @@
+[crates.acta-mvcc]
+group = "foundation"
+level = 1
+tier = "stable"
+path = "crates/acta-mvcc"
+unsafe_island = false
+allowed_internal = ["acta-ids", "acta-env"]
+feature_closure_allowed = ["acta-types", "acta-ports"]
+dev_allowed = []
+klasse = "A"
+may_depend_on = ["acta-ids", "acta-env"]
+transitional = ["workspace", "types-compat", "ports-compat"]

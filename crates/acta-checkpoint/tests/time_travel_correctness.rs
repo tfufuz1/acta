@@ -14,7 +14,6 @@
 //!
 //! Verifiziert das Zurücksetzen von Speicherzuständen auf historische Checkpoint-Stände.
 
-
 use acta_checkpoint::PersistentCheckpointStore;
 use acta_ports::{BoxFuture, StorageEngine, StorageStats};
 use acta_types::{Result, TxId};

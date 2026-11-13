@@ -1,0 +1,909 @@
+pub mod acta_simd
+pub mod acta_simd::contract
+pub enum acta_simd::contract::DistanceMetric
+pub acta_simd::contract::DistanceMetric::Cosine
+pub acta_simd::contract::DistanceMetric::DotProduct
+pub acta_simd::contract::DistanceMetric::Euclidean
+impl core::clone::Clone for acta_simd::metric::DistanceMetric
+pub fn acta_simd::metric::DistanceMetric::clone(&self) -> Self
+impl core::cmp::Eq for acta_simd::metric::DistanceMetric
+impl core::cmp::PartialEq for acta_simd::metric::DistanceMetric
+pub fn acta_simd::metric::DistanceMetric::eq(&self, &Self) -> bool
+impl core::fmt::Debug for acta_simd::metric::DistanceMetric
+pub fn acta_simd::metric::DistanceMetric::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for acta_simd::metric::DistanceMetric
+pub fn acta_simd::metric::DistanceMetric::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for acta_simd::metric::DistanceMetric
+impl core::marker::StructuralPartialEq for acta_simd::metric::DistanceMetric
+impl core::marker::Forget for acta_simd::metric::DistanceMetric
+impl core::marker::Freeze for acta_simd::metric::DistanceMetric
+impl core::marker::Send for acta_simd::metric::DistanceMetric
+impl core::marker::Sync for acta_simd::metric::DistanceMetric
+impl core::marker::Unpin for acta_simd::metric::DistanceMetric
+impl core::marker::UnsafeUnpin for acta_simd::metric::DistanceMetric
+impl core::panic::unwind_safe::RefUnwindSafe for acta_simd::metric::DistanceMetric
+impl core::panic::unwind_safe::UnwindSafe for acta_simd::metric::DistanceMetric
+impl<T, U> core::convert::Into<U> for acta_simd::metric::DistanceMetric where U: core::convert::From<T>
+pub fn acta_simd::metric::DistanceMetric::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for acta_simd::metric::DistanceMetric where U: core::convert::Into<T>
+pub type acta_simd::metric::DistanceMetric::Error = never
+pub fn acta_simd::metric::DistanceMetric::try_from(U) -> core::result::Result<T, never>
+impl<T, U> core::convert::TryInto<U> for acta_simd::metric::DistanceMetric where U: core::convert::TryFrom<T>
+pub type acta_simd::metric::DistanceMetric::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn acta_simd::metric::DistanceMetric::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for acta_simd::metric::DistanceMetric where T: core::clone::Clone
+pub type acta_simd::metric::DistanceMetric::Owned = T
+pub fn acta_simd::metric::DistanceMetric::clone_into(&self, &mut T)
+pub fn acta_simd::metric::DistanceMetric::to_owned(&self) -> T
+impl<T> core::any::Any for acta_simd::metric::DistanceMetric where T: 'static + ?core::marker::Sized
+pub fn acta_simd::metric::DistanceMetric::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for acta_simd::metric::DistanceMetric where T: ?core::marker::Sized
+pub fn acta_simd::metric::DistanceMetric::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for acta_simd::metric::DistanceMetric where T: ?core::marker::Sized
+pub fn acta_simd::metric::DistanceMetric::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for acta_simd::metric::DistanceMetric where T: core::clone::Clone
+pub unsafe fn acta_simd::metric::DistanceMetric::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for acta_simd::metric::DistanceMetric
+pub fn acta_simd::metric::DistanceMetric::from(T) -> T
+#[non_exhaustive] pub enum acta_simd::contract::SimdError
+pub acta_simd::contract::SimdError::DimensionMismatch
+pub acta_simd::contract::SimdError::DimensionMismatch::left: usize
+pub acta_simd::contract::SimdError::DimensionMismatch::right: usize
+pub acta_simd::contract::SimdError::InvalidInput(&'static str)
+pub acta_simd::contract::SimdError::UnsupportedMetric
+impl core::clone::Clone for acta_simd::error::SimdError
+pub fn acta_simd::error::SimdError::clone(&self) -> Self
+impl core::cmp::PartialEq for acta_simd::error::SimdError
+pub fn acta_simd::error::SimdError::eq(&self, &Self) -> bool
+impl core::error::Error for acta_simd::error::SimdError
+impl core::fmt::Debug for acta_simd::error::SimdError
+pub fn acta_simd::error::SimdError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for acta_simd::error::SimdError
+pub fn acta_simd::error::SimdError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for acta_simd::error::SimdError
+impl core::marker::Forget for acta_simd::error::SimdError
+impl core::marker::Freeze for acta_simd::error::SimdError
+impl core::marker::Send for acta_simd::error::SimdError
+impl core::marker::Sync for acta_simd::error::SimdError
+impl core::marker::Unpin for acta_simd::error::SimdError
+impl core::marker::UnsafeUnpin for acta_simd::error::SimdError
+impl core::panic::unwind_safe::RefUnwindSafe for acta_simd::error::SimdError
+impl core::panic::unwind_safe::UnwindSafe for acta_simd::error::SimdError
+impl<T, U> core::convert::Into<U> for acta_simd::error::SimdError where U: core::convert::From<T>
+pub fn acta_simd::error::SimdError::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for acta_simd::error::SimdError where U: core::convert::Into<T>
+pub type acta_simd::error::SimdError::Error = never
+pub fn acta_simd::error::SimdError::try_from(U) -> core::result::Result<T, never>
+impl<T, U> core::convert::TryInto<U> for acta_simd::error::SimdError where U: core::convert::TryFrom<T>
+pub type acta_simd::error::SimdError::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn acta_simd::error::SimdError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for acta_simd::error::SimdError where T: core::clone::Clone
+pub type acta_simd::error::SimdError::Owned = T
+pub fn acta_simd::error::SimdError::clone_into(&self, &mut T)
+pub fn acta_simd::error::SimdError::to_owned(&self) -> T
+impl<T> alloc::string::ToString for acta_simd::error::SimdError where T: core::fmt::Display + ?core::marker::Sized
+pub fn acta_simd::error::SimdError::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for acta_simd::error::SimdError where T: 'static + ?core::marker::Sized
+pub fn acta_simd::error::SimdError::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for acta_simd::error::SimdError where T: ?core::marker::Sized
+pub fn acta_simd::error::SimdError::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for acta_simd::error::SimdError where T: ?core::marker::Sized
+pub fn acta_simd::error::SimdError::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for acta_simd::error::SimdError where T: core::clone::Clone
+pub unsafe fn acta_simd::error::SimdError::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for acta_simd::error::SimdError
+pub fn acta_simd::error::SimdError::from(T) -> T
+pub struct acta_simd::contract::MetricDistanceFn
+pub acta_simd::contract::MetricDistanceFn::dispatcher: acta_simd::dispatch::Dispatcher
+pub acta_simd::contract::MetricDistanceFn::metric: acta_simd::metric::DistanceMetric
+impl acta_simd::contract::MetricDistanceFn
+pub fn acta_simd::contract::MetricDistanceFn::new(acta_simd::metric::DistanceMetric) -> Self
+pub const fn acta_simd::contract::MetricDistanceFn::with_dispatcher(acta_simd::metric::DistanceMetric, acta_simd::dispatch::Dispatcher) -> Self
+impl acta_simd::contract::DistanceFn for acta_simd::contract::MetricDistanceFn
+pub fn acta_simd::contract::MetricDistanceFn::distance(&self, &[f32], &[f32]) -> acta_simd::error::Result<f32>
+impl core::clone::Clone for acta_simd::contract::MetricDistanceFn
+pub fn acta_simd::contract::MetricDistanceFn::clone(&self) -> Self
+impl core::fmt::Debug for acta_simd::contract::MetricDistanceFn
+pub fn acta_simd::contract::MetricDistanceFn::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for acta_simd::contract::MetricDistanceFn
+impl core::marker::Forget for acta_simd::contract::MetricDistanceFn
+impl core::marker::Freeze for acta_simd::contract::MetricDistanceFn
+impl core::marker::Send for acta_simd::contract::MetricDistanceFn
+impl core::marker::Sync for acta_simd::contract::MetricDistanceFn
+impl core::marker::Unpin for acta_simd::contract::MetricDistanceFn
+impl core::marker::UnsafeUnpin for acta_simd::contract::MetricDistanceFn
+impl core::panic::unwind_safe::RefUnwindSafe for acta_simd::contract::MetricDistanceFn
+impl core::panic::unwind_safe::UnwindSafe for acta_simd::contract::MetricDistanceFn
+impl<T, U> core::convert::Into<U> for acta_simd::contract::MetricDistanceFn where U: core::convert::From<T>
+pub fn acta_simd::contract::MetricDistanceFn::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for acta_simd::contract::MetricDistanceFn where U: core::convert::Into<T>
+pub type acta_simd::contract::MetricDistanceFn::Error = never
+pub fn acta_simd::contract::MetricDistanceFn::try_from(U) -> core::result::Result<T, never>
+impl<T, U> core::convert::TryInto<U> for acta_simd::contract::MetricDistanceFn where U: core::convert::TryFrom<T>
+pub type acta_simd::contract::MetricDistanceFn::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn acta_simd::contract::MetricDistanceFn::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for acta_simd::contract::MetricDistanceFn where T: core::clone::Clone
+pub type acta_simd::contract::MetricDistanceFn::Owned = T
+pub fn acta_simd::contract::MetricDistanceFn::clone_into(&self, &mut T)
+pub fn acta_simd::contract::MetricDistanceFn::to_owned(&self) -> T
+impl<T> core::any::Any for acta_simd::contract::MetricDistanceFn where T: 'static + ?core::marker::Sized
+pub fn acta_simd::contract::MetricDistanceFn::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for acta_simd::contract::MetricDistanceFn where T: ?core::marker::Sized
+pub fn acta_simd::contract::MetricDistanceFn::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for acta_simd::contract::MetricDistanceFn where T: ?core::marker::Sized
+pub fn acta_simd::contract::MetricDistanceFn::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for acta_simd::contract::MetricDistanceFn where T: core::clone::Clone
+pub unsafe fn acta_simd::contract::MetricDistanceFn::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for acta_simd::contract::MetricDistanceFn
+pub fn acta_simd::contract::MetricDistanceFn::from(T) -> T
+pub trait acta_simd::contract::DistanceFn: core::marker::Send + core::marker::Sync
+pub fn acta_simd::contract::DistanceFn::distance(&self, &[f32], &[f32]) -> acta_simd::error::Result<f32>
+impl acta_simd::contract::DistanceFn for acta_simd::contract::MetricDistanceFn
+pub fn acta_simd::contract::MetricDistanceFn::distance(&self, &[f32], &[f32]) -> acta_simd::error::Result<f32>
+pub type acta_simd::contract::Error = acta_simd::error::SimdError
+pub type acta_simd::contract::Result<T> = core::result::Result<T, acta_simd::error::SimdError>
+pub mod acta_simd::dispatch
+pub enum acta_simd::dispatch::SimdTarget
+pub acta_simd::dispatch::SimdTarget::Auto
+pub acta_simd::dispatch::SimdTarget::Avx2
+pub acta_simd::dispatch::SimdTarget::Avx512
+pub acta_simd::dispatch::SimdTarget::Neon
+pub acta_simd::dispatch::SimdTarget::Scalar
+impl core::clone::Clone for acta_simd::dispatch::SimdTarget
+pub fn acta_simd::dispatch::SimdTarget::clone(&self) -> Self
+impl core::cmp::Eq for acta_simd::dispatch::SimdTarget
+impl core::cmp::PartialEq for acta_simd::dispatch::SimdTarget
+pub fn acta_simd::dispatch::SimdTarget::eq(&self, &Self) -> bool
+impl core::default::Default for acta_simd::dispatch::SimdTarget
+pub fn acta_simd::dispatch::SimdTarget::default() -> Self
+impl core::fmt::Debug for acta_simd::dispatch::SimdTarget
+pub fn acta_simd::dispatch::SimdTarget::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for acta_simd::dispatch::SimdTarget
+impl core::marker::StructuralPartialEq for acta_simd::dispatch::SimdTarget
+impl core::marker::Forget for acta_simd::dispatch::SimdTarget
+impl core::marker::Freeze for acta_simd::dispatch::SimdTarget
+impl core::marker::Send for acta_simd::dispatch::SimdTarget
+impl core::marker::Sync for acta_simd::dispatch::SimdTarget
+impl core::marker::Unpin for acta_simd::dispatch::SimdTarget
+impl core::marker::UnsafeUnpin for acta_simd::dispatch::SimdTarget
+impl core::panic::unwind_safe::RefUnwindSafe for acta_simd::dispatch::SimdTarget
+impl core::panic::unwind_safe::UnwindSafe for acta_simd::dispatch::SimdTarget
+impl<T, U> core::convert::Into<U> for acta_simd::dispatch::SimdTarget where U: core::convert::From<T>
+pub fn acta_simd::dispatch::SimdTarget::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for acta_simd::dispatch::SimdTarget where U: core::convert::Into<T>
+pub type acta_simd::dispatch::SimdTarget::Error = never
+pub fn acta_simd::dispatch::SimdTarget::try_from(U) -> core::result::Result<T, never>
+impl<T, U> core::convert::TryInto<U> for acta_simd::dispatch::SimdTarget where U: core::convert::TryFrom<T>
+pub type acta_simd::dispatch::SimdTarget::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn acta_simd::dispatch::SimdTarget::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for acta_simd::dispatch::SimdTarget where T: core::clone::Clone
+pub type acta_simd::dispatch::SimdTarget::Owned = T
+pub fn acta_simd::dispatch::SimdTarget::clone_into(&self, &mut T)
+pub fn acta_simd::dispatch::SimdTarget::to_owned(&self) -> T
+impl<T> core::any::Any for acta_simd::dispatch::SimdTarget where T: 'static + ?core::marker::Sized
+pub fn acta_simd::dispatch::SimdTarget::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for acta_simd::dispatch::SimdTarget where T: ?core::marker::Sized
+pub fn acta_simd::dispatch::SimdTarget::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for acta_simd::dispatch::SimdTarget where T: ?core::marker::Sized
+pub fn acta_simd::dispatch::SimdTarget::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for acta_simd::dispatch::SimdTarget where T: core::clone::Clone
+pub unsafe fn acta_simd::dispatch::SimdTarget::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for acta_simd::dispatch::SimdTarget
+pub fn acta_simd::dispatch::SimdTarget::from(T) -> T
+pub struct acta_simd::dispatch::Dispatcher
+impl acta_simd::dispatch::Dispatcher
+pub fn acta_simd::dispatch::Dispatcher::auto() -> Self
+pub fn acta_simd::dispatch::Dispatcher::cosine_distance(&self, &[f32], &[f32]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::dispatch::Dispatcher::cosine_distance_f32_bytes(&self, &[f32], &[u8]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::dispatch::Dispatcher::cosine_similarity_parts_u8(&self, &[u8], &[u8]) -> acta_simd::error::Result<acta_simd::kernels::CosineSimilarityPartsU8>
+pub fn acta_simd::dispatch::Dispatcher::dot_product_distance(&self, &[f32], &[f32]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::dispatch::Dispatcher::dot_product_distance_f32_bytes(&self, &[f32], &[u8]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::dispatch::Dispatcher::dot_product_u8(&self, &[u8], &[u8]) -> acta_simd::error::Result<u32>
+pub fn acta_simd::dispatch::Dispatcher::euclidean_distance(&self, &[f32], &[f32]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::dispatch::Dispatcher::euclidean_distance_f32_bytes(&self, &[f32], &[u8]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::dispatch::Dispatcher::euclidean_distance_sq_u8(&self, &[u8], &[u8]) -> acta_simd::error::Result<u32>
+pub const fn acta_simd::dispatch::Dispatcher::new(acta_simd::dispatch::SimdTarget) -> Self
+pub const fn acta_simd::dispatch::Dispatcher::scalar() -> Self
+pub const fn acta_simd::dispatch::Dispatcher::target(&self) -> acta_simd::dispatch::SimdTarget
+impl core::clone::Clone for acta_simd::dispatch::Dispatcher
+pub fn acta_simd::dispatch::Dispatcher::clone(&self) -> Self
+impl core::cmp::Eq for acta_simd::dispatch::Dispatcher
+impl core::cmp::PartialEq for acta_simd::dispatch::Dispatcher
+pub fn acta_simd::dispatch::Dispatcher::eq(&self, &Self) -> bool
+impl core::default::Default for acta_simd::dispatch::Dispatcher
+pub fn acta_simd::dispatch::Dispatcher::default() -> Self
+impl core::fmt::Debug for acta_simd::dispatch::Dispatcher
+pub fn acta_simd::dispatch::Dispatcher::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for acta_simd::dispatch::Dispatcher
+impl core::marker::StructuralPartialEq for acta_simd::dispatch::Dispatcher
+impl core::marker::Forget for acta_simd::dispatch::Dispatcher
+impl core::marker::Freeze for acta_simd::dispatch::Dispatcher
+impl core::marker::Send for acta_simd::dispatch::Dispatcher
+impl core::marker::Sync for acta_simd::dispatch::Dispatcher
+impl core::marker::Unpin for acta_simd::dispatch::Dispatcher
+impl core::marker::UnsafeUnpin for acta_simd::dispatch::Dispatcher
+impl core::panic::unwind_safe::RefUnwindSafe for acta_simd::dispatch::Dispatcher
+impl core::panic::unwind_safe::UnwindSafe for acta_simd::dispatch::Dispatcher
+impl<T, U> core::convert::Into<U> for acta_simd::dispatch::Dispatcher where U: core::convert::From<T>
+pub fn acta_simd::dispatch::Dispatcher::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for acta_simd::dispatch::Dispatcher where U: core::convert::Into<T>
+pub type acta_simd::dispatch::Dispatcher::Error = never
+pub fn acta_simd::dispatch::Dispatcher::try_from(U) -> core::result::Result<T, never>
+impl<T, U> core::convert::TryInto<U> for acta_simd::dispatch::Dispatcher where U: core::convert::TryFrom<T>
+pub type acta_simd::dispatch::Dispatcher::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn acta_simd::dispatch::Dispatcher::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for acta_simd::dispatch::Dispatcher where T: core::clone::Clone
+pub type acta_simd::dispatch::Dispatcher::Owned = T
+pub fn acta_simd::dispatch::Dispatcher::clone_into(&self, &mut T)
+pub fn acta_simd::dispatch::Dispatcher::to_owned(&self) -> T
+impl<T> core::any::Any for acta_simd::dispatch::Dispatcher where T: 'static + ?core::marker::Sized
+pub fn acta_simd::dispatch::Dispatcher::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for acta_simd::dispatch::Dispatcher where T: ?core::marker::Sized
+pub fn acta_simd::dispatch::Dispatcher::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for acta_simd::dispatch::Dispatcher where T: ?core::marker::Sized
+pub fn acta_simd::dispatch::Dispatcher::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for acta_simd::dispatch::Dispatcher where T: core::clone::Clone
+pub unsafe fn acta_simd::dispatch::Dispatcher::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for acta_simd::dispatch::Dispatcher
+pub fn acta_simd::dispatch::Dispatcher::from(T) -> T
+pub fn acta_simd::dispatch::cosine_distance(&[f32], &[f32]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::dispatch::cosine_distance_f32_bytes(&[f32], &[u8]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::dispatch::cosine_similarity_parts_u8(&[u8], &[u8]) -> acta_simd::error::Result<acta_simd::kernels::CosineSimilarityPartsU8>
+pub fn acta_simd::dispatch::detect_best_target() -> acta_simd::dispatch::SimdTarget
+pub fn acta_simd::dispatch::dot_product_distance(&[f32], &[f32]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::dispatch::dot_product_distance_f32_bytes(&[f32], &[u8]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::dispatch::dot_product_u8(&[u8], &[u8]) -> acta_simd::error::Result<u32>
+pub fn acta_simd::dispatch::euclidean_distance(&[f32], &[f32]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::dispatch::euclidean_distance_f32_bytes(&[f32], &[u8]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::dispatch::euclidean_distance_sq_u8(&[u8], &[u8]) -> acta_simd::error::Result<u32>
+pub mod acta_simd::error
+#[non_exhaustive] pub enum acta_simd::error::SimdError
+pub acta_simd::error::SimdError::DimensionMismatch
+pub acta_simd::error::SimdError::DimensionMismatch::left: usize
+pub acta_simd::error::SimdError::DimensionMismatch::right: usize
+pub acta_simd::error::SimdError::InvalidInput(&'static str)
+pub acta_simd::error::SimdError::UnsupportedMetric
+impl core::clone::Clone for acta_simd::error::SimdError
+pub fn acta_simd::error::SimdError::clone(&self) -> Self
+impl core::cmp::PartialEq for acta_simd::error::SimdError
+pub fn acta_simd::error::SimdError::eq(&self, &Self) -> bool
+impl core::error::Error for acta_simd::error::SimdError
+impl core::fmt::Debug for acta_simd::error::SimdError
+pub fn acta_simd::error::SimdError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for acta_simd::error::SimdError
+pub fn acta_simd::error::SimdError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for acta_simd::error::SimdError
+impl core::marker::Forget for acta_simd::error::SimdError
+impl core::marker::Freeze for acta_simd::error::SimdError
+impl core::marker::Send for acta_simd::error::SimdError
+impl core::marker::Sync for acta_simd::error::SimdError
+impl core::marker::Unpin for acta_simd::error::SimdError
+impl core::marker::UnsafeUnpin for acta_simd::error::SimdError
+impl core::panic::unwind_safe::RefUnwindSafe for acta_simd::error::SimdError
+impl core::panic::unwind_safe::UnwindSafe for acta_simd::error::SimdError
+impl<T, U> core::convert::Into<U> for acta_simd::error::SimdError where U: core::convert::From<T>
+pub fn acta_simd::error::SimdError::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for acta_simd::error::SimdError where U: core::convert::Into<T>
+pub type acta_simd::error::SimdError::Error = never
+pub fn acta_simd::error::SimdError::try_from(U) -> core::result::Result<T, never>
+impl<T, U> core::convert::TryInto<U> for acta_simd::error::SimdError where U: core::convert::TryFrom<T>
+pub type acta_simd::error::SimdError::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn acta_simd::error::SimdError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for acta_simd::error::SimdError where T: core::clone::Clone
+pub type acta_simd::error::SimdError::Owned = T
+pub fn acta_simd::error::SimdError::clone_into(&self, &mut T)
+pub fn acta_simd::error::SimdError::to_owned(&self) -> T
+impl<T> alloc::string::ToString for acta_simd::error::SimdError where T: core::fmt::Display + ?core::marker::Sized
+pub fn acta_simd::error::SimdError::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for acta_simd::error::SimdError where T: 'static + ?core::marker::Sized
+pub fn acta_simd::error::SimdError::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for acta_simd::error::SimdError where T: ?core::marker::Sized
+pub fn acta_simd::error::SimdError::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for acta_simd::error::SimdError where T: ?core::marker::Sized
+pub fn acta_simd::error::SimdError::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for acta_simd::error::SimdError where T: core::clone::Clone
+pub unsafe fn acta_simd::error::SimdError::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for acta_simd::error::SimdError
+pub fn acta_simd::error::SimdError::from(T) -> T
+pub type acta_simd::error::Error = acta_simd::error::SimdError
+pub type acta_simd::error::Result<T> = core::result::Result<T, acta_simd::error::SimdError>
+pub mod acta_simd::kernels
+pub mod acta_simd::kernels::scalar
+pub struct acta_simd::kernels::scalar::CosineSimilarityPartsF32U8
+pub acta_simd::kernels::scalar::CosineSimilarityPartsF32U8::dot: f32
+pub acta_simd::kernels::scalar::CosineSimilarityPartsF32U8::norm_a_sq: f32
+pub acta_simd::kernels::scalar::CosineSimilarityPartsF32U8::norm_b_sq: f32
+impl core::clone::Clone for acta_simd::kernels::CosineSimilarityPartsF32U8
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::clone(&self) -> Self
+impl core::cmp::PartialEq for acta_simd::kernels::CosineSimilarityPartsF32U8
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::eq(&self, &Self) -> bool
+impl core::fmt::Debug for acta_simd::kernels::CosineSimilarityPartsF32U8
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::StructuralPartialEq for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::Forget for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::Freeze for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::Send for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::Sync for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::Unpin for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::UnsafeUnpin for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::panic::unwind_safe::RefUnwindSafe for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::panic::unwind_safe::UnwindSafe for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl<T, U> core::convert::Into<U> for acta_simd::kernels::CosineSimilarityPartsF32U8 where U: core::convert::From<T>
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for acta_simd::kernels::CosineSimilarityPartsF32U8 where U: core::convert::Into<T>
+pub type acta_simd::kernels::CosineSimilarityPartsF32U8::Error = never
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::try_from(U) -> core::result::Result<T, never>
+impl<T, U> core::convert::TryInto<U> for acta_simd::kernels::CosineSimilarityPartsF32U8 where U: core::convert::TryFrom<T>
+pub type acta_simd::kernels::CosineSimilarityPartsF32U8::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for acta_simd::kernels::CosineSimilarityPartsF32U8 where T: core::clone::Clone
+pub type acta_simd::kernels::CosineSimilarityPartsF32U8::Owned = T
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::clone_into(&self, &mut T)
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::to_owned(&self) -> T
+impl<T> core::any::Any for acta_simd::kernels::CosineSimilarityPartsF32U8 where T: 'static + ?core::marker::Sized
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for acta_simd::kernels::CosineSimilarityPartsF32U8 where T: ?core::marker::Sized
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for acta_simd::kernels::CosineSimilarityPartsF32U8 where T: ?core::marker::Sized
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for acta_simd::kernels::CosineSimilarityPartsF32U8 where T: core::clone::Clone
+pub unsafe fn acta_simd::kernels::CosineSimilarityPartsF32U8::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for acta_simd::kernels::CosineSimilarityPartsF32U8
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::from(T) -> T
+pub struct acta_simd::kernels::scalar::CosineSimilarityPartsU8
+pub acta_simd::kernels::scalar::CosineSimilarityPartsU8::dot: u32
+pub acta_simd::kernels::scalar::CosineSimilarityPartsU8::norm_a_sq: u32
+pub acta_simd::kernels::scalar::CosineSimilarityPartsU8::norm_b_sq: u32
+impl core::clone::Clone for acta_simd::kernels::CosineSimilarityPartsU8
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::clone(&self) -> Self
+impl core::cmp::Eq for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::cmp::PartialEq for acta_simd::kernels::CosineSimilarityPartsU8
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::eq(&self, &Self) -> bool
+impl core::fmt::Debug for acta_simd::kernels::CosineSimilarityPartsU8
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::StructuralPartialEq for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::Forget for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::Freeze for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::Send for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::Sync for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::Unpin for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::UnsafeUnpin for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::panic::unwind_safe::RefUnwindSafe for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::panic::unwind_safe::UnwindSafe for acta_simd::kernels::CosineSimilarityPartsU8
+impl<T, U> core::convert::Into<U> for acta_simd::kernels::CosineSimilarityPartsU8 where U: core::convert::From<T>
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for acta_simd::kernels::CosineSimilarityPartsU8 where U: core::convert::Into<T>
+pub type acta_simd::kernels::CosineSimilarityPartsU8::Error = never
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::try_from(U) -> core::result::Result<T, never>
+impl<T, U> core::convert::TryInto<U> for acta_simd::kernels::CosineSimilarityPartsU8 where U: core::convert::TryFrom<T>
+pub type acta_simd::kernels::CosineSimilarityPartsU8::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for acta_simd::kernels::CosineSimilarityPartsU8 where T: core::clone::Clone
+pub type acta_simd::kernels::CosineSimilarityPartsU8::Owned = T
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::clone_into(&self, &mut T)
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::to_owned(&self) -> T
+impl<T> core::any::Any for acta_simd::kernels::CosineSimilarityPartsU8 where T: 'static + ?core::marker::Sized
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for acta_simd::kernels::CosineSimilarityPartsU8 where T: ?core::marker::Sized
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for acta_simd::kernels::CosineSimilarityPartsU8 where T: ?core::marker::Sized
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for acta_simd::kernels::CosineSimilarityPartsU8 where T: core::clone::Clone
+pub unsafe fn acta_simd::kernels::CosineSimilarityPartsU8::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for acta_simd::kernels::CosineSimilarityPartsU8
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::from(T) -> T
+pub fn acta_simd::kernels::scalar::cosine_distance_f32_bytes_scalar(&[f32], &[u8]) -> f32
+pub fn acta_simd::kernels::scalar::cosine_distance_scalar(&[f32], &[f32]) -> f32
+pub fn acta_simd::kernels::scalar::cosine_similarity_parts_f32_u8(&[f32], &[u8]) -> acta_simd::kernels::CosineSimilarityPartsF32U8
+pub fn acta_simd::kernels::scalar::cosine_similarity_parts_u8_scalar(&[u8], &[u8]) -> acta_simd::kernels::CosineSimilarityPartsU8
+pub fn acta_simd::kernels::scalar::dot_product_f32_bytes_scalar(&[f32], &[u8]) -> f32
+pub fn acta_simd::kernels::scalar::dot_product_f32_u8(&[f32], &[u8]) -> f32
+pub fn acta_simd::kernels::scalar::dot_product_scalar(&[f32], &[f32]) -> f32
+pub fn acta_simd::kernels::scalar::dot_product_u8_scalar(&[u8], &[u8]) -> u32
+pub fn acta_simd::kernels::scalar::euclidean_distance_f32_bytes_scalar(&[f32], &[u8]) -> f32
+pub fn acta_simd::kernels::scalar::euclidean_distance_scalar(&[f32], &[f32]) -> f32
+pub fn acta_simd::kernels::scalar::euclidean_distance_sq_f32_u8(&[f32], &[u8], &[f32], &[f32]) -> f32
+pub fn acta_simd::kernels::scalar::euclidean_distance_sq_u8_scalar(&[u8], &[u8]) -> u32
+pub fn acta_simd::kernels::scalar::normalize_inplace(&mut [f32])
+pub struct acta_simd::kernels::CosineSimilarityPartsF32U8
+pub acta_simd::kernels::CosineSimilarityPartsF32U8::dot: f32
+pub acta_simd::kernels::CosineSimilarityPartsF32U8::norm_a_sq: f32
+pub acta_simd::kernels::CosineSimilarityPartsF32U8::norm_b_sq: f32
+impl core::clone::Clone for acta_simd::kernels::CosineSimilarityPartsF32U8
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::clone(&self) -> Self
+impl core::cmp::PartialEq for acta_simd::kernels::CosineSimilarityPartsF32U8
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::eq(&self, &Self) -> bool
+impl core::fmt::Debug for acta_simd::kernels::CosineSimilarityPartsF32U8
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::StructuralPartialEq for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::Forget for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::Freeze for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::Send for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::Sync for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::Unpin for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::UnsafeUnpin for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::panic::unwind_safe::RefUnwindSafe for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::panic::unwind_safe::UnwindSafe for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl<T, U> core::convert::Into<U> for acta_simd::kernels::CosineSimilarityPartsF32U8 where U: core::convert::From<T>
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for acta_simd::kernels::CosineSimilarityPartsF32U8 where U: core::convert::Into<T>
+pub type acta_simd::kernels::CosineSimilarityPartsF32U8::Error = never
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::try_from(U) -> core::result::Result<T, never>
+impl<T, U> core::convert::TryInto<U> for acta_simd::kernels::CosineSimilarityPartsF32U8 where U: core::convert::TryFrom<T>
+pub type acta_simd::kernels::CosineSimilarityPartsF32U8::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for acta_simd::kernels::CosineSimilarityPartsF32U8 where T: core::clone::Clone
+pub type acta_simd::kernels::CosineSimilarityPartsF32U8::Owned = T
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::clone_into(&self, &mut T)
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::to_owned(&self) -> T
+impl<T> core::any::Any for acta_simd::kernels::CosineSimilarityPartsF32U8 where T: 'static + ?core::marker::Sized
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for acta_simd::kernels::CosineSimilarityPartsF32U8 where T: ?core::marker::Sized
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for acta_simd::kernels::CosineSimilarityPartsF32U8 where T: ?core::marker::Sized
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for acta_simd::kernels::CosineSimilarityPartsF32U8 where T: core::clone::Clone
+pub unsafe fn acta_simd::kernels::CosineSimilarityPartsF32U8::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for acta_simd::kernels::CosineSimilarityPartsF32U8
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::from(T) -> T
+pub struct acta_simd::kernels::CosineSimilarityPartsU8
+pub acta_simd::kernels::CosineSimilarityPartsU8::dot: u32
+pub acta_simd::kernels::CosineSimilarityPartsU8::norm_a_sq: u32
+pub acta_simd::kernels::CosineSimilarityPartsU8::norm_b_sq: u32
+impl core::clone::Clone for acta_simd::kernels::CosineSimilarityPartsU8
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::clone(&self) -> Self
+impl core::cmp::Eq for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::cmp::PartialEq for acta_simd::kernels::CosineSimilarityPartsU8
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::eq(&self, &Self) -> bool
+impl core::fmt::Debug for acta_simd::kernels::CosineSimilarityPartsU8
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::StructuralPartialEq for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::Forget for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::Freeze for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::Send for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::Sync for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::Unpin for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::UnsafeUnpin for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::panic::unwind_safe::RefUnwindSafe for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::panic::unwind_safe::UnwindSafe for acta_simd::kernels::CosineSimilarityPartsU8
+impl<T, U> core::convert::Into<U> for acta_simd::kernels::CosineSimilarityPartsU8 where U: core::convert::From<T>
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for acta_simd::kernels::CosineSimilarityPartsU8 where U: core::convert::Into<T>
+pub type acta_simd::kernels::CosineSimilarityPartsU8::Error = never
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::try_from(U) -> core::result::Result<T, never>
+impl<T, U> core::convert::TryInto<U> for acta_simd::kernels::CosineSimilarityPartsU8 where U: core::convert::TryFrom<T>
+pub type acta_simd::kernels::CosineSimilarityPartsU8::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for acta_simd::kernels::CosineSimilarityPartsU8 where T: core::clone::Clone
+pub type acta_simd::kernels::CosineSimilarityPartsU8::Owned = T
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::clone_into(&self, &mut T)
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::to_owned(&self) -> T
+impl<T> core::any::Any for acta_simd::kernels::CosineSimilarityPartsU8 where T: 'static + ?core::marker::Sized
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for acta_simd::kernels::CosineSimilarityPartsU8 where T: ?core::marker::Sized
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for acta_simd::kernels::CosineSimilarityPartsU8 where T: ?core::marker::Sized
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for acta_simd::kernels::CosineSimilarityPartsU8 where T: core::clone::Clone
+pub unsafe fn acta_simd::kernels::CosineSimilarityPartsU8::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for acta_simd::kernels::CosineSimilarityPartsU8
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::from(T) -> T
+pub fn acta_simd::kernels::cosine_distance_f32_bytes_scalar(&[f32], &[u8]) -> f32
+pub fn acta_simd::kernels::cosine_distance_scalar(&[f32], &[f32]) -> f32
+pub fn acta_simd::kernels::cosine_similarity_parts_f32_u8(&[f32], &[u8]) -> acta_simd::kernels::CosineSimilarityPartsF32U8
+pub fn acta_simd::kernels::cosine_similarity_parts_u8_scalar(&[u8], &[u8]) -> acta_simd::kernels::CosineSimilarityPartsU8
+pub fn acta_simd::kernels::dot_product_f32_bytes_scalar(&[f32], &[u8]) -> f32
+pub fn acta_simd::kernels::dot_product_f32_u8(&[f32], &[u8]) -> f32
+pub fn acta_simd::kernels::dot_product_scalar(&[f32], &[f32]) -> f32
+pub fn acta_simd::kernels::dot_product_u8_scalar(&[u8], &[u8]) -> u32
+pub fn acta_simd::kernels::euclidean_distance_f32_bytes_scalar(&[f32], &[u8]) -> f32
+pub fn acta_simd::kernels::euclidean_distance_scalar(&[f32], &[f32]) -> f32
+pub fn acta_simd::kernels::euclidean_distance_sq_f32_u8(&[f32], &[u8], &[f32], &[f32]) -> f32
+pub fn acta_simd::kernels::euclidean_distance_sq_u8_scalar(&[u8], &[u8]) -> u32
+pub fn acta_simd::kernels::normalize_inplace(&mut [f32])
+pub mod acta_simd::metric
+pub enum acta_simd::metric::DistanceMetric
+pub acta_simd::metric::DistanceMetric::Cosine
+pub acta_simd::metric::DistanceMetric::DotProduct
+pub acta_simd::metric::DistanceMetric::Euclidean
+impl core::clone::Clone for acta_simd::metric::DistanceMetric
+pub fn acta_simd::metric::DistanceMetric::clone(&self) -> Self
+impl core::cmp::Eq for acta_simd::metric::DistanceMetric
+impl core::cmp::PartialEq for acta_simd::metric::DistanceMetric
+pub fn acta_simd::metric::DistanceMetric::eq(&self, &Self) -> bool
+impl core::fmt::Debug for acta_simd::metric::DistanceMetric
+pub fn acta_simd::metric::DistanceMetric::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for acta_simd::metric::DistanceMetric
+pub fn acta_simd::metric::DistanceMetric::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for acta_simd::metric::DistanceMetric
+impl core::marker::StructuralPartialEq for acta_simd::metric::DistanceMetric
+impl core::marker::Forget for acta_simd::metric::DistanceMetric
+impl core::marker::Freeze for acta_simd::metric::DistanceMetric
+impl core::marker::Send for acta_simd::metric::DistanceMetric
+impl core::marker::Sync for acta_simd::metric::DistanceMetric
+impl core::marker::Unpin for acta_simd::metric::DistanceMetric
+impl core::marker::UnsafeUnpin for acta_simd::metric::DistanceMetric
+impl core::panic::unwind_safe::RefUnwindSafe for acta_simd::metric::DistanceMetric
+impl core::panic::unwind_safe::UnwindSafe for acta_simd::metric::DistanceMetric
+impl<T, U> core::convert::Into<U> for acta_simd::metric::DistanceMetric where U: core::convert::From<T>
+pub fn acta_simd::metric::DistanceMetric::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for acta_simd::metric::DistanceMetric where U: core::convert::Into<T>
+pub type acta_simd::metric::DistanceMetric::Error = never
+pub fn acta_simd::metric::DistanceMetric::try_from(U) -> core::result::Result<T, never>
+impl<T, U> core::convert::TryInto<U> for acta_simd::metric::DistanceMetric where U: core::convert::TryFrom<T>
+pub type acta_simd::metric::DistanceMetric::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn acta_simd::metric::DistanceMetric::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for acta_simd::metric::DistanceMetric where T: core::clone::Clone
+pub type acta_simd::metric::DistanceMetric::Owned = T
+pub fn acta_simd::metric::DistanceMetric::clone_into(&self, &mut T)
+pub fn acta_simd::metric::DistanceMetric::to_owned(&self) -> T
+impl<T> core::any::Any for acta_simd::metric::DistanceMetric where T: 'static + ?core::marker::Sized
+pub fn acta_simd::metric::DistanceMetric::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for acta_simd::metric::DistanceMetric where T: ?core::marker::Sized
+pub fn acta_simd::metric::DistanceMetric::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for acta_simd::metric::DistanceMetric where T: ?core::marker::Sized
+pub fn acta_simd::metric::DistanceMetric::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for acta_simd::metric::DistanceMetric where T: core::clone::Clone
+pub unsafe fn acta_simd::metric::DistanceMetric::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for acta_simd::metric::DistanceMetric
+pub fn acta_simd::metric::DistanceMetric::from(T) -> T
+pub enum acta_simd::DistanceMetric
+pub acta_simd::DistanceMetric::Cosine
+pub acta_simd::DistanceMetric::DotProduct
+pub acta_simd::DistanceMetric::Euclidean
+impl core::clone::Clone for acta_simd::metric::DistanceMetric
+pub fn acta_simd::metric::DistanceMetric::clone(&self) -> Self
+impl core::cmp::Eq for acta_simd::metric::DistanceMetric
+impl core::cmp::PartialEq for acta_simd::metric::DistanceMetric
+pub fn acta_simd::metric::DistanceMetric::eq(&self, &Self) -> bool
+impl core::fmt::Debug for acta_simd::metric::DistanceMetric
+pub fn acta_simd::metric::DistanceMetric::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for acta_simd::metric::DistanceMetric
+pub fn acta_simd::metric::DistanceMetric::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for acta_simd::metric::DistanceMetric
+impl core::marker::StructuralPartialEq for acta_simd::metric::DistanceMetric
+impl core::marker::Forget for acta_simd::metric::DistanceMetric
+impl core::marker::Freeze for acta_simd::metric::DistanceMetric
+impl core::marker::Send for acta_simd::metric::DistanceMetric
+impl core::marker::Sync for acta_simd::metric::DistanceMetric
+impl core::marker::Unpin for acta_simd::metric::DistanceMetric
+impl core::marker::UnsafeUnpin for acta_simd::metric::DistanceMetric
+impl core::panic::unwind_safe::RefUnwindSafe for acta_simd::metric::DistanceMetric
+impl core::panic::unwind_safe::UnwindSafe for acta_simd::metric::DistanceMetric
+impl<T, U> core::convert::Into<U> for acta_simd::metric::DistanceMetric where U: core::convert::From<T>
+pub fn acta_simd::metric::DistanceMetric::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for acta_simd::metric::DistanceMetric where U: core::convert::Into<T>
+pub type acta_simd::metric::DistanceMetric::Error = never
+pub fn acta_simd::metric::DistanceMetric::try_from(U) -> core::result::Result<T, never>
+impl<T, U> core::convert::TryInto<U> for acta_simd::metric::DistanceMetric where U: core::convert::TryFrom<T>
+pub type acta_simd::metric::DistanceMetric::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn acta_simd::metric::DistanceMetric::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for acta_simd::metric::DistanceMetric where T: core::clone::Clone
+pub type acta_simd::metric::DistanceMetric::Owned = T
+pub fn acta_simd::metric::DistanceMetric::clone_into(&self, &mut T)
+pub fn acta_simd::metric::DistanceMetric::to_owned(&self) -> T
+impl<T> core::any::Any for acta_simd::metric::DistanceMetric where T: 'static + ?core::marker::Sized
+pub fn acta_simd::metric::DistanceMetric::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for acta_simd::metric::DistanceMetric where T: ?core::marker::Sized
+pub fn acta_simd::metric::DistanceMetric::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for acta_simd::metric::DistanceMetric where T: ?core::marker::Sized
+pub fn acta_simd::metric::DistanceMetric::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for acta_simd::metric::DistanceMetric where T: core::clone::Clone
+pub unsafe fn acta_simd::metric::DistanceMetric::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for acta_simd::metric::DistanceMetric
+pub fn acta_simd::metric::DistanceMetric::from(T) -> T
+#[non_exhaustive] pub enum acta_simd::SimdError
+pub acta_simd::SimdError::DimensionMismatch
+pub acta_simd::SimdError::DimensionMismatch::left: usize
+pub acta_simd::SimdError::DimensionMismatch::right: usize
+pub acta_simd::SimdError::InvalidInput(&'static str)
+pub acta_simd::SimdError::UnsupportedMetric
+impl core::clone::Clone for acta_simd::error::SimdError
+pub fn acta_simd::error::SimdError::clone(&self) -> Self
+impl core::cmp::PartialEq for acta_simd::error::SimdError
+pub fn acta_simd::error::SimdError::eq(&self, &Self) -> bool
+impl core::error::Error for acta_simd::error::SimdError
+impl core::fmt::Debug for acta_simd::error::SimdError
+pub fn acta_simd::error::SimdError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for acta_simd::error::SimdError
+pub fn acta_simd::error::SimdError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for acta_simd::error::SimdError
+impl core::marker::Forget for acta_simd::error::SimdError
+impl core::marker::Freeze for acta_simd::error::SimdError
+impl core::marker::Send for acta_simd::error::SimdError
+impl core::marker::Sync for acta_simd::error::SimdError
+impl core::marker::Unpin for acta_simd::error::SimdError
+impl core::marker::UnsafeUnpin for acta_simd::error::SimdError
+impl core::panic::unwind_safe::RefUnwindSafe for acta_simd::error::SimdError
+impl core::panic::unwind_safe::UnwindSafe for acta_simd::error::SimdError
+impl<T, U> core::convert::Into<U> for acta_simd::error::SimdError where U: core::convert::From<T>
+pub fn acta_simd::error::SimdError::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for acta_simd::error::SimdError where U: core::convert::Into<T>
+pub type acta_simd::error::SimdError::Error = never
+pub fn acta_simd::error::SimdError::try_from(U) -> core::result::Result<T, never>
+impl<T, U> core::convert::TryInto<U> for acta_simd::error::SimdError where U: core::convert::TryFrom<T>
+pub type acta_simd::error::SimdError::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn acta_simd::error::SimdError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for acta_simd::error::SimdError where T: core::clone::Clone
+pub type acta_simd::error::SimdError::Owned = T
+pub fn acta_simd::error::SimdError::clone_into(&self, &mut T)
+pub fn acta_simd::error::SimdError::to_owned(&self) -> T
+impl<T> alloc::string::ToString for acta_simd::error::SimdError where T: core::fmt::Display + ?core::marker::Sized
+pub fn acta_simd::error::SimdError::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for acta_simd::error::SimdError where T: 'static + ?core::marker::Sized
+pub fn acta_simd::error::SimdError::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for acta_simd::error::SimdError where T: ?core::marker::Sized
+pub fn acta_simd::error::SimdError::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for acta_simd::error::SimdError where T: ?core::marker::Sized
+pub fn acta_simd::error::SimdError::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for acta_simd::error::SimdError where T: core::clone::Clone
+pub unsafe fn acta_simd::error::SimdError::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for acta_simd::error::SimdError
+pub fn acta_simd::error::SimdError::from(T) -> T
+pub enum acta_simd::SimdTarget
+pub acta_simd::SimdTarget::Auto
+pub acta_simd::SimdTarget::Avx2
+pub acta_simd::SimdTarget::Avx512
+pub acta_simd::SimdTarget::Neon
+pub acta_simd::SimdTarget::Scalar
+impl core::clone::Clone for acta_simd::dispatch::SimdTarget
+pub fn acta_simd::dispatch::SimdTarget::clone(&self) -> Self
+impl core::cmp::Eq for acta_simd::dispatch::SimdTarget
+impl core::cmp::PartialEq for acta_simd::dispatch::SimdTarget
+pub fn acta_simd::dispatch::SimdTarget::eq(&self, &Self) -> bool
+impl core::default::Default for acta_simd::dispatch::SimdTarget
+pub fn acta_simd::dispatch::SimdTarget::default() -> Self
+impl core::fmt::Debug for acta_simd::dispatch::SimdTarget
+pub fn acta_simd::dispatch::SimdTarget::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for acta_simd::dispatch::SimdTarget
+impl core::marker::StructuralPartialEq for acta_simd::dispatch::SimdTarget
+impl core::marker::Forget for acta_simd::dispatch::SimdTarget
+impl core::marker::Freeze for acta_simd::dispatch::SimdTarget
+impl core::marker::Send for acta_simd::dispatch::SimdTarget
+impl core::marker::Sync for acta_simd::dispatch::SimdTarget
+impl core::marker::Unpin for acta_simd::dispatch::SimdTarget
+impl core::marker::UnsafeUnpin for acta_simd::dispatch::SimdTarget
+impl core::panic::unwind_safe::RefUnwindSafe for acta_simd::dispatch::SimdTarget
+impl core::panic::unwind_safe::UnwindSafe for acta_simd::dispatch::SimdTarget
+impl<T, U> core::convert::Into<U> for acta_simd::dispatch::SimdTarget where U: core::convert::From<T>
+pub fn acta_simd::dispatch::SimdTarget::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for acta_simd::dispatch::SimdTarget where U: core::convert::Into<T>
+pub type acta_simd::dispatch::SimdTarget::Error = never
+pub fn acta_simd::dispatch::SimdTarget::try_from(U) -> core::result::Result<T, never>
+impl<T, U> core::convert::TryInto<U> for acta_simd::dispatch::SimdTarget where U: core::convert::TryFrom<T>
+pub type acta_simd::dispatch::SimdTarget::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn acta_simd::dispatch::SimdTarget::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for acta_simd::dispatch::SimdTarget where T: core::clone::Clone
+pub type acta_simd::dispatch::SimdTarget::Owned = T
+pub fn acta_simd::dispatch::SimdTarget::clone_into(&self, &mut T)
+pub fn acta_simd::dispatch::SimdTarget::to_owned(&self) -> T
+impl<T> core::any::Any for acta_simd::dispatch::SimdTarget where T: 'static + ?core::marker::Sized
+pub fn acta_simd::dispatch::SimdTarget::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for acta_simd::dispatch::SimdTarget where T: ?core::marker::Sized
+pub fn acta_simd::dispatch::SimdTarget::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for acta_simd::dispatch::SimdTarget where T: ?core::marker::Sized
+pub fn acta_simd::dispatch::SimdTarget::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for acta_simd::dispatch::SimdTarget where T: core::clone::Clone
+pub unsafe fn acta_simd::dispatch::SimdTarget::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for acta_simd::dispatch::SimdTarget
+pub fn acta_simd::dispatch::SimdTarget::from(T) -> T
+pub struct acta_simd::CosineSimilarityPartsF32U8
+pub acta_simd::CosineSimilarityPartsF32U8::dot: f32
+pub acta_simd::CosineSimilarityPartsF32U8::norm_a_sq: f32
+pub acta_simd::CosineSimilarityPartsF32U8::norm_b_sq: f32
+impl core::clone::Clone for acta_simd::kernels::CosineSimilarityPartsF32U8
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::clone(&self) -> Self
+impl core::cmp::PartialEq for acta_simd::kernels::CosineSimilarityPartsF32U8
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::eq(&self, &Self) -> bool
+impl core::fmt::Debug for acta_simd::kernels::CosineSimilarityPartsF32U8
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::StructuralPartialEq for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::Forget for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::Freeze for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::Send for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::Sync for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::Unpin for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::marker::UnsafeUnpin for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::panic::unwind_safe::RefUnwindSafe for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl core::panic::unwind_safe::UnwindSafe for acta_simd::kernels::CosineSimilarityPartsF32U8
+impl<T, U> core::convert::Into<U> for acta_simd::kernels::CosineSimilarityPartsF32U8 where U: core::convert::From<T>
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for acta_simd::kernels::CosineSimilarityPartsF32U8 where U: core::convert::Into<T>
+pub type acta_simd::kernels::CosineSimilarityPartsF32U8::Error = never
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::try_from(U) -> core::result::Result<T, never>
+impl<T, U> core::convert::TryInto<U> for acta_simd::kernels::CosineSimilarityPartsF32U8 where U: core::convert::TryFrom<T>
+pub type acta_simd::kernels::CosineSimilarityPartsF32U8::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for acta_simd::kernels::CosineSimilarityPartsF32U8 where T: core::clone::Clone
+pub type acta_simd::kernels::CosineSimilarityPartsF32U8::Owned = T
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::clone_into(&self, &mut T)
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::to_owned(&self) -> T
+impl<T> core::any::Any for acta_simd::kernels::CosineSimilarityPartsF32U8 where T: 'static + ?core::marker::Sized
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for acta_simd::kernels::CosineSimilarityPartsF32U8 where T: ?core::marker::Sized
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for acta_simd::kernels::CosineSimilarityPartsF32U8 where T: ?core::marker::Sized
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for acta_simd::kernels::CosineSimilarityPartsF32U8 where T: core::clone::Clone
+pub unsafe fn acta_simd::kernels::CosineSimilarityPartsF32U8::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for acta_simd::kernels::CosineSimilarityPartsF32U8
+pub fn acta_simd::kernels::CosineSimilarityPartsF32U8::from(T) -> T
+pub struct acta_simd::CosineSimilarityPartsU8
+pub acta_simd::CosineSimilarityPartsU8::dot: u32
+pub acta_simd::CosineSimilarityPartsU8::norm_a_sq: u32
+pub acta_simd::CosineSimilarityPartsU8::norm_b_sq: u32
+impl core::clone::Clone for acta_simd::kernels::CosineSimilarityPartsU8
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::clone(&self) -> Self
+impl core::cmp::Eq for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::cmp::PartialEq for acta_simd::kernels::CosineSimilarityPartsU8
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::eq(&self, &Self) -> bool
+impl core::fmt::Debug for acta_simd::kernels::CosineSimilarityPartsU8
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::StructuralPartialEq for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::Forget for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::Freeze for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::Send for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::Sync for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::Unpin for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::marker::UnsafeUnpin for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::panic::unwind_safe::RefUnwindSafe for acta_simd::kernels::CosineSimilarityPartsU8
+impl core::panic::unwind_safe::UnwindSafe for acta_simd::kernels::CosineSimilarityPartsU8
+impl<T, U> core::convert::Into<U> for acta_simd::kernels::CosineSimilarityPartsU8 where U: core::convert::From<T>
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for acta_simd::kernels::CosineSimilarityPartsU8 where U: core::convert::Into<T>
+pub type acta_simd::kernels::CosineSimilarityPartsU8::Error = never
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::try_from(U) -> core::result::Result<T, never>
+impl<T, U> core::convert::TryInto<U> for acta_simd::kernels::CosineSimilarityPartsU8 where U: core::convert::TryFrom<T>
+pub type acta_simd::kernels::CosineSimilarityPartsU8::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for acta_simd::kernels::CosineSimilarityPartsU8 where T: core::clone::Clone
+pub type acta_simd::kernels::CosineSimilarityPartsU8::Owned = T
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::clone_into(&self, &mut T)
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::to_owned(&self) -> T
+impl<T> core::any::Any for acta_simd::kernels::CosineSimilarityPartsU8 where T: 'static + ?core::marker::Sized
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for acta_simd::kernels::CosineSimilarityPartsU8 where T: ?core::marker::Sized
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for acta_simd::kernels::CosineSimilarityPartsU8 where T: ?core::marker::Sized
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for acta_simd::kernels::CosineSimilarityPartsU8 where T: core::clone::Clone
+pub unsafe fn acta_simd::kernels::CosineSimilarityPartsU8::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for acta_simd::kernels::CosineSimilarityPartsU8
+pub fn acta_simd::kernels::CosineSimilarityPartsU8::from(T) -> T
+pub struct acta_simd::Dispatcher
+impl acta_simd::dispatch::Dispatcher
+pub fn acta_simd::dispatch::Dispatcher::auto() -> Self
+pub fn acta_simd::dispatch::Dispatcher::cosine_distance(&self, &[f32], &[f32]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::dispatch::Dispatcher::cosine_distance_f32_bytes(&self, &[f32], &[u8]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::dispatch::Dispatcher::cosine_similarity_parts_u8(&self, &[u8], &[u8]) -> acta_simd::error::Result<acta_simd::kernels::CosineSimilarityPartsU8>
+pub fn acta_simd::dispatch::Dispatcher::dot_product_distance(&self, &[f32], &[f32]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::dispatch::Dispatcher::dot_product_distance_f32_bytes(&self, &[f32], &[u8]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::dispatch::Dispatcher::dot_product_u8(&self, &[u8], &[u8]) -> acta_simd::error::Result<u32>
+pub fn acta_simd::dispatch::Dispatcher::euclidean_distance(&self, &[f32], &[f32]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::dispatch::Dispatcher::euclidean_distance_f32_bytes(&self, &[f32], &[u8]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::dispatch::Dispatcher::euclidean_distance_sq_u8(&self, &[u8], &[u8]) -> acta_simd::error::Result<u32>
+pub const fn acta_simd::dispatch::Dispatcher::new(acta_simd::dispatch::SimdTarget) -> Self
+pub const fn acta_simd::dispatch::Dispatcher::scalar() -> Self
+pub const fn acta_simd::dispatch::Dispatcher::target(&self) -> acta_simd::dispatch::SimdTarget
+impl core::clone::Clone for acta_simd::dispatch::Dispatcher
+pub fn acta_simd::dispatch::Dispatcher::clone(&self) -> Self
+impl core::cmp::Eq for acta_simd::dispatch::Dispatcher
+impl core::cmp::PartialEq for acta_simd::dispatch::Dispatcher
+pub fn acta_simd::dispatch::Dispatcher::eq(&self, &Self) -> bool
+impl core::default::Default for acta_simd::dispatch::Dispatcher
+pub fn acta_simd::dispatch::Dispatcher::default() -> Self
+impl core::fmt::Debug for acta_simd::dispatch::Dispatcher
+pub fn acta_simd::dispatch::Dispatcher::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for acta_simd::dispatch::Dispatcher
+impl core::marker::StructuralPartialEq for acta_simd::dispatch::Dispatcher
+impl core::marker::Forget for acta_simd::dispatch::Dispatcher
+impl core::marker::Freeze for acta_simd::dispatch::Dispatcher
+impl core::marker::Send for acta_simd::dispatch::Dispatcher
+impl core::marker::Sync for acta_simd::dispatch::Dispatcher
+impl core::marker::Unpin for acta_simd::dispatch::Dispatcher
+impl core::marker::UnsafeUnpin for acta_simd::dispatch::Dispatcher
+impl core::panic::unwind_safe::RefUnwindSafe for acta_simd::dispatch::Dispatcher
+impl core::panic::unwind_safe::UnwindSafe for acta_simd::dispatch::Dispatcher
+impl<T, U> core::convert::Into<U> for acta_simd::dispatch::Dispatcher where U: core::convert::From<T>
+pub fn acta_simd::dispatch::Dispatcher::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for acta_simd::dispatch::Dispatcher where U: core::convert::Into<T>
+pub type acta_simd::dispatch::Dispatcher::Error = never
+pub fn acta_simd::dispatch::Dispatcher::try_from(U) -> core::result::Result<T, never>
+impl<T, U> core::convert::TryInto<U> for acta_simd::dispatch::Dispatcher where U: core::convert::TryFrom<T>
+pub type acta_simd::dispatch::Dispatcher::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn acta_simd::dispatch::Dispatcher::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for acta_simd::dispatch::Dispatcher where T: core::clone::Clone
+pub type acta_simd::dispatch::Dispatcher::Owned = T
+pub fn acta_simd::dispatch::Dispatcher::clone_into(&self, &mut T)
+pub fn acta_simd::dispatch::Dispatcher::to_owned(&self) -> T
+impl<T> core::any::Any for acta_simd::dispatch::Dispatcher where T: 'static + ?core::marker::Sized
+pub fn acta_simd::dispatch::Dispatcher::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for acta_simd::dispatch::Dispatcher where T: ?core::marker::Sized
+pub fn acta_simd::dispatch::Dispatcher::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for acta_simd::dispatch::Dispatcher where T: ?core::marker::Sized
+pub fn acta_simd::dispatch::Dispatcher::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for acta_simd::dispatch::Dispatcher where T: core::clone::Clone
+pub unsafe fn acta_simd::dispatch::Dispatcher::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for acta_simd::dispatch::Dispatcher
+pub fn acta_simd::dispatch::Dispatcher::from(T) -> T
+pub struct acta_simd::MetricDistanceFn
+pub acta_simd::MetricDistanceFn::dispatcher: acta_simd::dispatch::Dispatcher
+pub acta_simd::MetricDistanceFn::metric: acta_simd::metric::DistanceMetric
+impl acta_simd::contract::MetricDistanceFn
+pub fn acta_simd::contract::MetricDistanceFn::new(acta_simd::metric::DistanceMetric) -> Self
+pub const fn acta_simd::contract::MetricDistanceFn::with_dispatcher(acta_simd::metric::DistanceMetric, acta_simd::dispatch::Dispatcher) -> Self
+impl acta_simd::contract::DistanceFn for acta_simd::contract::MetricDistanceFn
+pub fn acta_simd::contract::MetricDistanceFn::distance(&self, &[f32], &[f32]) -> acta_simd::error::Result<f32>
+impl core::clone::Clone for acta_simd::contract::MetricDistanceFn
+pub fn acta_simd::contract::MetricDistanceFn::clone(&self) -> Self
+impl core::fmt::Debug for acta_simd::contract::MetricDistanceFn
+pub fn acta_simd::contract::MetricDistanceFn::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for acta_simd::contract::MetricDistanceFn
+impl core::marker::Forget for acta_simd::contract::MetricDistanceFn
+impl core::marker::Freeze for acta_simd::contract::MetricDistanceFn
+impl core::marker::Send for acta_simd::contract::MetricDistanceFn
+impl core::marker::Sync for acta_simd::contract::MetricDistanceFn
+impl core::marker::Unpin for acta_simd::contract::MetricDistanceFn
+impl core::marker::UnsafeUnpin for acta_simd::contract::MetricDistanceFn
+impl core::panic::unwind_safe::RefUnwindSafe for acta_simd::contract::MetricDistanceFn
+impl core::panic::unwind_safe::UnwindSafe for acta_simd::contract::MetricDistanceFn
+impl<T, U> core::convert::Into<U> for acta_simd::contract::MetricDistanceFn where U: core::convert::From<T>
+pub fn acta_simd::contract::MetricDistanceFn::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for acta_simd::contract::MetricDistanceFn where U: core::convert::Into<T>
+pub type acta_simd::contract::MetricDistanceFn::Error = never
+pub fn acta_simd::contract::MetricDistanceFn::try_from(U) -> core::result::Result<T, never>
+impl<T, U> core::convert::TryInto<U> for acta_simd::contract::MetricDistanceFn where U: core::convert::TryFrom<T>
+pub type acta_simd::contract::MetricDistanceFn::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn acta_simd::contract::MetricDistanceFn::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for acta_simd::contract::MetricDistanceFn where T: core::clone::Clone
+pub type acta_simd::contract::MetricDistanceFn::Owned = T
+pub fn acta_simd::contract::MetricDistanceFn::clone_into(&self, &mut T)
+pub fn acta_simd::contract::MetricDistanceFn::to_owned(&self) -> T
+impl<T> core::any::Any for acta_simd::contract::MetricDistanceFn where T: 'static + ?core::marker::Sized
+pub fn acta_simd::contract::MetricDistanceFn::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for acta_simd::contract::MetricDistanceFn where T: ?core::marker::Sized
+pub fn acta_simd::contract::MetricDistanceFn::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for acta_simd::contract::MetricDistanceFn where T: ?core::marker::Sized
+pub fn acta_simd::contract::MetricDistanceFn::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for acta_simd::contract::MetricDistanceFn where T: core::clone::Clone
+pub unsafe fn acta_simd::contract::MetricDistanceFn::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for acta_simd::contract::MetricDistanceFn
+pub fn acta_simd::contract::MetricDistanceFn::from(T) -> T
+pub trait acta_simd::DistanceFn: core::marker::Send + core::marker::Sync
+pub fn acta_simd::DistanceFn::distance(&self, &[f32], &[f32]) -> acta_simd::error::Result<f32>
+impl acta_simd::contract::DistanceFn for acta_simd::contract::MetricDistanceFn
+pub fn acta_simd::contract::MetricDistanceFn::distance(&self, &[f32], &[f32]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::compute_distance(&[f32], &[f32], acta_simd::metric::DistanceMetric) -> acta_simd::error::Result<f32>
+pub fn acta_simd::compute_distance_f32_bytes_trusted(&[f32], &[u8], acta_simd::metric::DistanceMetric) -> acta_simd::error::Result<f32>
+pub fn acta_simd::compute_distance_trusted(&[f32], &[f32], acta_simd::metric::DistanceMetric) -> acta_simd::error::Result<f32>
+pub fn acta_simd::cosine_distance(&[f32], &[f32]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::cosine_distance_f32_bytes(&[f32], &[u8]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::cosine_distance_f32_bytes_scalar(&[f32], &[u8]) -> f32
+pub fn acta_simd::cosine_distance_scalar(&[f32], &[f32]) -> f32
+pub fn acta_simd::cosine_similarity_parts_f32_u8(&[f32], &[u8]) -> acta_simd::kernels::CosineSimilarityPartsF32U8
+pub fn acta_simd::cosine_similarity_parts_u8(&[u8], &[u8]) -> acta_simd::error::Result<acta_simd::kernels::CosineSimilarityPartsU8>
+pub fn acta_simd::cosine_similarity_parts_u8_scalar(&[u8], &[u8]) -> acta_simd::kernels::CosineSimilarityPartsU8
+pub fn acta_simd::dot_product_distance(&[f32], &[f32]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::dot_product_distance_f32_bytes(&[f32], &[u8]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::dot_product_f32_bytes_scalar(&[f32], &[u8]) -> f32
+pub fn acta_simd::dot_product_f32_u8(&[f32], &[u8]) -> f32
+pub fn acta_simd::dot_product_scalar(&[f32], &[f32]) -> f32
+pub fn acta_simd::dot_product_u8(&[u8], &[u8]) -> acta_simd::error::Result<u32>
+pub fn acta_simd::dot_product_u8_scalar(&[u8], &[u8]) -> u32
+pub fn acta_simd::euclidean_distance(&[f32], &[f32]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::euclidean_distance_f32_bytes(&[f32], &[u8]) -> acta_simd::error::Result<f32>
+pub fn acta_simd::euclidean_distance_f32_bytes_scalar(&[f32], &[u8]) -> f32
+pub fn acta_simd::euclidean_distance_scalar(&[f32], &[f32]) -> f32
+pub fn acta_simd::euclidean_distance_sq_f32_u8(&[f32], &[u8], &[f32], &[f32]) -> f32
+pub fn acta_simd::euclidean_distance_sq_u8(&[u8], &[u8]) -> acta_simd::error::Result<u32>
+pub fn acta_simd::euclidean_distance_sq_u8_scalar(&[u8], &[u8]) -> u32
+pub fn acta_simd::normalize_inplace(&mut [f32])
+pub fn acta_simd::validate_vector(&[f32]) -> acta_simd::error::Result<()>
+pub type acta_simd::Error = acta_simd::error::SimdError
+pub type acta_simd::Result<T> = core::result::Result<T, acta_simd::error::SimdError>

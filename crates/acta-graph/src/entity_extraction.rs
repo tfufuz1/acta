@@ -15,6 +15,8 @@
 // kann an genau dieser Stelle durch Aufruf von `RuleBasedEntityExtractor::extract` und anschließender
 // Übergabe der extrahierten Relationen an `ingest_extracted_relations` eingehängt werden.
 
+
+// SECTION Entity Extraction Core Implementation
 #![forbid(unsafe_code)]
 
 use crate::csr::{CsrGraph, EdgeType};
@@ -37,7 +39,7 @@ pub struct ExtractedRelation {
 
 impl ExtractedRelation {
     /// Erstellt eine neue `ExtractedRelation`.
-// ANCHOR[acta-graph:SRC-ENTITY-EXTRACTION-002]
+    // ANCHOR[acta-graph:SRC-ENTITY-EXTRACTION-002]
     pub fn new(
         source: impl Into<String>,
         target: impl Into<String>,
@@ -92,7 +94,7 @@ pub struct RuleBasedEntityExtractor {
 
 impl RuleBasedEntityExtractor {
     /// Erstellt einen neuen `RuleBasedEntityExtractor` mit der angegebenen Mindest-Konfidenz-Schwelle.
-// ANCHOR[acta-graph:SRC-ENTITY-EXTRACTION-005]
+    // ANCHOR[acta-graph:SRC-ENTITY-EXTRACTION-005]
     pub fn new(min_confidence: f32) -> Self {
         let patterns = vec![
             RelationPattern {
@@ -316,3 +318,5 @@ pub fn ingest_extracted_relations(
 
     Ok(created_edges)
 }
+
+// !SECTION Entity Extraction Core Implementation

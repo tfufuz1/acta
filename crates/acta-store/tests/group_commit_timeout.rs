@@ -1,6 +1,6 @@
 //! Testverifikation für Follower-Timeout während blockiertem Group-Commit Leader.
 //! Nacharbeit zu Commit 694fa8c2 (Catch-Up Verification): Stellt sicher, dass
-//! Follower nach `tx_timeout` verlässlichen `ActaError::CommitTimeout` erhalten,
+//! Follower nach `tx_timeout` verlässlichen `StoreError::CommitTimeout` erhalten,
 //! die Pending Queue bereinigt wird und Folgetransaktionen erfolgreich durchlaufen.
 //!
 //! Ausführung: cargo test -p acta-store --test group_commit_timeout --features fault-injection
@@ -10,7 +10,8 @@
 use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
 use acta_store::wal::{DELAY_APPEND_FOR_TX, DELAY_APPEND_MS};
-use acta_types::{ActaError, TxId};
+use acta_store::StoreError;
+use acta_types::TxId;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
@@ -78,7 +79,7 @@ async fn test_group_commit_follower_timeout_and_queue_recovery() {
 
     let err = follower_res.as_ref().expect_err("Expected error");
     assert!(
-        matches!(err, ActaError::CommitTimeout { .. }),
+        matches!(err, StoreError::CommitTimeout { .. }),
         "Expected CommitTimeout, got {:?}",
         err
     );
@@ -179,7 +180,7 @@ async fn test_group_commit_follower_timeout_preserves_other_followers() {
     );
     let follower_err = follower_res.as_ref().unwrap_err();
     assert!(
-        matches!(follower_err, ActaError::CommitTimeout { .. }),
+        matches!(follower_err, StoreError::CommitTimeout { .. }),
         "Expected CommitTimeout, got {:?}",
         follower_err
     );

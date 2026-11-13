@@ -31,7 +31,7 @@ use acta_simd::kernels::scalar::{
 use acta_simd::{
     compute_distance, compute_distance_f32_bytes_trusted, compute_distance_trusted, validate_vector,
 };
-use acta_types::{ActaError, DistanceMetric};
+use acta_simd::{DistanceMetric, SimdError};
 
 #[test]
 // ANCHOR[acta-simd:TEST-EDGE-NAN-DETECTION]
@@ -39,7 +39,7 @@ use acta_types::{ActaError, DistanceMetric};
 fn test_nan_detection_in_vector() {
     let nan_vec = vec![1.0f32, 2.0, f32::NAN, 4.0];
     let res = validate_vector(&nan_vec);
-    assert!(matches!(res, Err(ActaError::InvalidInput(_))));
+    assert!(matches!(res, Err(SimdError::InvalidInput(_))));
 }
 
 #[test]
@@ -49,13 +49,13 @@ fn test_infinity_detection_in_vector() {
     let inf_vec = vec![1.0f32, f32::INFINITY, 3.0];
     assert!(matches!(
         validate_vector(&inf_vec),
-        Err(ActaError::InvalidInput(_))
+        Err(SimdError::InvalidInput(_))
     ));
 
     let neg_inf_vec = vec![1.0f32, f32::NEG_INFINITY, 3.0];
     assert!(matches!(
         validate_vector(&neg_inf_vec),
-        Err(ActaError::InvalidInput(_))
+        Err(SimdError::InvalidInput(_))
     ));
 }
 
@@ -243,70 +243,43 @@ fn test_dimension_mismatch_error() {
 
     assert!(matches!(
         cosine_distance(&a, &b),
-        Err(ActaError::EmbeddingDimensionMismatch {
-            expected: 8,
-            got: 10
-        })
+        Err(SimdError::DimensionMismatch { left: 8, right: 10 })
     ));
     assert!(matches!(
         euclidean_distance(&a, &b),
-        Err(ActaError::EmbeddingDimensionMismatch {
-            expected: 8,
-            got: 10
-        })
+        Err(SimdError::DimensionMismatch { left: 8, right: 10 })
     ));
     assert!(matches!(
         dot_product_distance(&a, &b),
-        Err(ActaError::EmbeddingDimensionMismatch {
-            expected: 8,
-            got: 10
-        })
+        Err(SimdError::DimensionMismatch { left: 8, right: 10 })
     ));
 
     assert!(matches!(
         cosine_distance_f32_bytes(&a, &b_bytes),
-        Err(ActaError::EmbeddingDimensionMismatch {
-            expected: 8,
-            got: 4
-        })
+        Err(SimdError::DimensionMismatch { left: 8, right: 4 })
     ));
     assert!(matches!(
         euclidean_distance_f32_bytes(&a, &b_bytes),
-        Err(ActaError::EmbeddingDimensionMismatch {
-            expected: 8,
-            got: 4
-        })
+        Err(SimdError::DimensionMismatch { left: 8, right: 4 })
     ));
     assert!(matches!(
         dot_product_distance_f32_bytes(&a, &b_bytes),
-        Err(ActaError::EmbeddingDimensionMismatch {
-            expected: 8,
-            got: 4
-        })
+        Err(SimdError::DimensionMismatch { left: 8, right: 4 })
     ));
 
     let u8_a = vec![1u8; 8];
     let u8_b = vec![1u8; 12];
     assert!(matches!(
         dot_product_u8(&u8_a, &u8_b),
-        Err(ActaError::EmbeddingDimensionMismatch {
-            expected: 8,
-            got: 12
-        })
+        Err(SimdError::DimensionMismatch { left: 8, right: 12 })
     ));
     assert!(matches!(
         euclidean_distance_sq_u8(&u8_a, &u8_b),
-        Err(ActaError::EmbeddingDimensionMismatch {
-            expected: 8,
-            got: 12
-        })
+        Err(SimdError::DimensionMismatch { left: 8, right: 12 })
     ));
     assert!(matches!(
         cosine_similarity_parts_u8(&u8_a, &u8_b),
-        Err(ActaError::EmbeddingDimensionMismatch {
-            expected: 8,
-            got: 12
-        })
+        Err(SimdError::DimensionMismatch { left: 8, right: 12 })
     ));
 }
 
@@ -456,4 +429,128 @@ fn test_scalar_functions_zero_length_and_single_element_slices() {
         euclidean_distance_sq_u8_scalar(&single_u8_a, &single_u8_b),
         25
     );
+}
+
+/// SPEC: INV-SIMD-FINITE-1
+// Invariante INV-SIMD-FINITE-1: Nie mit NaN/Inf rechnen, fail-closed Abweisung.
+#[test]
+fn test_inv_simd_finite_1() {
+    let valid = [1.0f32, 2.0, 3.0, 4.0];
+    let with_nan = [1.0f32, f32::NAN, 3.0, 4.0];
+    let with_inf = [1.0f32, 2.0, f32::INFINITY, 4.0];
+    let with_neg_inf = [1.0f32, 2.0, 3.0, f32::NEG_INFINITY];
+
+    assert!(acta_simd::validate_vector(&valid).is_ok());
+    assert!(acta_simd::validate_vector(&with_nan).is_err());
+    assert!(acta_simd::validate_vector(&with_inf).is_err());
+    assert!(acta_simd::validate_vector(&with_neg_inf).is_err());
+
+    // compute_distance validiert Fail-Closed
+    assert!(acta_simd::compute_distance(&with_nan, &valid, DistanceMetric::Cosine).is_err());
+    assert!(acta_simd::compute_distance(&valid, &with_nan, DistanceMetric::Cosine).is_err());
+    assert!(
+        acta_simd::compute_distance(&with_inf, &valid, DistanceMetric::Euclidean).is_err()
+    );
+    assert!(
+        acta_simd::compute_distance(&valid, &with_neg_inf, DistanceMetric::DotProduct)
+            .is_err()
+    );
+
+    // Denormale Gleitkommazahlen sind finite Zahlen und müssen berechenbar sein (kein NaN Ergebnis)
+    let denormal_a = [1e-40f32, 2e-40, 3e-40, 4e-40];
+    let denormal_b = [2e-40f32, 3e-40, 4e-40, 5e-40];
+    assert!(acta_simd::validate_vector(&denormal_a).is_ok());
+    let res = acta_simd::compute_distance(&denormal_a, &denormal_b, DistanceMetric::Cosine);
+    assert!(res.is_ok());
+    assert!(!res.unwrap().is_nan());
+}
+
+/// SPEC: INV-SIMD-ALIGN-1
+// Invariante INV-SIMD-ALIGN-1: Byte-Puffer ganzzahlig durch 4, keine Annahme über Ausrichtung.
+#[test]
+fn test_inv_simd_align_1() {
+    let a = [1.0f32, 2.0, 3.0, 4.0];
+    let b = [5.0f32, 6.0, 7.0, 8.0];
+
+    // Korrekt ausgerichtete Bytes
+    let b_bytes_aligned: Vec<u8> = b.iter().flat_map(|x| x.to_le_bytes()).collect();
+    assert_eq!(b_bytes_aligned.len() % 4, 0);
+
+    let res = acta_simd::compute_distance_f32_bytes_trusted(
+        &a,
+        &b_bytes_aligned,
+        DistanceMetric::Cosine,
+    )
+    .expect("valid distance");
+
+    // Künstlich unaligned Byte-Slice (mit 1-3 vorangestellten Padding-Bytes)
+    for offset in 1..=3 {
+        let mut unaligned_buf = vec![0u8; offset];
+        unaligned_buf.extend_from_slice(&b_bytes_aligned);
+
+        let slice = &unaligned_buf[offset..];
+        assert_eq!(slice.len() % 4, 0);
+        let res_unaligned =
+            acta_simd::compute_distance_f32_bytes_trusted(&a, slice, DistanceMetric::Cosine);
+        assert!(res_unaligned.is_ok());
+        assert_eq!(res.to_bits(), res_unaligned.unwrap().to_bits());
+    }
+
+    // Ungültige Byte-Puffer-Länge (nicht durch 4 teilbar)
+    let invalid_len_bytes = [1u8, 2, 3, 4, 5];
+    assert!(acta_simd::compute_distance_f32_bytes_trusted(
+        &a,
+        &invalid_len_bytes,
+        DistanceMetric::Cosine,
+    )
+    .is_err());
+}
+
+/// SPEC: INV-SIMD-DETERMINISM-1
+// Invariante INV-SIMD-DETERMINISM-1: Jeder Kernel weicht höchstens um dokumentierte Toleranz (1e-5 relativ) von der Skalar-Referenz ab.
+#[test]
+fn test_inv_simd_determinism_1() {
+    // Teste über verschiedene Dimensionen inklusive SIMD-Grenzbreiten
+    let test_dims = [
+        1, 3, 7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65, 128, 384, 768, 1024, 1536,
+    ];
+
+    for &dim in &test_dims {
+        let a: Vec<f32> = (0..dim)
+            .map(|i| ((i * 17) % 100) as f32 * 0.05 + 0.1)
+            .collect();
+        let b: Vec<f32> = (0..dim)
+            .map(|i| ((i * 23) % 100) as f32 * 0.05 + 0.2)
+            .collect();
+
+        // Cosine
+        let cos_scalar = cosine_distance_scalar(&a, &b);
+        let cos_simd = cosine_distance(&a, &b).expect("valid distance");
+        let cos_diff = (cos_scalar - cos_simd).abs();
+        let cos_tol = 1e-4 * cos_scalar.abs().max(cos_simd.abs()).max(1.0);
+        assert!(
+            cos_diff <= cos_tol,
+            "Cosine determinism mismatch at dim {dim}: scalar={cos_scalar}, simd={cos_simd}, diff={cos_diff}, tol={cos_tol}"
+        );
+
+        // Euclidean
+        let euc_scalar = euclidean_distance_scalar(&a, &b);
+        let euc_simd = euclidean_distance(&a, &b).expect("valid distance");
+        let euc_diff = (euc_scalar - euc_simd).abs();
+        let euc_tol = 1e-4 * euc_scalar.abs().max(euc_simd.abs()).max(1.0);
+        assert!(
+            euc_diff <= euc_tol,
+            "Euclidean determinism mismatch at dim {dim}: scalar={euc_scalar}, simd={euc_simd}, diff={euc_diff}, tol={euc_tol}"
+        );
+
+        // Dot product
+        let dot_scalar = dot_product_scalar(&a, &b);
+        let dot_simd = dot_product_distance(&a, &b).expect("valid distance");
+        let dot_diff = (dot_scalar - dot_simd).abs();
+        let dot_tol = 1e-4 * dot_scalar.abs().max(dot_simd.abs()).max(1.0);
+        assert!(
+            dot_diff <= dot_tol,
+            "Dot product determinism mismatch at dim {dim}: scalar={dot_scalar}, simd={dot_simd}, diff={dot_diff}, tol={dot_tol}"
+        );
+    }
 }

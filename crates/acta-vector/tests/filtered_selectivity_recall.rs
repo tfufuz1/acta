@@ -1,4 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::needless_range_loop)]
+// FILE-CONTEXT
+// ZWECK: Recall-Analyse unter variierender Selektivität für ACORN und HNSW.
+// INVARIANTEN: Recall@k degradiert monoton mit sinkender Selektivität nicht unter 0.85.
+// HOTSPOTS: 30-120
+// STAND: 2026-11-12
 
 use acta_ports::SeededRng;
 use acta_ports::VectorIndex;

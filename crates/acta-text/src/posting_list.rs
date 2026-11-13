@@ -18,10 +18,11 @@
 //! Block-Max-Zusammenfassungen (à 64 Einträge) zur Beschleunigung des WAND-Algorithmus.
 //! Aktualisierungen erfolgen über RCU (Read-Copy-Update) für sperrenfreie Lesezugriffe.
 
-use acta_types::{ActaError, DocId};
+use crate::error::TextError;
+use acta_ids::DocId;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 // ANCHOR[acta-text:POST-001]
@@ -33,9 +34,11 @@ pub const POSTING_LIST_V2_MAGIC: &[u8; 4] = b"PL\x02\x00";
 pub const BLOCK_SIZE: usize = 64;
 
 #[cfg(not(feature = "docid-128"))]
+/// Primitiver Rohdatentyp für Dokument-IDs im Postings-Format.
 pub type DocIdRaw = u64;
 
 #[cfg(feature = "docid-128")]
+/// Primitiver Rohdatentyp für 128-Bit Dokument-IDs im Postings-Format.
 pub type DocIdRaw = u128;
 
 // ANCHOR[acta-text:POST-003]
@@ -68,17 +71,19 @@ pub struct Posting {
 
 impl Posting {
     #[inline]
+    /// Erzeugt einen neuen `Posting`-Eintrag.
     pub fn new(doc_id: DocId, tf: u32, doc_len: u32) -> Self {
         Self {
-            doc_id: doc_id.inner(),
+            doc_id: doc_id.inner() as _,
             tf,
             doc_len,
         }
     }
 
     #[inline]
+    /// Liefert die `DocId` dieses Eintrags.
     pub fn doc_id(&self) -> DocId {
-        DocId::new(self.doc_id)
+        DocId::new(self.doc_id as _)
     }
 }
 
@@ -173,7 +178,9 @@ impl PostingList {
         let mut new_postings = self.postings.clone();
         match new_postings.binary_search_by_key(&posting.doc_id, |p| p.doc_id) {
             Ok(idx) => {
-                new_postings[idx] = posting;
+                if let Some(target) = new_postings.get_mut(idx) {
+                    *target = posting;
+                }
             }
             Err(idx) => {
                 new_postings.insert(idx, posting);
@@ -190,7 +197,7 @@ impl PostingList {
     /// Entfernt ein Posting per Copy-On-Write (RCU).
     pub fn remove(&self, doc_id: DocId) -> Self {
         let mut new_postings = self.postings.clone();
-        if let Ok(idx) = new_postings.binary_search_by_key(&doc_id.inner(), |p| p.doc_id) {
+        if let Ok(idx) = new_postings.binary_search_by_key(&(doc_id.inner() as _), |p| p.doc_id) {
             new_postings.remove(idx);
         }
         let blocks = compute_blocks(&new_postings);
@@ -202,31 +209,21 @@ impl PostingList {
 
     // ANCHOR[acta-text:POST-014]
     /// Kodiert die Posting-Liste in das kompakte Binärformat mit Delta-Varint-Kompression.
-    pub fn encode_compact(&self) -> Result<Vec<u8>, ActaError> {
+    pub fn encode_compact(&self) -> Result<Vec<u8>, TextError> {
         let mut buf = Vec::with_capacity(4 + 8 + self.postings.len() * 8);
         buf.extend_from_slice(POSTING_LIST_V2_MAGIC);
         encode_varint(self.postings.len() as u64, &mut buf);
 
         let mut prev_doc_id = 0u64;
         for p in &self.postings {
-            let delta = (p.doc_id as u128)
-                .checked_sub(prev_doc_id as u128)
-                .ok_or_else(|| {
-                    ActaError::Storage(
-                        "Unsorted or overflow doc_id in posting list".to_string(),
-                    )
-                })? as u64;
+            let p_doc_raw = p.doc_id as u64;
+            let delta = p_doc_raw.checked_sub(prev_doc_id).ok_or_else(|| {
+                TextError::Storage("Unsorted or overflow doc_id in posting list".to_string())
+            })?;
             encode_varint(delta, &mut buf);
             encode_varint(p.tf as u64, &mut buf);
             encode_varint(p.doc_len as u64, &mut buf);
-            #[cfg(not(feature = "docid-128"))]
-            {
-                prev_doc_id = p.doc_id;
-            }
-            #[cfg(feature = "docid-128")]
-            {
-                prev_doc_id = p.doc_id as u64;
-            }
+            prev_doc_id = p_doc_raw;
         }
 
         Ok(buf)
@@ -234,33 +231,51 @@ impl PostingList {
 
     // ANCHOR[acta-text:POST-015]
     /// Dekodiert eine Posting-Liste aus dem Delta-Varint-Format mit Fallback auf Legacy-Bincode.
-    pub fn decode_compact(bytes: &[u8]) -> Result<Self, ActaError> {
+    ///
+    /// # Defensives Verhalten
+    /// Weist unvollständige, abgeschnittene, überlange, nicht-monotone oder überlaufende Daten
+    /// strikt ab und liefert einen Fehler statt Panics oder Endlosschleifen.
+    pub fn decode_compact(bytes: &[u8]) -> Result<Self, TextError> {
         if bytes.starts_with(POSTING_LIST_V2_MAGIC) {
             let mut offset = POSTING_LIST_V2_MAGIC.len();
-            let count = decode_varint(bytes, &mut offset)?;
+            let count_u64 = decode_varint(bytes, &mut offset)?;
+            let count = usize::try_from(count_u64).map_err(|_| {
+                TextError::Storage("Posting list count exceeds usize capacity".to_string())
+            })?;
             if count > 100_000_000 {
-                return Err(ActaError::Storage(format!(
-                    "Oversized posting list count: {}",
-                    count
+                return Err(TextError::Storage(format!(
+                    "Oversized posting list count: {count}",
                 )));
             }
-            let mut postings = Vec::with_capacity(count as usize);
+            let remaining_bytes = bytes.len().saturating_sub(offset);
+            if count > remaining_bytes {
+                return Err(TextError::Storage(
+                    "Declared posting count exceeds available byte buffer".to_string(),
+                ));
+            }
+
+            let mut postings = Vec::with_capacity(count);
             let mut prev_doc_id = 0u64;
+            let mut is_first = true;
 
             for _ in 0..count {
                 let delta = decode_varint(bytes, &mut offset)?;
                 let tf_u64 = decode_varint(bytes, &mut offset)?;
                 let doc_len_u64 = decode_varint(bytes, &mut offset)?;
 
+                if !is_first && delta == 0 {
+                    return Err(TextError::Storage(
+                        "Non-monotonic delta: subsequent doc_id delta must be > 0".to_string(),
+                    ));
+                }
+
                 let doc_id = prev_doc_id.checked_add(delta).ok_or_else(|| {
-                    ActaError::Storage("DocId overflow during delta decoding".to_string())
+                    TextError::Storage("DocId overflow during delta decoding".to_string())
                 })?;
-                let tf: u32 = tf_u64
-                    .try_into()
-                    .map_err(|_| ActaError::Storage("TF overflow in varint".to_string()))?;
-                let doc_len: u32 = doc_len_u64.try_into().map_err(|_| {
-                    ActaError::Storage("DocLen overflow in varint".to_string())
-                })?;
+                let tf: u32 = u32::try_from(tf_u64)
+                    .map_err(|_| TextError::Storage("TF overflow in varint".to_string()))?;
+                let doc_len: u32 = u32::try_from(doc_len_u64)
+                    .map_err(|_| TextError::Storage("DocLen overflow in varint".to_string()))?;
 
                 postings.push(Posting {
                     doc_id: doc_id as DocIdRaw,
@@ -268,12 +283,13 @@ impl PostingList {
                     doc_len,
                 });
                 prev_doc_id = doc_id;
+                is_first = false;
             }
 
             if offset != bytes.len() {
-                return Err(ActaError::Storage(format!(
+                return Err(TextError::Storage(format!(
                     "Extra trailing bytes after posting list decoding: {} remaining",
-                    bytes.len() - offset
+                    bytes.len().saturating_sub(offset)
                 )));
             }
 
@@ -282,35 +298,55 @@ impl PostingList {
         } else {
             // Legacy V1 bincode fallback
             bincode::deserialize::<PostingList>(bytes)
-                .map_err(|e| ActaError::Storage(format!("bincode legacy decode error: {}", e)))
+                .map_err(|e| TextError::Storage(format!("bincode legacy decode error: {}", e)))
         }
     }
 }
 
 fn encode_varint(mut val: u64, buf: &mut Vec<u8>) {
     while val >= 0x80 {
-        buf.push((val as u8 & 0x7f) | 0x80);
+        let low_7 = (val & 0x7f) as u8;
+        buf.push(low_7 | 0x80);
         val >>= 7;
     }
-    buf.push(val as u8);
+    buf.push((val & 0x7f) as u8);
 }
 
-fn decode_varint(bytes: &[u8], offset: &mut usize) -> Result<u64, ActaError> {
+fn decode_varint(bytes: &[u8], offset: &mut usize) -> Result<u64, TextError> {
     let mut result = 0u64;
     let mut shift = 0u32;
     while *offset < bytes.len() {
-        let byte = bytes[*offset];
-        *offset += 1;
-        result |= ((byte & 0x7f) as u64) << shift;
+        let byte = match bytes.get(*offset) {
+            Some(&b) => b,
+            None => break,
+        };
+        *offset = offset.saturating_add(1);
+
+        let payload = (byte & 0x7f) as u64;
+        if shift > 63 || (shift == 63 && payload > 1) {
+            return Err(TextError::Storage(
+                "Varint overflow beyond 64-bit".to_string(),
+            ));
+        }
+
+        result = match result.checked_add(payload << shift) {
+            Some(res) => res,
+            None => {
+                return Err(TextError::Storage(
+                    "Varint result integer overflow".to_string(),
+                ))
+            }
+        };
+
         if (byte & 0x80) == 0 {
             return Ok(result);
         }
-        shift += 7;
+        shift = shift.saturating_add(7);
         if shift >= 64 {
-            return Err(ActaError::Storage("Varint overflow".to_string()));
+            return Err(TextError::Storage("Varint overflow".to_string()));
         }
     }
-    Err(ActaError::Storage(
+    Err(TextError::Storage(
         "Unexpected EOF while decoding varint".to_string(),
     ))
 }
@@ -319,7 +355,7 @@ fn decode_varint(bytes: &[u8], offset: &mut usize) -> Result<u64, ActaError> {
 /// Speicherresidenter Lese-Cache für Posting-Listen mit RCU-Verwaltung.
 #[derive(Default)]
 pub struct ResidentPostingIndex {
-    index: RwLock<HashMap<String, Arc<PostingList>>>,
+    index: RwLock<BTreeMap<String, Arc<PostingList>>>,
 }
 
 impl ResidentPostingIndex {
@@ -327,7 +363,7 @@ impl ResidentPostingIndex {
     /// Erzeugt einen leeren residenten Posting-Index.
     pub fn new() -> Self {
         Self {
-            index: RwLock::new(HashMap::new()),
+            index: RwLock::new(BTreeMap::new()),
         }
     }
 

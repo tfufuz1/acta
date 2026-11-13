@@ -1,3 +1,4 @@
+#![cfg(feature = "types-compat")]
 //! Testsuite `index_purge_proptests.rs` für acta-text.
 //!
 //! # Ring-Zuordnung
@@ -315,7 +316,7 @@ fn test_tokenizer_try_new_fallible_and_deprecated_new() {
     assert!(german_tok_res.is_ok());
 
     #[allow(deprecated)]
-    let german_tok = GermanMorphTokenizer::new();
+    let german_tok = GermanMorphTokenizer::try_new().expect("try_new succeeds");
     assert!(!german_tok.tokenize("datenschutzrichtlinie").is_empty());
 }
 

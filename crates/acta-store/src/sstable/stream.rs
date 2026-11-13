@@ -4,8 +4,8 @@
 //! Speicher-Footprint.
 
 use super::reader::SstableReader;
+use crate::error::{StoreError as ActaError, StoreResult as Result};
 use bytes::Bytes;
-use acta_types::{ActaError, Result};
 use std::sync::Arc;
 
 pub struct SstableStream {
@@ -112,7 +112,7 @@ impl SstableStream {
                     let end_val = ep_val.checked_add(v_len).ok_or_else(|| {
                         ActaError::Storage("overflow calculating value position".into())
                     })?;
-                    if end_val > block_data.len() {
+                    if end_val > self.offsets_start {
                         return Err(ActaError::Storage(
                             "malformed block: value length out of bounds".into(),
                         ));

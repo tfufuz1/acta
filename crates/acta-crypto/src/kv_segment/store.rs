@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use ahash::AHashMap;
-use acta_types::TenantId;
+use acta_ids::TenantId;
 use lru::LruCache;
 use parking_lot::RwLock;
 
@@ -114,6 +114,10 @@ impl Shard {
 /// INV-TENANT-Analogon für KV-Bridge: Ein Tenant kann niemals Segmente
 /// eines anderen Tenants lesen. Strukturell erzwungen durch getrennte Maps
 /// und Sharding.
+#[deprecated(
+    since = "0.1.0",
+    note = "KV-Segment Logik migriert nach acta-kvcache (ADR-PROPOSAL-crypto-kv-segment, E-04). Bitte acta-kvcache verwenden."
+)]
 pub struct TenantIsolatedKvStore {
     /// 32 cache-line-gepaddete RwLock-Shards. Box<[_]> für flexible Shard-Anzahl.
     shards: Box<[Shard]>,

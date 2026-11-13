@@ -1,31 +1,31 @@
 # AGENTS.md — `acta-mvcc`
 
-## 1. Rolle
-`acta-mvcc` bietet deterministische Multi-Version Concurrency Control (SequenceLog, SnapshotRegistry, TxBuffer, ReadSet, SSI-Validator) für atomare Transaktionsisolation.
+> Werkzeug/Crate-Kontext für Agenten. Der obere Teil ist generiert; manuelle Notizen unterhalb ergänzen.
 
-## 2. Ring, Klasse, Reifegrad & `may_use`
-- **Ring:** Ring 0 (Transaktionsisolation)
-- **Klasse:** Kern `[K]`
-- **Reifegrad:** `stable`
-- **`may_use` (Obergrenze):** `acta-types`, `acta-ports` (Spec §6.9, `capabilities.toml`)
+<!-- BEGIN GENERATED: crate_inventory.py -->
 
-## 3. Garantien & Anforderungen (§33)
-- **REQ-MVCC-001:** Atomare SSI-Validierung und Write-Skew Konflekterkennung (`SsiCommitGate`).
-- **REQ-MVCC-002:** RAII `SnapshotLease` Guarantees zur automatischen Freigabe alter Sequenznummern.
-- **Durchsetzungsmechanismus (§27.6):** Unit- & Integrationstests (`ssi_tests.rs`), Loom-Verifikation.
+## Inventar (generiert)
 
-## 4. Verbotene Muster
-- Kein `unsafe` (`#![forbid(unsafe_code)]`).
-- Keine Halten von Synchronisations-Locks über `.await`-Punkte hinweg.
-- Kein Umgehen der `SnapshotLease` RAII-Guards.
+- **Pfad:** `crates/acta-mvcc` · **Ring:** 0 · **Version:** 0.1.0
+- **Beschreibung:** Multi-Version Concurrency Control (MVCC), sequence log, and transaction buffer for Acta
+- **src:** 10 Dateien, 3305 LOC · **unsafe:** 0 Vorkommen, Policy `forbid`
+- **Interne Abhängigkeiten (normal, 4):** `acta-env`, `acta-ids`, `acta-ports`, `acta-types`
+- **Interne Dev/Build-Abhängigkeiten (3):** `acta-env`, `acta-ports`, `acta-types`
+- **Externe Abhängigkeiten (normal, 7):** `ahash`, `bytes`, `loom`, `parking_lot`, `serde`, `thiserror`, `tracing`
+- **Reverse-Abhängigkeiten (3):** `acta-db`, `acta-store`, `acta-vector`
+- **Kopplung an Hub-Crates:** ausgehend `acta-ports`, `acta-types`; eingehend `acta-db`
+- **Features (5):** `default`, `docid-128`, `ports-compat`, `types-compat`, `workspace`
 
-## 5. Implementierte & konsumierte Ports (Anhang A)
-- Konsumiert: `Clock` (über `acta-ports` / Typen).
-- Stellt MVCC-Isolationsprüfungen für Storage & Index-Kerne bereit.
+### Öffentliche API (grob, aus src/)
+- struct (11): `PruningBlockerInfo`, `ReadSet`, `SeqBitTombstone`, `SeqLogEntry`, `SequenceLog`, `SequenceLogSsiValidator`, `SnapshotGuard`, `SnapshotRegistry`, `SnapshotRegistryConfig`, `TxBuffer`, `TxBufferConfig`
+- enum (3): `IndexOp`, `MvccError`, `SeqLogChange`
+- trait (3): `SsiValidator`, `StagedOpSize`, `TombstoneSemanticsCheck`
+- fn (111): `begin`, `begin_at`, `changes_since`, `clear`, `clock`, `compact`, `config`, `deletion_seq`, `diagnose_pruning_blocker`, `diagnose_pruning_blocker_at`, `discard`, `discard_kv`, `doc_id`, `drain`, `drain_kv` … (+96)
+- type (1): `Result`
+- const (8): `DEFAULT_MAX_OPS_PER_TX`, `DEFAULT_MAX_PIN_DURATION`, `DEFAULT_MAX_READ_SET_KEYS`, `DEFAULT_MAX_TOTAL_STAGED_BYTES`, `DEFAULT_MAX_TRACKED_COMMIT_KEYS`, `DEFAULT_MAX_TX_STAGED_BYTES`, `DEFAULT_SHARD_COUNT`, `STAGING_ENTRY_OVERHEAD_BYTES`
+- mod (9): `compat`, `error`, `mvcc_error`, `seq_log`, `snapshot`, `ssi`, `tombstone`, `tx_buffer`, `types`
+- pub use: `acta_env::{Clock, MetricsSink, SystemClock}`, `acta_ids::{DocId, TenantId, TxId, TOMBSTONE_BIT}`, `acta_types::error as workspace_error`, `acta_types::error::ActaError`, `acta_types::error::Result`, `crate::compat::{workspace_error as error, ActaError, Result}`, `crate::mvcc_error::Result`, `crate::mvcc_error::{MvccError, Result as MvccResult}`, `seq_log::{SeqLogChange, SeqLogEntry, SequenceLog}`, `snapshot::{SnapshotGuard, SnapshotRegistry}` … (+3)
 
-## 6. Tests & Gates
-- **Loom Concurrency Check (REQ-MVCC-005):** Atomare Lock-Freiheits- und Dynamic Thread Concurrency Tests.
-- **Mutation-Score (REQ-QA-005):** Ziel >= 85 %.
+Regeneriert mit `python3 tools/crate_inventory.py agents`. Manuelle Notizen stehen außerhalb dieses Blocks.
 
-## 7. Offene Punkte
-- keine.
+<!-- END GENERATED: crate_inventory.py -->

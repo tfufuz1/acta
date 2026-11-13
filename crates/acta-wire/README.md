@@ -1,14 +1,50 @@
 # acta-wire
 
-FlatBuffers Wire-Protokolle und Serialisierungs-Formate.
+FlatBuffers Wire-Protokolle, Serialisierungs-Formate und gehärtetes JSON-RPC 2.0 für Acta.
 
-Normativitätsklasse: **Kern `[K]`** (Ring 0 Unsafe-Insel, `stable`; §6.1, §6.7, §6.9, `capabilities.toml`).
+## Zweck
+`acta-wire` stellt transportneutrale Zero-Copy FlatBuffers Wire-Protokolle, sichere Puffer-Verifikation (`verification`), allokationsarme Adapter (`WireBuffer`) und einen gehärteten JSON-RPC-2.0-Parser ohne Panics bereit.
 
-## Rolle in einem Satz
-`acta-wire` verwaltet performante Zero-Copy FlatBuffers Wire-Protokolle und Deserialisierungs-Primitiven.
+## Reifegrad
+- **Status:** Stabil / Produktionsreif (P1–P6 erfüllt)
+- **Unsafe-Disziplin:** Handgeschriebener Code erzwingt `#![deny(unsafe_code)]` (0 handgeschriebene Unsafe-Blöcke). Generierter Code (`acta_generated.rs`) kapselt 45 `unsafe`-Stellen, jeweils lückenlos mit `// SAFETY:` dokumentiert.
+- **Robustheit & Fuzzing:** Fuzz-Targets für FlatBuffers-IPC, Verifikation und JSON-RPC vorhanden.
 
-## Ring, Klasse & Reifegrad
-- **Ring:** Ring 0 (Unsafe-Insel 3 von 3, FlatBuffers FFI)
-- **Klasse:** Kern `[K]`
-- **Reifegrad:** `stable`
-- **Erlaubte Abhängigkeiten (`may_use` Obergrenze):** `acta-types` (Spec §6.9, `capabilities.toml`)
+## Interne Abhängigkeiten
+`acta-wire` ist ein autarker Baustein und hat **0 interne Workspace-Abhängigkeiten**. Externe Crates: `flatbuffers`, `bytes`, `serde`, `serde_json`, `thiserror`.
+
+## Features
+- `default = ["std"]`
+- `std`: Standardbibliotheksunterstützung.
+- `serde`: Serde-Serialisierung.
+- `tracing`: Tracing-Integration.
+- `inspect`: Erweiterte Diagnosemöglichkeiten.
+
+## Minimalbeispiel
+```rust
+use bytes::Bytes;
+use acta_wire::WireBuffer;
+
+let buf = WireBuffer::new(Bytes::from_static(b"raw-unverified-data"));
+assert_eq!(buf.len(), 19);
+```
+
+## Entnahme-Rezept
+1. Kopiere `crates/acta-wire` in dein Projekt.
+2. Binde es in deiner `Cargo.toml` ein:
+```toml
+[dependencies]
+acta-wire = { path = "../acta-wire" }
+```
+
+## Build-Skript & FlatBuffers-Regeneration (Entscheidung D-10)
+- In `build.rs` wird geprüft, ob die Schemadatei `../../schemas/acta.fbs` existiert.
+- Da `cargo` Build-Skripte im Crate-Verzeichnis (`crates/acta-wire`) ausführt, zeigt dieser Pfad auf `<Repo-Root>/schemas/acta.fbs`. Dieser Pfad existiert im Repository nicht (das Schema liegt stattdessen unter `crates/acta-wire/schemas/acta.fbs`).
+- Befund per `ls`:
+  `ls -d crates/acta-wire/../../schemas/acta.fbs` liefert `No such file or directory`.
+- Befund per `cargo build -v`:
+  Das Build-Skript läuft durch, ohne Regeneration auszuführen, ohne `flatc` aufzurufen und ohne Fehler abzuliefern.
+- **Entscheidung (D-10):** `build.rs` bleibt unverändert. Die automatische Regeneration läuft nie, wodurch der fest eingecheckte Code in `src/acta_generated.rs` deterministisch und unverändert benutzt wird. Dies verhindert unabsichtliche Verhaltensänderungen. Die Unversehrtheit des Schemas wird stattdessen über den SHA-256 Prüfsummentest (`G-F2`, `cargo test -p acta-wire --test schema_checksum`) sichergestellt.
+
+## Bekannte Grenzen
+- Größere Nachrichten übersteigen bei FlatBuffers und JSON-RPC konfigurierte Schutzgrenzen (`FlatBufferConfig`, `JsonRpcConfig`).

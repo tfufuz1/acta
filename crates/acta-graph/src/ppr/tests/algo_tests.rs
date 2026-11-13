@@ -3,6 +3,13 @@
 //! # Zweck
 //! Stellt die Rangfolge-Äquivalenz der Top-K-Ergebnisse beider Algorithmen sicher.
 
+// FILE-CONTEXT
+// STAND: 2026-11-15T12:00:00Z
+// ZWECK: Personalized PageRank (Forward-Push und dichte Matrix-Berechnung).
+// INVARIANTEN: Massenerhaltung der Residuen, Konvergenzgarantie.
+// HOTSPOTS: Keine kritischen Bottlenecks identifiziert
+// SIEHE AUCH: docs/SPEC.md, crates/acta-graph/SPEC.md
+
 use super::super::*;
 use crate::csr::CsrGraph;
 use acta_ports::GraphIndex;
@@ -10,6 +17,8 @@ use acta_types::{Edge, Entity, EntityId, TxId};
 
 // ANCHOR[acta-graph:SRC-PPR-TESTS-ALGO-TESTS-001]
 #[tokio::test]
+
+// SECTION Algo Tests Core Implementation
 async fn test_ppr_context_reuse_when_graph_grows() {
     let graph = CsrGraph::new();
     let tx = TxId::new(1);
@@ -767,7 +776,7 @@ async fn test_ppr_hyperedge_expansion_dense_and_forward_push() {
 proptest::proptest! {
 // ANCHOR[acta-graph:SRC-PPR-TESTS-ALGO-TESTS-013]
     #[test]
-    fn prop_ppr_rank_mass_conservation(
+    fn test_prop_ppr_rank_mass_conservation(
         node_count in 1..=20usize,
         edge_specs in proptest::collection::vec((0..20usize, 0..20usize, 0.1f32..5.0f32), 0..40),
         seed_idx in 0..20usize,
@@ -1191,3 +1200,5 @@ async fn test_auto_ppr_cost_model_crossover_boundary() {
         "Cost model must pick ForwardPush for 150 seeds when FP cost < PI cost, ignoring legacy 100 seed threshold"
     );
 }
+
+// !SECTION Algo Tests Core Implementation

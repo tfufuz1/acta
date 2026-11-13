@@ -13,7 +13,6 @@
 //!
 //! Verifiziert, dass alle Zeitstempel deterministisch über den injizierten Clock-Port erzeugt werden.
 
-
 use acta_checkpoint::{CheckpointGuard, PersistentCheckpointStore};
 use acta_testkit::{InMemoryStorageEngine, ManualClock};
 use acta_types::TxId;

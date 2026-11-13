@@ -1,0 +1,9 @@
+[crates.acta-vector]
+klasse = "A"
+group = "retrieval"
+level = "E1b"
+tier = "core"
+allowed_internal = ["acta-ids", "acta-env", "acta-mvcc"]
+feature_closure_allowed = { mmap = ["acta-sys"], simd = ["acta-simd"], workspace = ["acta-types", "acta-ports", "acta-sys"] }
+dev_allowed = []
+transitional = ["ports-compat"]

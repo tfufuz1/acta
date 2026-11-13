@@ -1,16 +1,67 @@
 # acta-crypto
 
-Kryptographische Vaults, Zeroize, Egress-Verschlüsselung, Audit-Ketten und Löschnachweise.
+Kryptographische Primitive, AEAD-Blockverschlüsselung, Schlüsselableitung, WAL-Integritätsketten und Zeroize-Schlüsselcontainer für die Acta-Architektur.
 
-Normativitätsklasse: **Kern `[K]`** (Ring 0, `stable`; §6.1, §6.9, §20, `capabilities.toml`).
+## Rolle und Zweck
+`acta-crypto` ist ein autarker Ring-0-Baustein (Ebene 1, Foundation) zur Bereitstellung I/O-freier kryptographischer Primitive:
+- **AEAD-Blockverschlüsselung:** Authentifizierte Verschlüsselung via AES-256-GCM-SIV (RFC 8452) mit Nonce-Misuse-Resistance und AAD-Integrität.
+- **Schlüsselableitung (KDF):** Schlüsselhierarchie via HKDF-SHA256 (RFC 5869) und Passwort-/Passphrasen-Verarbeitung via Argon2id (RFC 9106).
+- **WAL-Integrität:** Kryptographische Integritätsketten mittels HMAC-SHA256 für das Write-Ahead-Log.
+- **Sichere Speicherhygiene:** Sämtliche sensiblen Schlüsselstrukturen implementieren `ZeroizeOnDrop` und maskieren sich in `Debug` und `Display`.
 
-## Rolle in einem Satz
-`acta-crypto` stellt I/O-freie kryptographische Primitiven, Schlüsselverwaltung, Zeroization, Audit-Chains und DeletionProof-Erzeugung/Verifikation bereit.
+## Abgrenzung (Nicht-Ziele)
+- **Keine Rechts-, Zertifizierungs- oder Compliance-Garantien:** Das Crate implementiert technische kryptographische Algorithmen; es liefert keine Aussagen über regulatorische Konformität.
+- **Keine Löschketten- oder Audit-Nachweis-Logik:** Löschketten, Sagas, Deletion-Proofs und Auditberichte gehören ausschließlich nach `acta-erasure`.
+- **I/O- und Netzwerk-Freiheit:** Reine mathematische und kryptographische Routinen; Persistenz und Dateizugriffe erfolgen ausschließlich über Konsumenten-Ports.
 
-## Ring, Klasse & Reifegrad
-- **Ring:** Ring 0 (Kryptographie & Nachweislogik, I/O-frei, keine Threads)
-- **Klasse:** Kern `[K]`
-- **Reifegrad:** `stable`
-- **Erlaubte Abhängigkeiten (`may_use` Obergrenze):** `acta-types`, `acta-ports` (Persistenz nur über Port `DurableLog`; Spec §6.9, `capabilities.toml`)
+## Reifegrad und Tier
+- **Gruppe:** `foundation`
+- **Ebene:** 1 (Ring 0)
+- **Klasse:** A (autarker Baustein)
+- **Tier:** `beta`
 
-*Hinweis zu Abweichungen:* `capabilities.toml` führt aktuell veraltetes `acta-core` in `may_depend_on` (siehe `docs/status/ABW-L3.md`).
+## Tatsächliche interne Abhängigkeiten (Minimaler Kern)
+Ermittelt via `cargo tree -p acta-crypto -e normal --no-default-features`:
+- `acta-ids`: Typisierte Bezeichner (`TenantId`, `DocId`, `TxId`, `TenantScoped`)
+- `acta-env`: Minimaler Umwelt- und Plattform-Kontext
+
+*Optionale Integrations-Abhängigkeiten (hinter Feature `workspace`):*
+- `acta-types`: Typen für Workspace-Integration
+- `acta-ports`: Port-Definitionen für Workspace-Integration
+
+## Feature-Tabelle
+
+| Feature | Standard | Beschreibung |
+|---|---|---|
+| `kv-encryption` | Ja | KV-Segment-Verschlüsselung und Tenant-Isolierung für KV-Cache |
+| `workspace` | Ja | Brücke für `ActaError` und Workspace-Typen in `compat/` |
+| `types-compat` | Nein | Alias für `workspace` |
+| `ports-compat` | Nein | Alias für `workspace` |
+| `cloud-egress-guard` | Nein | Zusätzliche Egress-Wächter-Strukturen |
+| `test-utils` | Nein | Hilfsroutinen für Testläufe |
+
+## Schnellstart / Minimalbeispiel
+
+```rust
+use acta_crypto::aead::{open_record, seal_record_with_nonce};
+use acta_crypto::dek::Dek;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let dek = Dek::new([0x42u8; 32]);
+    let doc_id = [0x11u8; 16];
+    let key_meta = b"user_record_key";
+    let nonce = [0x99u8; 12];
+    let plaintext = b"Sensible Nutzlast";
+
+    let envelope = seal_record_with_nonce(&dek, doc_id, key_meta, plaintext, nonce)?;
+    let opened = open_record(&dek, key_meta, &envelope)?;
+    assert_eq!(opened.as_slice(), plaintext);
+
+    Ok(())
+}
+```
+
+Ausführung ohne optionale Features:
+```bash
+cargo run -p acta-crypto --example standalone --no-default-features
+```

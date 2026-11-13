@@ -1,29 +1,29 @@
 # AGENTS.md — `acta-sys`
 
-## 1. Rolle
-`acta-sys` bietet systemnahes Memory-Mapping (mmap), Prozess-Härtung und plattformspezifische I/O-Primitiven über eine sichere Fassade.
+> Werkzeug/Crate-Kontext für Agenten. Der obere Teil ist generiert; manuelle Notizen unterhalb ergänzen.
 
-## 2. Ring, Klasse, Reifegrad & `may_use`
-- **Ring:** Ring 0 (Unsafe-Insel 2 von 3)
-- **Klasse:** Kern `[K]`
-- **Reifegrad:** `stable`
-- **`may_use` (Obergrenze):** `acta-types` (Spec §6.9, `capabilities.toml`)
+<!-- BEGIN GENERATED: crate_inventory.py -->
 
-## 3. Garantien & Anforderungen (§33, §6.7)
-- **REQ-SYS-001:** Safe API Wrapper um OS-level Mmap und Prozess-Härtung (`harden_process`).
-- **REQ-SYS-002:** Jeder `unsafe`-Block trägt ein explizites `// SAFETY:` Kommentar.
-- **Durchsetzungsmechanismus (§27.6):** Plattform-Checks, Miri / Non-Linux Fail-Closed Fallback (`io::ErrorKind::Unsupported`).
+## Inventar (generiert)
 
-## 4. Verbotene Muster
-- Exponieren roher OS-Handles oder unsicherer Pointer in der öffentlichen Schnittstelle.
-- `unsafe`-Blöcke ohne `// SAFETY:` Begründung.
+- **Pfad:** `crates/acta-sys` · **Ring:** 0 · **Version:** 0.1.0
+- **Beschreibung:** Low-level unsafe system abstractions and FFI island for Acta (Ring 0)
+- **src:** 9 Dateien, 1564 LOC · **unsafe:** 22 Vorkommen, Policy `keiner`
+- **Interne Abhängigkeiten (normal, 0):** –
+- **Interne Dev/Build-Abhängigkeiten (0):** –
+- **Externe Abhängigkeiten (normal, 5):** `libc`, `memmap2`, `thiserror`, `tracing`, `windows-sys`
+- **Reverse-Abhängigkeiten (3):** `acta-store`, `acta-vault`, `acta-vector`
+- **Kopplung an Hub-Crates:** ausgehend –; eingehend –
 
-## 5. Implementierte & konsumierte Ports (Anhang A)
-- Stellt Mmap- und System-Primitiven für `acta-store` und `acta-vector` bereit.
+### Öffentliche API (grob, aus src/)
+- struct (9): `DurableFile`, `LockedRegions`, `NoopMemoryLocker`, `OsMemoryLocker`, `SealedFile`, `SealedMap`, `SealedReadOnly`, `Unsealed`, `VaultBuffer`
+- enum (2): `Error`, `MemLockPolicy`
+- trait (1): `MemoryLocker`
+- fn (42): `allocate`, `allocate_with_policy`, `apply_dont_dump`, `as_file`, `as_mut_slice`, `as_slice`, `durable_flush_dir`, `durable_flush_file`, `ensure_fd_limit`, `from_slice`, `get_ref`, `get_subslice`, `is_empty`, `is_locked`, `is_poisoned` … (+27)
+- type (2): `Result`, `SysError`
+- mod (11): `acl_win32`, `contract`, `durability`, `error`, `fsmeta`, `map`, `mem`, `mlock`, `mmap`, `posix`, `vault`
+- pub use: `acl_win32::{set_restrictive_file_acl, verify_file_acl_owner_only}`, `contract::{MemoryLocker, NoopMemoryLocker, OsMemoryLocker}`, `crate::acl_win32::{set_restrictive_file_acl, verify_file_acl_owner_only}`, `crate::contract::{MemoryLocker, NoopMemoryLocker, OsMemoryLocker}`, `crate::mlock::{ apply_dont_dump, mem_lock, mem_lock_typed, mem_lock_with_policy, mem_unlock, MemLockPolicy, }`, `crate::mmap::{mmap_readonly, SealedFile, SealedMap, SealedReadOnly, Unsealed}`, `crate::vault::{LockedRegions, VaultBuffer}`, `durability::{durable_flush_dir, durable_flush_file, write_all_durable, DurableFile}`, `error::{Error, Result, SysError}`, `mlock::{ apply_dont_dump, mem_lock, mem_lock_typed, mem_lock_with_policy, mem_unlock, MemLockPolicy, }` … (+3)
 
-## 6. Tests & Gates
-- **Miri Gate:** Miri-Verifikation für Memory-Mapping Pointers.
-- **Cross-Platform Tests:** Fail-Closed Verhalten auf Nicht-Linux Plattformen.
+Regeneriert mit `python3 tools/crate_inventory.py agents`. Manuelle Notizen stehen außerhalb dieses Blocks.
 
-## 7. Offene Punkte
-- keine.
+<!-- END GENERATED: crate_inventory.py -->

@@ -8,7 +8,7 @@
 use super::layer::{ScanTarget, ScanTechnique, WitnessLayer};
 use super::witness::LayerWitness;
 use crate::clock::Clock;
-use acta_types::{ActaError, Result};
+use crate::{ActaError, Result};
 
 /// Laufende Scan-Session zur kontrollierten Erzeugung eines `LayerWitness`.
 #[derive(Debug)]

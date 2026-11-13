@@ -4,7 +4,7 @@
 
 // NICHT für Produktion — O(n) Referenzimplementierung
 
-use acta_types::{DistanceMetric, DocId};
+use crate::types::{DistanceMetric, DocId};
 
 use crate::distance::compute_distance;
 

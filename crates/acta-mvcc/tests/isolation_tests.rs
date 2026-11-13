@@ -18,9 +18,10 @@ use acta_mvcc::seq_log::SequenceLog;
 use acta_mvcc::snapshot::SnapshotRegistry;
 use acta_mvcc::ssi::{ReadSet, SequenceLogSsiValidator};
 use acta_mvcc::tx_buffer::{IndexOp, TxBuffer, TxBufferConfig};
+use acta_mvcc::MvccError;
 use acta_mvcc::SsiValidator;
-use acta_testkit::ManualClock;
-use acta_types::{ActaError, DocId, TxId, TOMBSTONE_BIT};
+use acta_env::ManualClock;
+use acta_ids::{DocId, TxId, TOMBSTONE_BIT};
 use parking_lot::RwLock;
 use std::sync::Arc;
 use std::sync::Barrier;
@@ -54,7 +55,7 @@ fn test_isolation_write_skew_classic_bank_account() {
     // Tx2 attempts to validate its read set at seq 12 -> MUST fail write-skew validation because A was mutated at seq 11 > 10
     let res2 = validator.validate(tx2, &rs2);
     assert!(
-        matches!(res2, Err(ActaError::Conflict(_))),
+        matches!(res2, Err(MvccError::Conflict(_))),
         "Tx2 must fail validation due to write-skew on account:A"
     );
 }
@@ -83,7 +84,7 @@ fn test_isolation_write_skew_overlapping_reads_disjoint_writes() {
 
     // Tx2 attempts to validate at seq 22 -> conflicts because key1 was modified after snap_seq 20
     let res2 = validator.validate(tx2, &rs2);
-    assert!(matches!(res2, Err(ActaError::Conflict(_))));
+    assert!(matches!(res2, Err(MvccError::Conflict(_))));
 }
 
 // Prüft, dass disjunkte Lese- und Schreibmengen konfliktfrei nebeneinander committen können.
@@ -132,7 +133,7 @@ fn test_isolation_lost_update_concurrent_counter_increment() {
     // Tx2 attempts to commit global_counter -> lost-update detected
     let res2 = validator.validate(tx2, &rs2);
     assert!(
-        matches!(res2, Err(ActaError::Conflict(_))),
+        matches!(res2, Err(MvccError::Conflict(_))),
         "Lost-update on global_counter must fail validation"
     );
 }
@@ -158,7 +159,7 @@ fn test_isolation_lost_update_atomic_validate_and_record() {
     // Tx2 attempting validate_and_record fails and leaves no write keys recorded
     let keys2 = vec![b"tx2_side_effect".as_slice()];
     let res2 = validator.validate_and_record(tx2, &rs2, keys2, 12);
-    assert!(matches!(res2, Err(ActaError::Conflict(_))));
+    assert!(matches!(res2, Err(MvccError::Conflict(_))));
 
     // Verify side effect key from failed tx2 was NOT recorded
     let mut rs_check = ReadSet::new();
@@ -185,7 +186,7 @@ fn test_isolation_phantom_read_prefix_match_conflicts() {
     // Range scan validation must detect phantom insertion
     let res = validator.validate(tx_scan, &rs_scan);
     assert!(
-        matches!(res, Err(ActaError::Conflict(_))),
+        matches!(res, Err(MvccError::Conflict(_))),
         "Phantom insertion matching range prefix must cause conflict"
     );
 }
@@ -222,7 +223,7 @@ fn test_isolation_phantom_read_multiple_range_prefixes() {
     validator.record_commit_key(b"cat:B:item_12", 45);
 
     let res = validator.validate(tx, &rs);
-    assert!(matches!(res, Err(ActaError::Conflict(_))));
+    assert!(matches!(res, Err(MvccError::Conflict(_))));
 }
 
 // --- 4. Read-Only Snapshot Isolation Preservation Tests ---
@@ -269,7 +270,7 @@ fn test_isolation_read_only_snapshot_empty_read_set_always_valid() {
 // Prüft das zeitgesteuerte Ablaufen und Bereinigen veralteter Snapshot-Pins im SequenceLog.
 #[test]
 fn test_isolation_pin_expiration_sequence_log_manual_clock() {
-    let clock = Arc::new(ManualClock::new(1_000_000_000));
+    let clock = Arc::new(ManualClock::new(1_000_000_000, 1_000_000_000));
     let mut log =
         SequenceLog::with_clock(clock.clone()).with_max_pin_duration(Duration::from_secs(300));
 
@@ -279,11 +280,11 @@ fn test_isolation_pin_expiration_sequence_log_manual_clock() {
     assert!(log.expired_pins().is_empty());
 
     // Advance time by 200 seconds (not expired yet)
-    clock.advance(Duration::from_secs(200));
+    clock.advance_nanos(200_000_000_000);
     assert!(log.expired_pins().is_empty());
 
     // Advance time by 105 more seconds (total 305s > 300s max_pin_duration)
-    clock.advance(Duration::from_secs(105));
+    clock.advance_nanos(105_000_000_000);
     assert_eq!(log.expired_pins(), vec![100]);
 
     // Explicitly reap expired pins
@@ -295,7 +296,7 @@ fn test_isolation_pin_expiration_sequence_log_manual_clock() {
 // Prüft das Ablaufen und Bereinigen veralteter Pins in der SnapshotRegistry mittels ManualClock.
 #[test]
 fn test_isolation_pin_expiration_snapshot_registry_manual_clock() {
-    let clock = Arc::new(ManualClock::new(10_000_000_000));
+    let clock = Arc::new(ManualClock::new(10_000_000_000, 10_000_000_000));
     let registry = Arc::new(SnapshotRegistry::with_clock(clock.clone()));
 
     registry.pin(50);
@@ -303,7 +304,7 @@ fn test_isolation_pin_expiration_snapshot_registry_manual_clock() {
     assert_eq!(registry.min_active_seqno(), 50);
 
     // Advance time by 310 seconds
-    clock.advance(Duration::from_secs(310));
+    clock.advance_nanos(310_000_000_000);
 
     // Both pins expired relative to max_pin_duration 300s
     let reaped = registry.reap_expired_pins(Duration::from_secs(300));
@@ -314,11 +315,11 @@ fn test_isolation_pin_expiration_snapshot_registry_manual_clock() {
 // Prüft die Diagnoseabfrage des am längsten gehaltenen aktiven Snapshot-Pins.
 #[test]
 fn test_isolation_longest_active_pin_diagnostics_manual_clock() {
-    let clock = Arc::new(ManualClock::new(1_000_000_000));
+    let clock = Arc::new(ManualClock::new(1_000_000_000, 1_000_000_000));
     let registry = Arc::new(SnapshotRegistry::with_clock(clock.clone()));
 
     let g1 = registry.register(200);
-    clock.advance(Duration::from_secs(50));
+    clock.advance_nanos(50_000_000_000);
     let _g2 = registry.register(300);
 
     // Longest pin should be g1 at seq 200 with 50s duration
@@ -563,7 +564,7 @@ fn test_isolation_tx_buffer_bounded_ops_limit() {
             data: "overflow".to_string(),
         },
     );
-    assert!(matches!(res, Err(ActaError::Transaction(_))));
+    assert!(matches!(res, Err(MvccError::Transaction(_))));
 }
 
 // Prüft die Durchsetzung des Byte-Budgets für gepufferte Nutzdaten pro Transaktion.
@@ -586,13 +587,13 @@ fn test_isolation_tx_buffer_tx_staged_bytes_budget() {
             data: large_payload,
         },
     );
-    assert!(matches!(res, Err(ActaError::Storage(_))));
+    assert!(matches!(res, Err(MvccError::Storage(_))));
 }
 
 // Prüft das Abräumen verwaister Transaktionen im TxBuffer mit ManualClock.
 #[test]
 fn test_isolation_tx_buffer_orphan_reaping_manual_clock() {
-    let clock = Arc::new(ManualClock::new(10_000_000_000));
+    let clock = Arc::new(ManualClock::new(10_000_000_000, 10_000_000_000));
     let config = TxBufferConfig {
         tx_timeout: Duration::from_secs(10),
         ..Default::default()
@@ -603,11 +604,11 @@ fn test_isolation_tx_buffer_orphan_reaping_manual_clock() {
     let tx2 = TxId::new(2);
 
     buffer.begin(tx1);
-    clock.advance(Duration::from_secs(5));
+    clock.advance_nanos(5_000_000_000);
     buffer.begin(tx2);
 
     // Advance clock past tx1 timeout (total elapsed for tx1: 12s > 10s)
-    clock.advance(Duration::from_secs(7));
+    clock.advance_nanos(7_000_000_000);
 
     let reaped = buffer.reap_orphans();
     assert_eq!(reaped, vec![tx1]);
@@ -650,5 +651,273 @@ fn test_isolation_ssi_validator_with_sequence_log_conflict() {
     seq_log.write().record_insert(doc_id, 15);
 
     let res = validator.validate(TxId::new(1), &rs);
-    assert!(matches!(res, Err(ActaError::Conflict(_))));
+    assert!(matches!(res, Err(MvccError::Conflict(_))));
+}
+
+// --- 10. Handgerechnete Modell-Isolationstests (P02 / WP-36 Lückenabdeckung) ---
+
+// Handgerechnete Verifikation von Eigenschaft (1):
+// Snapshot sieht zu keinem Zeitpunkt spätere Commits.
+// Modellrechnung:
+// - T=10: Doc A wird eingefügt (seq 10)
+// - T=20: Doc B wird eingefügt (seq 20)
+// - T=30: Doc A wird gelöscht (delete_seq 30)
+// - T=40: Doc C wird eingefügt (seq 40)
+// Erwartungswerte strikt aus Zeitmodell:
+// - Snapshot bei seq 5:   A=false, B=false, C=false
+// - Snapshot bei seq 10:  A=true,  B=false, C=false
+// - Snapshot bei seq 15:  A=true,  B=false, C=false
+// - Snapshot bei seq 20:  A=true,  B=true,  C=false
+// - Snapshot bei seq 29:  A=true,  B=true,  C=false
+// - Snapshot bei seq 30:  A=false (gelöscht), B=true, C=false
+// - Snapshot bei seq 35:  A=false, B=true,  C=false
+// - Snapshot bei seq 40:  A=false, B=true,  C=true
+#[test]
+fn test_isolation_handcrafted_snapshot_never_sees_future_commits() {
+    let mut log = SequenceLog::new();
+    let doc_a = DocId::from(1001u64);
+    let doc_b = DocId::from(1002u64);
+    let doc_c = DocId::from(1003u64);
+
+    // Historie aufbauen
+    log.record_insert(doc_a, 10);
+    log.record_insert(doc_b, 20);
+    log.record_delete(doc_a, 30);
+    log.record_insert(doc_c, 40);
+
+    // Handgerechneter Prüfpunkt T=5
+    assert!(
+        !log.is_visible(doc_a, 5),
+        "At seq 5, doc_a (inserted 10) must be invisible"
+    );
+    assert!(
+        !log.is_visible(doc_b, 5),
+        "At seq 5, doc_b (inserted 20) must be invisible"
+    );
+    assert!(
+        !log.is_visible(doc_c, 5),
+        "At seq 5, doc_c (inserted 40) must be invisible"
+    );
+
+    // Handgerechneter Prüfpunkt T=10
+    assert!(
+        log.is_visible(doc_a, 10),
+        "At seq 10, doc_a must be visible"
+    );
+    assert!(
+        !log.is_visible(doc_b, 10),
+        "At seq 10, doc_b must be invisible"
+    );
+    assert!(
+        !log.is_visible(doc_c, 10),
+        "At seq 10, doc_c must be invisible"
+    );
+
+    // Handgerechneter Prüfpunkt T=15
+    assert!(
+        log.is_visible(doc_a, 15),
+        "At seq 15, doc_a must be visible"
+    );
+    assert!(
+        !log.is_visible(doc_b, 15),
+        "At seq 15, doc_b must be invisible"
+    );
+
+    // Handgerechneter Prüfpunkt T=20
+    assert!(
+        log.is_visible(doc_a, 20),
+        "At seq 20, doc_a must be visible"
+    );
+    assert!(
+        log.is_visible(doc_b, 20),
+        "At seq 20, doc_b must be visible"
+    );
+    assert!(
+        !log.is_visible(doc_c, 20),
+        "At seq 20, doc_c must be invisible"
+    );
+
+    // Handgerechneter Prüfpunkt T=29
+    assert!(
+        log.is_visible(doc_a, 29),
+        "At seq 29, doc_a must be visible prior to delete at 30"
+    );
+    assert!(
+        log.is_visible(doc_b, 29),
+        "At seq 29, doc_b must be visible"
+    );
+
+    // Handgerechneter Prüfpunkt T=30: Grenze Löschzeitpunkt
+    // Invariante: delete_seq > as_of ist strikt -> bei as_of == delete_seq (30) ist Doc A NICHT mehr sichtbar.
+    assert!(
+        !log.is_visible(doc_a, 30),
+        "At seq 30, doc_a is deleted and must be invisible"
+    );
+    assert!(
+        log.is_visible(doc_b, 30),
+        "At seq 30, doc_b remains visible"
+    );
+    assert!(
+        !log.is_visible(doc_c, 30),
+        "At seq 30, doc_c must be invisible"
+    );
+
+    // Handgerechneter Prüfpunkt T=35
+    assert!(!log.is_visible(doc_a, 35), "At seq 35, doc_a is deleted");
+    assert!(
+        log.is_visible(doc_b, 35),
+        "At seq 35, doc_b remains visible"
+    );
+    assert!(
+        !log.is_visible(doc_c, 35),
+        "At seq 35, doc_c must be invisible"
+    );
+
+    // Handgerechneter Prüfpunkt T=40
+    assert!(!log.is_visible(doc_a, 40), "At seq 40, doc_a is deleted");
+    assert!(log.is_visible(doc_b, 40), "At seq 40, doc_b is visible");
+    assert!(log.is_visible(doc_c, 40), "At seq 40, doc_c is visible");
+}
+
+// Handgerechnete Verifikation von Eigenschaft (2):
+// Write-Konflikte (Anti-Dependency-Zyklen / Concurrent Writes) werden zuverlässig erkannt.
+// Modellrechnung:
+// - Tx1 liest Key K1 bei Snapshot-Sequenz 100
+// - Tx2 schreibt Key K1 und committet bei Sequenz 105 (> 100)
+// - Tx1 versucht nun Validation: Erwartung Err(Conflict)
+// - Gegenprobe: Tx3 liest Key K2 bei Snapshot-Sequenz 100.
+//   Tx2 hat K1 geschrieben, nicht K2. Tx3 validiert erfolgreich: Ok(())
+// - Grenzprobe: Tx4 liest Key K1 bei Snapshot-Sequenz 105 (exakt gleich Commit-Sequenz).
+//   Invariante: commit_seq > read_seq löst Konflikt aus. Bei commit_seq == 105 und read_seq == 105
+//   ist der Commit bereits Teil des Schnappschusses -> Ok(())
+#[test]
+fn test_isolation_handcrafted_write_conflict_detection_and_disjoint_reads() {
+    let validator = SequenceLogSsiValidator::new();
+
+    let tx1 = TxId::new(501);
+    let mut rs1 = ReadSet::new();
+    rs1.record_read(b"inventory:item:42", 100);
+
+    let tx2 = TxId::new(502);
+    let mut rs2 = ReadSet::new();
+    rs2.record_read(b"inventory:item:42", 100);
+    // Tx2 schreibt K1 und committet bei seq 105
+    let commit_keys_tx2 = vec![b"inventory:item:42".as_slice()];
+    assert!(validator
+        .validate_and_record(tx2, &rs2, commit_keys_tx2, 105)
+        .is_ok());
+
+    // Tx1 muss scheitern, weil 105 > 100
+    let res1 = validator.validate(tx1, &rs1);
+    assert!(
+        matches!(res1, Err(MvccError::Conflict(_))),
+        "Tx1 must be rejected with Conflict because commit_seq 105 > read_seq 100"
+    );
+
+    // Gegenprobe Tx3: Lesezugriff auf disjunkten Key 'inventory:item:99' bei seq 100
+    let tx3 = TxId::new(503);
+    let mut rs3 = ReadSet::new();
+    rs3.record_read(b"inventory:item:99", 100);
+    assert!(
+        validator.validate(tx3, &rs3).is_ok(),
+        "Tx3 must succeed as its read set is entirely disjoint from committed keys"
+    );
+
+    // Grenzprobe Tx4: Liest bei Snapshot-Sequenz 105 (nachdem Tx2 committet hat)
+    let tx4 = TxId::new(504);
+    let mut rs4 = ReadSet::new();
+    rs4.record_read(b"inventory:item:42", 105);
+    assert!(
+        validator.validate(tx4, &rs4).is_ok(),
+        "Tx4 read at seq 105 has observed the commit at 105, hence no anti-dependency exists"
+    );
+}
+
+// Handgerechnete Verifikation von Eigenschaft (3):
+// Lesen eigener Schreibvorgänge (Read-your-own-writes) vs. Snapshot-Isolation fremder Leser.
+// Modellrechnung:
+// 1. Initialer Zustand: Key 'user:profile:1' hat Wert "v1" committet bei seq 10 im SequenceLog.
+// 2. Snapshot Reader S1 registriert bei seq 10 (sieht doc 1001 / "v1").
+// 3. Transaktion Tx1 (TxId 701) startet und schreibt neue Version "v2" in den TxBuffer (gestaged).
+// 4. Read-your-own-writes:
+//    - Tx1 fragt den Staging-Puffer: is_key_staged_for_tx(Tx1, "user:profile:1") == true!
+//    - Tx1 sieht die eigene uncommitted Operation im Puffer via get_ops(Tx1).
+// 5. Fremde Isolation:
+//    - Eine andere Transaktion Tx2 fragt den Puffer: is_key_staged_for_tx(Tx2, "user:profile:1") == false!
+//    - Der bestehende Snapshot S1 liest aus SequenceLog: doc 1001 ist weiterhin zu seq 10 sichtbar (unverändert "v1").
+// 6. Transaktion Tx1 committet bei seq 20:
+//    - Ops werden aus TxBuffer gedrained.
+//    - Neuer SequenceLog-Eintrag für "v2" (doc 1001) wird bei seq 20 recorded.
+// 7. Konsistenz nach Commit:
+//    - Snapshot S1 (seq 10) sieht unverändert "v1", nicht "v2".
+//    - Neuer Snapshot S2 bei seq 20 sieht die neue Version "v2".
+//    - TxBuffer ist nun leer für Tx1.
+#[test]
+fn test_isolation_handcrafted_read_your_own_writes_lifecycle() {
+    let mut seq_log = SequenceLog::new();
+    let tx_buffer = TxBuffer::<(Vec<u8>, Vec<u8>)>::new();
+
+    let doc_id = DocId::from(1001u64);
+    let key = b"user:profile:1".to_vec();
+
+    // 1. Initialer Zustand im Log bei seq 10
+    seq_log.record_insert(doc_id, 10);
+    assert!(seq_log.is_visible(doc_id, 10));
+
+    // 2. Snapshot S1 bei seq 10
+    let s1_as_of = 10u64;
+    assert!(seq_log.is_visible(doc_id, s1_as_of));
+
+    // 3. Tx1 startet und puffert Modifikation
+    let tx1 = TxId::new(701);
+    let tx2 = TxId::new(702);
+
+    tx_buffer.begin(tx1);
+    tx_buffer.begin(tx2);
+
+    let staged_op = IndexOp::Insert {
+        doc_id,
+        data: (key.clone(), b"value_v2".to_vec()),
+    };
+    assert!(tx_buffer.stage_kv(tx1, staged_op).is_ok());
+
+    // 4. Read-your-own-writes: Tx1 sieht eigene Vorbereitung
+    assert!(
+        tx_buffer.is_key_staged_for_tx(tx1, &key),
+        "Tx1 must observe its own staged write for key"
+    );
+    let ops_tx1 = tx_buffer.get_ops(tx1).expect("Tx1 ops must exist");
+    assert_eq!(ops_tx1.len(), 1);
+    match ops_tx1.first() {
+        Some(IndexOp::Insert { data, .. }) => {
+            assert_eq!(data.0, key);
+            assert_eq!(data.1, b"value_v2");
+        }
+        _ => panic!("Expected Insert op"),
+    }
+
+    // 5. Fremde Isolation: Tx2 und S1 sehen die Vorbereitung von Tx1 NICHT
+    assert!(
+        !tx_buffer.is_key_staged_for_tx(tx2, &key),
+        "Tx2 must NOT see uncommitted staged write of Tx1"
+    );
+    // SequenceLog enthält bis zum Commit keine Änderung
+    assert!(seq_log.is_visible(doc_id, s1_as_of));
+
+    // 6. Commit von Tx1 bei seq 20
+    let drained_ops = tx_buffer.drain_kv(tx1);
+    assert_eq!(drained_ops.len(), 1);
+    // Commit im SequenceLog registrieren (Update zu seq 20)
+    seq_log.record_insert(doc_id, 20);
+
+    // 7. Konsistenz nach Commit
+    // Puffer für Tx1 ist nun bereinigt
+    assert!(!tx_buffer.is_key_staged_for_tx(tx1, &key));
+    assert!(tx_buffer.get_ops(tx1).is_none());
+
+    // Alter Snapshot S1 (seq 10) sieht den Stand von seq 10
+    assert!(seq_log.is_visible(doc_id, s1_as_of));
+    // Neuer Snapshot S2 (seq 20) sieht den Stand von seq 20
+    let s2_as_of = 20u64;
+    assert!(seq_log.is_visible(doc_id, s2_as_of));
 }

@@ -1,14 +1,67 @@
 # acta-mvcc
 
-Multi-Version Concurrency Control und Isolation-Mechanismen.
+Multi-Version Concurrency Control (MVCC), Sequence Log, Snapshot-Registry und Serializable Snapshot Isolation (SSI).
 
-Normativitätsklasse: **Kern `[K]`** (Ring 0, `stable`; §6.1, §6.9, `capabilities.toml`).
+## Zweck
+`acta-mvcc` bietet deterministische Multi-Version Concurrency Control (`SequenceLog`, `SnapshotRegistry`, `TxBuffer`, `ReadSet`, `SequenceLogSsiValidator`) für serielle Transaktionsisolation ohne Async- oder Tokio-Laufzeitabhängigkeit.
 
-## Rolle in einem Satz
-`acta-mvcc` bietet deterministische Multi-Version Concurrency Control (SequenceLog, SnapshotRegistry, TxBuffer, ReadSet, SSI-Validator) für atomare Transaktionsisolation.
+## Reifegrad & Qualität
+- **Status:** Stabil (`stable`), autarker Kernbaustein (Reifegrad R3).
+- **Sicherheitsstufe:** `#![forbid(unsafe_code)]`, `#![deny(missing_docs)]`, Zero-Panic in Nicht-Test-Code.
 
-## Ring, Klasse & Reifegrad
-- **Ring:** Ring 0 (Transaktionsisolation)
-- **Klasse:** Kern `[K]`
-- **Reifegrad:** `stable`
-- **Erlaubte Abhängigkeiten (`may_use` Obergrenze):** `acta-types`, `acta-ports` (Spec §6.9, `capabilities.toml`)
+## Interne Abhängigkeiten (Kern)
+Laut `cargo tree -p acta-mvcc -e normal --no-default-features`:
+- `acta-ids`: Kanonische ID-Typen wie `TxId`, `DocId`, `TenantId`, `TOMBSTONE_BIT`.
+- `acta-env`: Abstrakte Umgebungs-Schnittstellen (`Clock`, `SystemClock`, `MetricsSink`).
+- Optionale Workspace-Brücke (`workspace`, `ports-compat`, `types-compat`): `acta-types`, `acta-ports`.
+- Externe Abhängigkeiten: `ahash`, `bytes`, `parking_lot`, `serde`, `thiserror`, `tracing`.
+Keine Abhängigkeiten zu höheren Schichten (`store`, `vector`, `graph`, `engine`, `db`).
+
+## Features
+- `default = ["workspace"]`: Kompatibilitätsbrücke für bestehende Workspace-Konsumenten (`store`, `vector`, `engine`, `checkpoint`).
+- `workspace`: Aktiviert `acta-types` und `acta-ports` unter `compat/`.
+- `types-compat` / `ports-compat`: Abwärtskompatible Aliase für `workspace`.
+- `docid-128`: Propagiert 128-Bit DocId-Support an `acta-ids`.
+- Für Standalone-Nutzung: `--no-default-features`.
+
+## Quickstart (Doctest)
+```rust
+use std::sync::Arc;
+use acta_mvcc::{SnapshotRegistry, TxBuffer, ReadSet, SequenceLogSsiValidator, SsiValidator, IndexOp};
+use acta_mvcc::types::{TxId, DocId};
+
+let registry = Arc::new(SnapshotRegistry::new());
+let ssi = SequenceLogSsiValidator::new();
+let buffer = TxBuffer::<String>::new();
+
+let tx = TxId::new(1);
+let guard = registry.register(100);
+
+let mut read_set = ReadSet::new();
+read_set.record_read(b"account:42", 100);
+
+buffer.begin(tx);
+buffer.stage(tx, IndexOp::Insert { doc_id: DocId::from(1u64), data: "value".into() }).unwrap();
+
+// Validierung vor Commit gegen Anti-Dependencies
+assert!(ssi.validate(tx, &read_set).is_ok());
+drop(guard);
+```
+
+## Entnahme-Rezept
+Zur isolierten Nutzung in externen Projekten:
+```bash
+# Kopieren des Crates zusammen mit seinen Basis-Abhängigkeiten
+cp -r crates/acta-mvcc /path/to/target/
+cp -r crates/acta-ids /path/to/target/
+cp -r crates/acta-env /path/to/target/
+```
+In `Cargo.toml` des Zielprojekts:
+```toml
+[dependencies]
+acta-mvcc = { path = "./acta-mvcc", default-features = false }
+```
+
+## Bekannte Grenzen & IST-Verhalten
+- **In-Memory-Fokus:** `acta-mvcc` speichert Transaktionszustände, ReadSets und Staging-Puffer flüchtig im Arbeitsspeicher (RAM). Persistente WAL- und SSTable-Verwaltung wird durch das Zusammenspiel mit dem Storage-Layer (`acta-store`) sichergestellt.
+- **Speicherbegrenzung:** Bei Erreichen von 80 % der maximal getrackten Commit-Schlüssel (`DEFAULT_MAX_TRACKED_COMMIT_KEYS = 1.000.000`) schaltet der SSI-Validator auf konservatives Präfix-Coarsening um, um den Arbeitsspeicher zu begrenzen (0 % False Negatives, konservative Aborts bei hohem Durchsatz).

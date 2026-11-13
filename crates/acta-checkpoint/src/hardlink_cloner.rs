@@ -26,9 +26,37 @@
 // ZWECK: Hardlink-Cloner für Agent-Forking und SSTable CoW-Klone.
 // INVARIANTEN: Zero-Panic, Async-I/O via tokio::fs, SnapshotRegistry-Pinning während Klonen.
 
-use acta_mvcc::SnapshotRegistry;
-use acta_types::{ActaError, Result};
+/// Trait zur Abstraktion von Snapshot-Pinning-Mechanismen während des SSTable-Klonens.
+pub trait SnapshotPinner: Send + Sync {
+    /// Pinnt eine Sequenznummer und liefert einen RAII-Guard zurück.
+    fn pin_seq_no(&self, seq_no: u64) -> Box<dyn std::any::Any + Send + Sync>;
+}
+
+impl<F> SnapshotPinner for F
+where
+    F: Fn(u64) -> Box<dyn std::any::Any + Send + Sync> + Send + Sync,
+{
+    fn pin_seq_no(&self, seq_no: u64) -> Box<dyn std::any::Any + Send + Sync> {
+        (self)(seq_no)
+    }
+}
+
+impl SnapshotPinner for () {
+    fn pin_seq_no(&self, _seq_no: u64) -> Box<dyn std::any::Any + Send + Sync> {
+        Box::new(())
+    }
+}
+
+#[cfg(feature = "mvcc")]
+impl SnapshotPinner for Arc<acta_mvcc::SnapshotRegistry> {
+    fn pin_seq_no(&self, seq_no: u64) -> Box<dyn std::any::Any + Send + Sync> {
+        Box::new(self.register(seq_no))
+    }
+}
+use crate::error::{CheckpointError, Result};
+use crate::snapshot_source::BoxFuture;
 use std::path::{Path, PathBuf};
+#[cfg(feature = "mvcc")]
 use std::sync::Arc;
 
 #[cfg(not(loom))]
@@ -96,7 +124,7 @@ mod fs {
 /// - `source_seq_no`: Die gepinnte und geklonte Quell-Sequenznummer.
 /// - `linked_files`: Liste der im Zielverzeichnis erzeugten Pfade.
 /// - `wal_tail_offset`: Offset im Write-Ahead-Log, ab dem der geklonte Zustand neue Mutationen akzeptiert.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HardlinkCloneResult {
     /// Die gepinnte und geklonte Quell-Sequenznummer.
     pub source_seq_no: u64,
@@ -119,7 +147,7 @@ pub struct HardlinkCloneResult {
 ///
 /// # Windows NTFS Limit
 /// Unter Windows ist `CreateHardLink` NTFS-exklusiv und auf maximal **1023 Links** pro Datei limitiert.
-/// Bei Überschreitung oder dateisystemübergreifenden Links wird [`ActaError::CrossDeviceLink`] gemeldet.
+/// Bei Überschreitung oder dateisystemübergreifenden Links wird [`CheckpointError::CrossDeviceLink`] gemeldet.
 pub trait CheckpointHardlinkCloner: Send + Sync {
     /// Klont alle für `seq_no` sichtbaren SSTable-Dateien im Quellverzeichnis ins Zielverzeichnis.
     ///
@@ -138,8 +166,8 @@ pub trait CheckpointHardlinkCloner: Send + Sync {
         seq_no: u64,
         source_dir: &'a Path,
         target_dir: &'a Path,
-        snapshot_registry: &'a Arc<SnapshotRegistry>,
-    ) -> acta_ports::BoxFuture<'a, Result<HardlinkCloneResult>>;
+        snapshot_pinner: &'a (dyn SnapshotPinner + 'a),
+    ) -> BoxFuture<'a, Result<HardlinkCloneResult>>;
 }
 
 // ANCHOR[acta-checkpoint:CLONE-003]
@@ -159,7 +187,7 @@ impl DefaultHardlinkCloner {
 impl CheckpointHardlinkCloner for DefaultHardlinkCloner {
     // ANCHOR[acta-checkpoint:CLONE-004]
     // Ablauf von `clone_sstable_hardlinks`:
-    // 1. Snapshot in der `SnapshotRegistry` pinnen (_guard verhindert Compactor-Löschung).
+    // 1. Snapshot in der `SnapshotRegistry` pinnen (_guard verhindert Compactor-Bereinigung).
     // 2. Zielverzeichnis anlegen falls noch nicht vorhanden.
     // 3. Quellverzeichnis nach `.sst`-Dateien durchsuchen.
     // 4. Für jede Datei bestehende Zieldatei entfernen und Hardlink setzen.
@@ -171,24 +199,26 @@ impl CheckpointHardlinkCloner for DefaultHardlinkCloner {
         seq_no: u64,
         source_dir: &'a Path,
         target_dir: &'a Path,
-        snapshot_registry: &'a Arc<SnapshotRegistry>,
-    ) -> acta_ports::BoxFuture<'a, Result<HardlinkCloneResult>> {
+        snapshot_pinner: &'a (dyn SnapshotPinner + 'a),
+    ) -> BoxFuture<'a, Result<HardlinkCloneResult>> {
         Box::pin(async move {
             // 1. Pin snapshot in SnapshotRegistry for the duration of the clone operation
             // NOTE: Der Guard wird über die gesamte Future gehalten, damit kein GC-Lauf SSTables löscht
-            let _guard = snapshot_registry.register(seq_no);
+            let _guard = snapshot_pinner.pin_seq_no(seq_no);
 
             // 2. Ensure target directory exists
             fs::create_dir_all(target_dir)
                 .await
-                .map_err(ActaError::Io)?;
+                .map_err(CheckpointError::Io)?;
 
             // 3. Scan source directory for SSTable files (.sst)
-            let mut read_dir = fs::read_dir(source_dir).await.map_err(ActaError::Io)?;
+            let mut read_dir = fs::read_dir(source_dir)
+                .await
+                .map_err(CheckpointError::Io)?;
 
             let mut linked_files = Vec::new();
 
-            while let Some(entry) = read_dir.next_entry().await.map_err(ActaError::Io)? {
+            while let Some(entry) = read_dir.next_entry().await.map_err(CheckpointError::Io)? {
                 let path = entry.path();
                 if path.is_file() {
                     let is_sst = path
@@ -200,7 +230,7 @@ impl CheckpointHardlinkCloner for DefaultHardlinkCloner {
                             .is_some_and(|f| f.to_string_lossy().contains(".sst"))
                     {
                         let file_name = path.file_name().ok_or_else(|| {
-                            ActaError::invalid_input("Invalid file name in SST directory")
+                            CheckpointError::invalid_input("Invalid file name in SST directory")
                         })?;
                         let target_path = target_dir.join(file_name);
 
@@ -219,12 +249,12 @@ impl CheckpointHardlinkCloner for DefaultHardlinkCloner {
                             );
                             if let Err(copy_err) = fs::copy(&path, &target_path).await {
                                 if is_cross_device_error(&io_err) {
-                                    return Err(ActaError::cross_device_link(
+                                    return Err(CheckpointError::cross_device_link(
                                         path.to_string_lossy(),
                                         target_path.to_string_lossy(),
                                     ));
                                 } else {
-                                    return Err(ActaError::Io(copy_err));
+                                    return Err(CheckpointError::Io(copy_err));
                                 }
                             }
                         }

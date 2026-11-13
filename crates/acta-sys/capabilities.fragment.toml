@@ -1,0 +1,10 @@
+[crates.acta-sys]
+group = "foundation"
+level = 0
+tier = "stable"
+path = "crates/acta-sys"
+unsafe_island = true
+allowed_internal = []
+[crates.acta-sys.feature_closure_allowed]
+[crates.acta-sys.dev_allowed]
+test = "cargo test -p acta-sys --locked"

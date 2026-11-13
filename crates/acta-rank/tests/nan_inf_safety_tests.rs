@@ -9,8 +9,6 @@ use acta_rank::fusion::{
     apply_resonance_bonus, g, modulate_and_renormalize_weights, reciprocal_rank_fusion,
     ProvenanceBuilder, ResonanceConfig, SearchResult,
 };
-
-// ANCHOR[acta-rank:SAFE-TEST-001]
 #[test]
 fn test_g_function_nan_inf_safety() {
     assert_eq!(g(f32::NAN), 0.0);
@@ -19,7 +17,7 @@ fn test_g_function_nan_inf_safety() {
     assert_eq!(g(0.0), 0.0);
 }
 
-    // Testet das erwartete Verhalten und mathematische Invarianten.
+// Testet das erwartete Verhalten und mathematische Invarianten.
 #[test]
 fn test_isotonic_calibrator_nan_inf_safety() {
     let mut cal = IsotonicCalibrator::new(2, 10);
@@ -38,7 +36,7 @@ fn test_isotonic_calibrator_nan_inf_safety() {
     assert!(cal.calibrated_probability(0.5).is_some());
 }
 
-    // Testet das erwartete Verhalten und mathematische Invarianten.
+// Testet das erwartete Verhalten und mathematische Invarianten.
 #[test]
 fn test_platt_scaler_nan_inf_safety() {
     let bad_scaler = PlattScaler::new(f32::NAN, 1.0);
@@ -51,7 +49,7 @@ fn test_platt_scaler_nan_inf_safety() {
     assert_eq!(scaler.transform(f32::NAN), 0.5);
 }
 
-    // Testet das erwartete Verhalten und mathematische Invarianten.
+// Testet das erwartete Verhalten und mathematische Invarianten.
 #[test]
 fn test_conformal_calibrator_nan_inf_safety() {
     assert!(matches!(
@@ -79,7 +77,7 @@ fn test_conformal_calibrator_nan_inf_safety() {
     }
 }
 
-    // Testet das erwartete Verhalten und mathematische Invarianten.
+// Testet das erwartete Verhalten und mathematische Invarianten.
 #[test]
 fn test_drift_detector_nan_inf_safety() {
     let mut detector = DriftDetector::new(10, f32::NAN);
@@ -97,7 +95,7 @@ fn test_drift_detector_nan_inf_safety() {
     assert_eq!(detector.overall_drift_status(), "stabil");
 }
 
-    // Testet das erwartete Verhalten und mathematische Invarianten.
+// Testet das erwartete Verhalten und mathematische Invarianten.
 #[test]
 fn test_provenance_builder_nan_inf_safety() {
     let builder = ProvenanceBuilder::new(f32::NAN)
@@ -113,7 +111,7 @@ fn test_provenance_builder_nan_inf_safety() {
     assert_eq!(record.rerank_score, None);
 }
 
-    // Testet das erwartete Verhalten und mathematische Invarianten.
+// Testet das erwartete Verhalten und mathematische Invarianten.
 #[test]
 fn test_resonance_config_nan_inf_safety() {
     let bad_cfg = ResonanceConfig {
@@ -132,7 +130,7 @@ fn test_resonance_config_nan_inf_safety() {
     assert_eq!(res.first().map(|d| d.score), Some(0.8));
 }
 
-    // Testet das erwartete Verhalten und mathematische Invarianten.
+// Testet das erwartete Verhalten und mathematische Invarianten.
 #[test]
 fn test_modulate_weights_nan_beta() {
     let sets = vec![("vec".to_string(), Vec::new(), 1.0)];
@@ -140,7 +138,7 @@ fn test_modulate_weights_nan_beta() {
     assert_eq!(weights, vec![1.0]);
 }
 
-    // Testet das erwartete Verhalten und mathematische Invarianten.
+// Testet das erwartete Verhalten und mathematische Invarianten.
 #[test]
 fn test_fusion_nan_doc_scores() {
     let docs = vec![

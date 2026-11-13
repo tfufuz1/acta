@@ -10,21 +10,22 @@ use super::format::{
 };
 use super::types::{DiskAnnIndex, SearchCandidate};
 use crate::distance::compute_distance_trusted;
-use acta_types::{ActaError, DocId, Result};
+use crate::error::{Result, VectorError};
+use crate::types::DocId;
 #[cfg(not(feature = "docid-128"))]
 pub(crate) type TombstoneSet = roaring::RoaringTreemap;
 
 #[cfg(feature = "docid-128")]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct TombstoneSet {
-    pub(crate) set: std::collections::HashSet<u128>,
+    pub(crate) set: std::collections::BTreeSet<u128>,
 }
 
 #[cfg(feature = "docid-128")]
 impl TombstoneSet {
     pub(crate) fn new() -> Self {
         Self {
-            set: std::collections::HashSet::new(),
+            set: std::collections::BTreeSet::new(),
         }
     }
 
@@ -115,23 +116,23 @@ impl DiskAnnIndex {
             .create(true)
             .append(true)
             .open(path)
-            .map_err(ActaError::Io)?;
+            .map_err(VectorError::Io)?;
 
         if is_new {
             file.write_all(TOMBSTONE_WAL_MAGIC)
-                .map_err(ActaError::Io)?;
+                .map_err(VectorError::Io)?;
             file.write_all(&[TOMBSTONE_WAL_VERSION])
-                .map_err(ActaError::Io)?;
+                .map_err(VectorError::Io)?;
         }
 
         let id_bytes = id.inner().to_le_bytes();
-        let mut hmac = acta_crypto::wal_crypto::WalHmac::new(DISKANN_INTEGRITY_KEY)?;
+        let mut hmac = crate::diskann::integrity::DiskAnnHmac::new(DISKANN_INTEGRITY_KEY)?;
         hmac.update(&id_bytes);
         let computed_hmac = hmac.finalize();
 
-        file.write_all(&id_bytes).map_err(ActaError::Io)?;
-        file.write_all(&computed_hmac).map_err(ActaError::Io)?;
-        file.sync_all().map_err(ActaError::Io)?;
+        file.write_all(&id_bytes).map_err(VectorError::Io)?;
+        file.write_all(&computed_hmac).map_err(VectorError::Io)?;
+        file.sync_all().map_err(VectorError::Io)?;
         Ok(())
     }
 
@@ -171,7 +172,7 @@ impl DiskAnnIndex {
         }
 
         if file_len < TOMBSTONE_WAL_HEADER_SIZE {
-            return Err(ActaError::Storage(
+            return Err(VectorError::Storage(
                 "Unbekanntes oder veraltetes tombstone.wal-Format, bitte vor Upgrade leeren".into(),
             ));
         }
@@ -179,13 +180,13 @@ impl DiskAnnIndex {
         let mut magic_buf = [0u8; 4];
         let mut version_buf = [0u8; 1];
         if file.read_exact(&mut magic_buf).is_err() || file.read_exact(&mut version_buf).is_err() {
-            return Err(ActaError::Storage(
+            return Err(VectorError::Storage(
                 "Unbekanntes oder veraltetes tombstone.wal-Format, bitte vor Upgrade leeren".into(),
             ));
         }
 
         if magic_buf != *TOMBSTONE_WAL_MAGIC || version_buf[0] != TOMBSTONE_WAL_VERSION {
-            return Err(ActaError::Storage(
+            return Err(VectorError::Storage(
                 "Unbekanntes oder veraltetes tombstone.wal-Format, bitte vor Upgrade leeren".into(),
             ));
         }
@@ -203,14 +204,14 @@ impl DiskAnnIndex {
                 buf_id
                     .as_slice()
                     .try_into()
-                    .map_err(|_| ActaError::Storage("Corrupt DocId in WAL".into()))?,
+                    .map_err(|_| VectorError::Storage("Corrupt DocId in WAL".into()))?,
             );
             #[cfg(feature = "docid-128")]
             let doc_id = u128::from_le_bytes(
                 buf_id
                     .as_slice()
                     .try_into()
-                    .map_err(|_| ActaError::Storage("Corrupt DocId in WAL".into()))?,
+                    .map_err(|_| VectorError::Storage("Corrupt DocId in WAL".into()))?,
             );
 
             let mut buf_hmac = [0u8; 32];
@@ -220,7 +221,7 @@ impl DiskAnnIndex {
             }
             offset += 32;
 
-            let mut hmac = acta_crypto::wal_crypto::WalHmac::new(DISKANN_INTEGRITY_KEY)?;
+            let mut hmac = crate::diskann::integrity::DiskAnnHmac::new(DISKANN_INTEGRITY_KEY)?;
             hmac.update(&buf_id);
             let computed_hmac = hmac.finalize();
 
@@ -256,13 +257,13 @@ impl DiskAnnIndex {
             .create(true)
             .append(true)
             .open(path)
-            .map_err(ActaError::Io)?;
+            .map_err(VectorError::Io)?;
 
         if is_new {
             file.write_all(PENDING_WAL_MAGIC)
-                .map_err(ActaError::Io)?;
+                .map_err(VectorError::Io)?;
             file.write_all(&[PENDING_WAL_VERSION])
-                .map_err(ActaError::Io)?;
+                .map_err(VectorError::Io)?;
         }
 
         let dim = embedding.len() as u32;
@@ -277,13 +278,13 @@ impl DiskAnnIndex {
             entry_bytes.extend_from_slice(&val.to_le_bytes());
         }
 
-        let mut hmac = acta_crypto::wal_crypto::WalHmac::new(DISKANN_INTEGRITY_KEY)?;
+        let mut hmac = crate::diskann::integrity::DiskAnnHmac::new(DISKANN_INTEGRITY_KEY)?;
         hmac.update(&entry_bytes);
         let computed_hmac = hmac.finalize();
 
-        file.write_all(&entry_bytes).map_err(ActaError::Io)?;
-        file.write_all(&computed_hmac).map_err(ActaError::Io)?;
-        file.sync_all().map_err(ActaError::Io)?;
+        file.write_all(&entry_bytes).map_err(VectorError::Io)?;
+        file.write_all(&computed_hmac).map_err(VectorError::Io)?;
+        file.sync_all().map_err(VectorError::Io)?;
         Ok(())
     }
 
@@ -333,7 +334,7 @@ impl DiskAnnIndex {
         }
 
         if file_len < PENDING_WAL_HEADER_SIZE {
-            return Err(ActaError::Storage(
+            return Err(VectorError::Storage(
                 "Unbekanntes oder veraltetes pending.wal-Format, bitte vor Upgrade leeren".into(),
             ));
         }
@@ -341,13 +342,13 @@ impl DiskAnnIndex {
         let mut magic_buf = [0u8; 4];
         let mut version_buf = [0u8; 1];
         if file.read_exact(&mut magic_buf).is_err() || file.read_exact(&mut version_buf).is_err() {
-            return Err(ActaError::Storage(
+            return Err(VectorError::Storage(
                 "Unbekanntes oder veraltetes pending.wal-Format, bitte vor Upgrade leeren".into(),
             ));
         }
 
         if magic_buf != *PENDING_WAL_MAGIC || version_buf[0] != PENDING_WAL_VERSION {
-            return Err(ActaError::Storage(
+            return Err(VectorError::Storage(
                 "Unbekanntes oder veraltetes pending.wal-Format, bitte vor Upgrade leeren".into(),
             ));
         }
@@ -371,12 +372,12 @@ impl DiskAnnIndex {
             #[cfg(not(feature = "docid-128"))]
             let doc_id =
                 DocId::from(u64::from_le_bytes(buf_id.as_slice().try_into().map_err(
-                    |_| ActaError::Storage("Corrupt DocId in WAL".into()),
+                    |_| VectorError::Storage("Corrupt DocId in WAL".into()),
                 )?));
             #[cfg(feature = "docid-128")]
             let doc_id =
                 DocId::from(u128::from_le_bytes(buf_id.as_slice().try_into().map_err(
-                    |_| ActaError::Storage("Corrupt DocId in WAL".into()),
+                    |_| VectorError::Storage("Corrupt DocId in WAL".into()),
                 )?));
             let dim = u32::from_le_bytes(buf_dim) as usize;
 
@@ -404,7 +405,7 @@ impl DiskAnnIndex {
             }
             offset += 32;
 
-            let mut hmac = acta_crypto::wal_crypto::WalHmac::new(DISKANN_INTEGRITY_KEY)?;
+            let mut hmac = crate::diskann::integrity::DiskAnnHmac::new(DISKANN_INTEGRITY_KEY)?;
             hmac.update(&buf_id);
             hmac.update(&buf_dim);
             hmac.update(&vec_bytes);
@@ -719,12 +720,12 @@ impl DiskAnnIndex {
         let tmp_path = self.inner.config.index_path.with_extension("idx.tmp");
         self.build_to_path_sync(&tmp_path, vectors, ids)?;
 
-        std::fs::rename(&tmp_path, &self.inner.config.index_path).map_err(ActaError::Io)?;
+        std::fs::rename(&tmp_path, &self.inner.config.index_path).map_err(VectorError::Io)?;
 
         // Fsync parent directory after rename for POSIX atomic directory entry durability
         if let Some(parent) = self.inner.config.index_path.parent() {
-            let parent_dir = std::fs::File::open(parent).map_err(ActaError::Io)?;
-            parent_dir.sync_all().map_err(ActaError::Io)?;
+            let parent_dir = std::fs::File::open(parent).map_err(VectorError::Io)?;
+            parent_dir.sync_all().map_err(VectorError::Io)?;
         }
 
         let pending_wal = self.inner.config.index_path.with_extension("pending.wal");
@@ -756,13 +757,14 @@ impl DiskAnnIndex {
             let max_degree = self.inner.config.max_degree;
             for i in 0..node_count {
                 let node = self.load_node(i)?;
-                assert!(
-                    node.neighbors.len() <= max_degree,
-                    "Graph integrity violation: Node {} has {} neighbors, exceeding max_degree {}",
-                    i,
-                    node.neighbors.len(),
-                    max_degree
-                );
+                if node.neighbors.len() > max_degree {
+                    return Err(VectorError::Index(format!(
+                        "Graph integrity violation: Node {} has {} neighbors, exceeding max_degree {}",
+                        i,
+                        node.neighbors.len(),
+                        max_degree
+                    )));
+                }
             }
         }
         Ok(())
@@ -777,7 +779,7 @@ mod tests {
     #[cfg(feature = "docid-128")]
     #[tokio::test]
     async fn test_docid_128_wal_roundtrip() -> Result<()> {
-        let temp_dir = tempfile::tempdir().map_err(ActaError::Io)?;
+        let temp_dir = tempfile::tempdir().map_err(VectorError::Io)?;
         let pending_wal_path = temp_dir.path().join("test_128.pending.wal");
         let tombstone_wal_path = temp_dir.path().join("test_128.tombstone.wal");
 
@@ -809,8 +811,8 @@ mod tests {
 
         let recovered_tombstones = DiskAnnIndex::read_tombstone_wal(&tombstone_wal_path)?;
         assert_eq!(recovered_tombstones.len(), 2);
-        assert!(recovered_tombstones.contains(large_id1));
-        assert!(recovered_tombstones.contains(large_id2));
+        assert!(recovered_tombstones.contains(&large_id1));
+        assert!(recovered_tombstones.contains(&large_id2));
 
         Ok(())
     }

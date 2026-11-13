@@ -1,105 +1,31 @@
-# AGENTS.md — acta-checkpoint
-> Layer 1 | Snapshot-Pinning, RAII-Transaktions-Guards, Time-Travel | ~1000 LOC
+# AGENTS.md — `acta-checkpoint`
 
-## 1. Zweck & Architekturrolle
+> Werkzeug/Crate-Kontext für Agenten. Der obere Teil ist generiert; manuelle Notizen unterhalb ergänzen.
 
-Koordiniert konsistente Snapshots über alle Storage-Komponenten hinweg (LSM, Vector, Graph).
-Bietet `PersistentCheckpointStore` zur Ablage von benannten Checkpoints.
-Herzstück ist der `CheckpointGuard`: Er erzwingt per RAII-Semantik, dass Transaktionen
-entweder explizit committet werden oder andernfalls (bei Panic/Drop) ein Rollback auslösen.
-Implementiert den `CheckpointCoordinator` Trait (bzw. greift auf diesen zu).
+<!-- BEGIN GENERATED: crate_inventory.py -->
 
-## 2. Modul-Karte
+## Inventar (generiert)
 
-| Datei | Verantwortung |
-|---|---|
-| `lib.rs` | `#![deny(unsafe_code)]`, `CheckpointGuard`, `PersistentCheckpointStore`, `StateCheckpoint` |
+- **Pfad:** `crates/acta-checkpoint` · **Ring:** 1 · **Version:** 0.1.0
+- **Beschreibung:** Backup and snapshot management for Acta storage
+- **src:** 20 Dateien, 4017 LOC · **unsafe:** 0 Vorkommen, Policy `forbid`
+- **Interne Abhängigkeiten (normal, 4):** `acta-env`, `acta-ids`, `acta-ports`, `acta-types`
+- **Interne Dev/Build-Abhängigkeiten (1):** `acta-testkit`
+- **Externe Abhängigkeiten (normal, 8):** `blake3`, `bytes`, `parking_lot`, `serde`, `serde_json`, `thiserror`, `tokio`, `tracing`
+- **Reverse-Abhängigkeiten (2):** `acta-agent`, `acta-db`
+- **Kopplung an Hub-Crates:** ausgehend `acta-ports`, `acta-types`; eingehend `acta-db`
+- **Features (5):** `default`, `docid-128`, `ports-compat`, `types-compat`, `workspace`
 
-*(Hinweis: Diese Crate ist klein und vollständig in `lib.rs` zusammengefasst, um die Kopplung zwischen Guard-Lifecycle und Persistenz eng zu halten).*
+### Öffentliche API (grob, aus src/)
+- struct (19): `CheckpointGuard`, `CheckpointManifest`, `CheckpointMeta`, `DefaultHardlinkCloner`, `HardlinkCloneResult`, `InMemorySnapshotSource`, `InstanceOrphanRegistry`, `LoomDirEntry`, `LoomMetadata`, `LoomReadDir`, `OrphanRegistry`, `OrphanState`, `PersistentCheckpointStore`, `PinGuard`, `PinnedSeqNoOrphan` … (+4)
+- enum (1): `CheckpointError`
+- trait (6): `CheckpointHardlinkCloner`, `CheckpointRegistry`, `CheckpointVfs`, `FsSeam`, `SnapshotPinner`, `SnapshotSource`
+- fn (91): `allocate_tx`, `await_pending_rollbacks`, `checkpoint`, `checkpoint_counter`, `checkpoint_guard_skipped_rollback_count`, `clear_all`, `clear_all_orphaned_checkpoints`, `clear_orphan_pin`, `clear_orphaned_checkpoint`, `clock`, `close`, `commit`, `copy`, `create_checkpoint`, `create_dir_all` … (+76)
+- type (5): `BoxFuture`, `CheckpointResult`, `PinId`, `Result`, `VersionedKeyMap`
+- const (1): `CURRENT_ID_WIDTH_BITS`
+- mod (5): `compat`, `contract`, `error`, `ports_impl`, `snapshot_bridge`
+- pub use: `crate::error::{CheckpointError, CheckpointResult}`, `crate::fs_seam::{FsSeam, StdFsSeam}`, `crate::meta::WorkflowState`, `crate::snapshot_source::{BoxFuture, SnapshotSource}`, `crate::vfs::CheckpointVfs`, `error::{CheckpointError, CheckpointResult}`, `fs_seam::{FsSeam, StdFsSeam}`, `guard::{CheckpointGuard, PinGuard}`, `hardlink_cloner::{ CheckpointHardlinkCloner, DefaultHardlinkCloner, HardlinkCloneResult, SnapshotPinner, }`, `manifest::CheckpointManifest` … (+5)
 
-## 3. Kritische Invarianten
+Regeneriert mit `python3 tools/crate_inventory.py agents`. Manuelle Notizen stehen außerhalb dieses Blocks.
 
-### RAII-Semantik des CheckpointGuard
-Ein `CheckpointGuard` **MUSS** immer konsumiert werden.
-- `guard.commit()` überführt die Transaktion in einen dauerhaften Checkpoint.
-- `guard.rollback()` (oder `drop(guard)`) verwirft uncommittete Änderungen der `TxId`.
-- **Wichtig:** Da `Drop` in async-Rust nicht asynchron sein kann, registriert
-der synchrone Drop-Handler des Guards die Transaktion als "orphaned".
-Ein asynchroner Reaper (`recover_orphaned_checkpoints`) muss diese später aufräumen.
-
-### TxId-Zuweisung für System-Checkpoints
-Manuell erstellte named Checkpoints (nicht reguläre Agent-Steps) nutzen TxIds 
-aus dem internen Bereich `TxId::INTERNAL_BASE` aufwärts.
-Dies verhindert Konflikte mit regulären Dokument/Kanten-Einfügungen.
-
-### Snapshot Pinning
-`PersistentCheckpointStore` ruft `storage.pin_checkpoint(seq_no)` auf.
-Gepinnte Checkpoints verhindern, dass der LSM-Compactor (Layer 1) Versionen 
-löscht, die für `rollback_to_tx` noch benötigt werden.
-Wenn ein Checkpoint gelöscht wird, MUSS er unpinned werden.
-
-## 4. Public API Quick-Reference
-
-```rust
-// === Checkpoint Lifecycle ===
-pub struct CheckpointGuard<S: StorageEngine> { ... }
-impl<S> CheckpointGuard<S> {
-    pub fn new(checkpoint: StateCheckpoint, storage: Arc<S>, namespace: impl Into<String>) -> Self;
-    pub async fn for_agent_step(storage: Arc<S>, tx: TxId) -> Result<Self>;
-    pub fn commit(self) -> Result<StateCheckpoint>;
-    pub async fn rollback(self) -> Result<()>;
-}
-
-// === Persistent Checkpoint Store ===
-pub struct PersistentCheckpointStore<S: StorageEngine> { ... }
-impl<S> PersistentCheckpointStore<S> {
-    pub async fn open(storage: Arc<S>, namespace: impl Into<String>) -> Result<Self>;
-    pub async fn create_checkpoint(&self, name: &str, ...) -> Result<CheckpointMeta>;
-    pub async fn restore_checkpoint(&self, name: &str) -> Result<CheckpointMeta>;
-    pub async fn drop_checkpoint(&self, name: &str) -> Result<()>;
-}
-
-// === Orphan Management ===
-pub async fn await_pending_rollbacks();
-pub fn orphaned_checkpoint_count() -> usize;
-```
-
-## 5. Anti-Patterns & LLM-Fallstricke
-
-```rust
-// ❌ FALSCH — Guard unabsichtlich droppen vor Await (Blockiert LSM-Locks!):
-let guard = store.create_guard(tx)?;
-let result = some_long_async_task().await; // Guard lebt hier noch, Drop passiert danach!
-// ✅ KORREKT — Guard explizit handhaben:
-let result = some_long_async_task().await;
-if result.is_ok() { guard.commit()?; } else { guard.rollback().await?; }
-
-// ❌ FALSCH — System-Checkpoints mit aktueller Systemzeit als TxId:
-let tx = TxId(SystemTime::now()...);
-// ✅ KORREKT — `allocate_tx` des Stores nutzen:
-let tx = store.allocate_tx().await?;
-
-// ❌ FALSCH — public struct Felder modifizieren:
-// ✅ KORREKT — `StateCheckpoint` Felder sind privat oder read-only nach Erstellung.
-```
-
-## 6. Concurrency & Lock-Hierarchie
-
-`CheckpointGuard` hält keine blockierenden OS-Locks (Mutex/RwLock) über asynchrone Grenzen,
-aber er repräsentiert eine offene, uncommittete Transaktion im `TxBuffer` der `StorageEngine`.
-Lange offene Guards verbrauchen Memory (weil Writes nicht in den LSM fließen) und können
-andere Lese-Transaktionen behindern (weil das MVCC-Watermark nicht voranschreitet).
-
-## 7. Cross-Crate-Schnittstellen & DAG-Grenzen
-
-- **Erlaubte Imports**: `acta-core` (L0)
-- **Verbotene Imports**: `acta-store` (L1 Peer), `acta-db` (L2)
-- **Genutzt von**: `acta-db` (MultiStepEngine), `acta-agent` (für Agenten-Steps)
-
-## 8. Relevante ADRs & Rules
-
-| ADR/Rule | Relevanz |
-|---|---|
-| ADR-011 | RAII-basierte Checkpoint Guards (Orphan-Reaping bei Panic) |
-| `rules/async_drop.md` | Hintergrund-Reaping von synchronen Drops (Orphaned Checkpoints) |
-| `COMMON_LLM_ERRORS.md` | Fehler-Klasse 11: Lock-Guard über `.await` halten |
+<!-- END GENERATED: crate_inventory.py -->

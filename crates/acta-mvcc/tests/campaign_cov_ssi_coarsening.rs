@@ -14,7 +14,7 @@
 use acta_mvcc::snapshot::SnapshotRegistry;
 use acta_mvcc::ssi::{ReadSet, SequenceLogSsiValidator};
 use acta_mvcc::SsiValidator;
-use acta_types::TxId;
+use acta_ids::TxId;
 use std::sync::Arc;
 
 // Prüft das Auslösen der Vergröberung (Coarsening) bei 80 % Füllstand und die Diagnose des blockierenden Snapshots.

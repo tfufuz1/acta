@@ -6,7 +6,8 @@
 //! vollständig freigegeben wird.
 
 use acta_mvcc::tx_buffer::{IndexOp, TxBuffer, TxBufferConfig, STAGING_ENTRY_OVERHEAD_BYTES};
-use acta_types::{ActaError, DocId, TxId};
+use acta_mvcc::MvccError;
+use acta_ids::{DocId, TxId};
 use std::time::Duration;
 
 // Prüft, dass das Überschreiten des Byte-Budgets einer Transaktion mit einem Fehler abgewiesen wird.
@@ -43,7 +44,7 @@ fn tx_buffer_byte_budget_exceeded() {
         },
     );
 
-    assert!(matches!(res2, Err(ActaError::Storage(_))));
+    assert!(matches!(res2, Err(MvccError::Storage(_))));
 }
 
 // Prüft, dass der reservierte Byte-Speicher bei drain, discard und orphan reaping wieder freigegeben wird.

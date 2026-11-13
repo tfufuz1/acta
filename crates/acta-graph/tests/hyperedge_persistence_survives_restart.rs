@@ -7,17 +7,15 @@
 
 use acta_graph::csr::{CsrGraph, EdgeType};
 use acta_graph::hyperedge::{HyperEdge, HyperEdgeId, RoleBinding, RoleId, HYPEREDGE_PREFIX};
+use acta_graph::test_doubles::InMemoryStorageEngine;
 use acta_ports::StorageEngine;
-use acta_store::{LsmConfig, LsmStorage};
 use acta_types::{DocId, EntityId, TxId};
 use std::sync::Arc;
-use tempfile::tempdir;
 
 // ANCHOR[acta-graph:TESTS-HYPEREDGE-PERSISTENCE-SURVIVES-RESTART-001]
 #[tokio::test]
 async fn test_hyperedge_persistence_survives_restart() {
-    let dir = tempdir().unwrap();
-    let db_path = dir.path().to_path_buf();
+    let storage = Arc::new(InMemoryStorageEngine::new());
 
     let doc_oracle = DocId::from_key("doc-persistence-oracle").unwrap();
     const ROLE_SUBJ: RoleId = RoleId::new(1);
@@ -52,14 +50,7 @@ async fn test_hyperedge_persistence_survives_restart() {
 
     // Phase 1: Initialize Storage & Graph, persist hyperedges to LSM
     {
-        let storage = Arc::new(
-            LsmStorage::new(LsmConfig {
-                path: db_path.clone(),
-                ..Default::default()
-            })
-            .await
-            .unwrap(),
-        );
+        let storage = storage.clone();
 
         let graph = Arc::new(CsrGraph::with_storage(storage.clone()));
         graph.insert_hyperedge(he1.clone());
@@ -96,14 +87,7 @@ async fn test_hyperedge_persistence_survives_restart() {
 
     // Phase 2: Simulate process restart — reopen LSM Storage and load persisted hyperedges
     {
-        let storage = Arc::new(
-            LsmStorage::new(LsmConfig {
-                path: db_path,
-                ..Default::default()
-            })
-            .await
-            .unwrap(),
-        );
+        let storage = storage.clone();
 
         let recovered_graph = CsrGraph::with_storage(storage.clone());
 

@@ -1,37 +1,31 @@
 # AGENTS.md — `acta-crypto`
 
-## 1. Rolle
-`acta-crypto` stellt I/O-freie kryptographische Primitiven, Schlüsselverwaltung, Zeroization, Audit-Chains und DeletionProof-Erzeugung/Verifikation bereit.
+> Werkzeug/Crate-Kontext für Agenten. Der obere Teil ist generiert; manuelle Notizen unterhalb ergänzen.
 
-## 2. Ring, Klasse, Reifegrad & `may_use`
-- **Ring:** Ring 0 (Kryptographie & Nachweislogik, I/O-frei, lock-frei in Produktionspfaden)
-- **Klasse:** Kern `[K]`
-- **Reifegrad:** `stable`
-- **`may_use` (Obergrenze):** `acta-types`, `acta-ports` (Persistenz nur über den Port `DurableLog`; Spec §6.9, `capabilities.toml`)
+<!-- BEGIN GENERATED: crate_inventory.py -->
 
-## 3. Garantien & Anforderungen (§33, §20)
-- **REQ-CRY-001:** Kanonische TLV-Kodierung (`TlvEncoder`, `TlvField`) mit Big-Endian Tag (`u16`) / Length (`u32`) Sortierung.
-- **REQ-CRY-002:** Ed25519 strict Signaturprüfung (`verify_strict`) und BLAKE3 Hashketten.
-- **REQ-CRY-003:** Disclaimers & Claims gemäß Taxonomie (§20.12): `AUDIT_SCOPE_DISCLAIMER` verpflichtend in Claim-Texten; Vertraulichkeits- & Abwesenheitsbeweise ausgeschlossen.
-- **REQ-CRY-004:** Two-Phase Fail-Closed KMS Revocation (`LocalKmsProvider::destroy_key`).
-- **Durchsetzungsmechanismus (§27.6):** `#![forbid(unsafe_code)]`, offline `verify_proof` Tests, Testvektoren.
+## Inventar (generiert)
 
-## 4. Verbotene Muster
-- **Kein `unsafe` außerhalb der dedizierten Inseln** (`#![forbid(unsafe_code)]` strikt erzwungen).
-- **Kein I/O:** Persistenz erfolgt ausschließlich über den Port `DurableLog`.
-- **Keine Löschtypen außerhalb `crypto`/`ports`** (§6.10, Punkt 5).
-- Keine Erzeugung unverifizierter Proofs bei fehlenden Kernschichten (`possesses_full_core_coverage`).
-- Keinerlei Verwendung verbotener Werbe-Claims ("100% gelöscht", "garantiert", "DSGVO-konform").
+- **Pfad:** `crates/acta-crypto` · **Ring:** 0 · **Version:** 0.1.0
+- **Beschreibung:** Encryption at Rest and KV-Cache Security utilities for Acta
+- **src:** 22 Dateien, 4479 LOC · **unsafe:** 0 Vorkommen, Policy `forbid`
+- **Interne Abhängigkeiten (normal, 4):** `acta-env`, `acta-ids`, `acta-ports`, `acta-types`
+- **Interne Dev/Build-Abhängigkeiten (4):** `acta-crypto`, `acta-env`, `acta-ports`, `acta-types`
+- **Externe Abhängigkeiten (normal, 18):** `aes-gcm-siv`, `ahash`, `argon2`, `bincode`, `blake3`, `hkdf`, `hmac`, `lru`, `parking_lot`, `rand`, `regex`, `serde`, `serde_json`, `sha2`, `subtle`, `thiserror`, `tracing`, `zeroize`
+- **Reverse-Abhängigkeiten (4):** `acta-infer-candle`, `acta-kvcache`, `acta-mcp`, `acta-store`
+- **Kopplung an Hub-Crates:** ausgehend `acta-ports`, `acta-types`; eingehend –
+- **Features (7):** `cloud-egress-guard`, `default`, `kv-encryption`, `ports-compat`, `test-utils`, `types-compat`, `workspace`
 
-## 5. Implementierte & konsumierte Ports (Anhang A)
-- Konsumiert: Port `DurableLog` für Persistenz, `EntropyRng` für CSPRNG Nonces.
-- Implementiert: `KmsProvider`, DeletionProof Offline-Verifier.
+### Öffentliche API (grob, aus src/)
+- struct (34): `AncestorSalts`, `AuditChain`, `AuditChainEntry`, `AuditChainHeadSignature`, `AuditHeadAnchor`, `Blake3Chain`, `CloudEgressGuard`, `Dek`, `DerivedKey`, `DeterministicEntropy`, `EncryptedCommitmentSalt`, `EncryptedKvLayer`, `EncryptedSegmentPayload`, `EncryptedWal`, `EvictionWorker` … (+19)
+- enum (3): `CryptoError`, `DataClass`, `KvDeleteMode`
+- trait (4): `CryptoEntropy`, `KmsContract`, `KmsProvider`, `KvCipher`
+- fn (103): `append`, `as_bytes`, `cipher_for`, `cipher_for_bytes`, `cipher_for_scoped`, `cipher_for_scoped_bytes`, `clear_all`, `compute_hash`, `compute_record_commitment`, `constant_time_compare`, `current_hash`, `decrypt`, `decrypt_auto_nonce`, `decrypt_chunk`, `decrypt_data` … (+88)
+- type (4): `DocTag`, `Result`, `Salt`, `SpillHandler`
+- const (18): `CURRENT_KV_FORMAT_VERSION`, `CURRENT_KV_KEY_DERIVATION_VERSION`, `DEFAULT_M_COST_KIB`, `DEFAULT_P_COST`, `DEFAULT_SEGMENT_CAPACITY_PER_TENANT`, `DEFAULT_SHARD_COUNT`, `DEFAULT_T_COST`, `DEK_LABEL`, `DEK_SALT_LABEL`, `KDF_HEADER_MAGIC`, `KDF_HEADER_VERSION_1`, `KDF_ID_ARGON2ID`, `MIN_M_COST_KIB`, `MIN_P_COST`, `MIN_SALT_LEN` … (+3)
+- mod (20): `aead`, `anti_tamper`, `audit_chain`, `compat`, `contract`, `crypto`, `dek`, `delete_mode`, `error`, `eviction_worker`, `kdf`, `kv_cipher`, `kv_segment`, `manager`, `model_fingerprint` … (+5)
+- pub use: `aead::*`, `audit_chain::{ compute_record_commitment, AuditChain, AuditChainEntry, AuditChainHeadSignature, DataClass, EncryptedCommitmentSalt, }`, `contract::*`, `crypto::KeyManager`, `crypto::KeyManager as CryptoKey`, `dek::{derive_dek, AncestorSalts, Dek, UnitKey}`, `delete_mode::KvDeleteMode`, `error::{CryptoError, Result}`, `eviction_worker::{emergency_wipe, EvictionWorker}`, `kdf::hkdf_expand` … (+11)
 
-## 6. Tests & Gates
-- **Fuzzing (REQ-QA-003):** WAL-Replay & DeletionProof Deserialisierungs-Fuzzer.
-- **Multithread Concurrency:** Thread-Safety Tests für Vaults und Nonces (`concurrency_vault_and_nonce.rs`).
-- **KMS Revocation Gate:** `kms_revoke_fail_closed.rs`.
+Regeneriert mit `python3 tools/crate_inventory.py agents`. Manuelle Notizen stehen außerhalb dieses Blocks.
 
-## 7. Offene Punkte
-- **P-01 bis P-14 (§20.13):** Offene juristische Prüfpunkte bezüglich Schutzbedarf und Schlüsselvernichtungs-Attestierung.
-- **F-01 bis F-08 (§34):** Architekturentscheidungen zu Crypto-Erase und DeletionProof v4.
+<!-- END GENERATED: crate_inventory.py -->

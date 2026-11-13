@@ -5,12 +5,11 @@
 //! Bietet quantilbasierte Online-Schwellenwertschätzung mit mathematischen
 //! Finite-Sample-Abdeckungsgarantien (Coverage Guarantees).
 
-use acta_types::ConfigFingerprint;
+use crate::local_types::ConfigFingerprint;
 use thiserror::Error;
 
 /// Error type for conformal calibration and threshold updates.
 #[derive(Debug, Clone, PartialEq, Error)]
-// ANCHOR[acta-rank:CONF-001]
 /// Fehlertypen für die konforme Kalibrierung.
 pub enum ConformalError {
     /// Target miscoverage level `alpha` is not finite or outside (0.0, 1.0).
@@ -35,7 +34,6 @@ pub enum ConformalError {
 }
 
 /// Trait for deterministic, online conformal calibration and threshold estimation.
-// ANCHOR[acta-rank:CONF-002]
 /// Trait für deterministische konforme Schwellenwertschätzung.
 pub trait ConformalCalibrator {
     /// Deterministically updates the threshold given a non-conformity score and propensity weight.
@@ -48,7 +46,6 @@ pub trait ConformalCalibrator {
     /// - `Ok(true)` if the update altered the threshold value.
     /// - `Ok(false)` if the threshold value remained unchanged.
     /// - `Err(ConformalError)` if any input parameter is non-finite or non-positive.
-    // ANCHOR[acta-rank:CONF-004]
     // Ablauf des Online-Pinball-Updates:
     // 1. Validierung: Prüfen, ob propensity_weight > 0.0 und non_conformity_score endlich sind.
     // 2. Schrittweite berechnen:
@@ -73,7 +70,6 @@ pub trait ConformalCalibrator {
 /// the threshold increases by $\gamma \cdot w_t \cdot (1 - \alpha)$. Otherwise, it decreases by
 /// $\gamma \cdot w_t \cdot \alpha$.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-// ANCHOR[acta-rank:CONF-003]
 /// Adaptiver konformer Kalibrierer für Online-Schwellenwerte unter Covariate Shift.
 pub struct AdaptiveConformalCalibrator {
     alpha: f32,
@@ -173,7 +169,8 @@ impl AdaptiveConformalCalibrator {
     }
 
     /// Resets state if ConfigFingerprint changes (P8 Compliance).
-    pub fn invalidate_on_config_change(&mut self, new_fingerprint: ConfigFingerprint) {
+    pub fn invalidate_on_config_change(&mut self, new_fingerprint: impl Into<ConfigFingerprint>) {
+        let new_fingerprint = new_fingerprint.into();
         if self.fingerprint.as_ref() != Some(&new_fingerprint) {
             tracing::warn!(
                 old_fp = ?self.fingerprint,

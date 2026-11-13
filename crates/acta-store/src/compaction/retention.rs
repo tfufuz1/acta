@@ -1,8 +1,8 @@
 //! # Retention & Tombstone-Bereinigung (Ring 1)
 //!
-//! Bestimmt anhand aktiver Snapshots, welche geloeschten Schluessel physisch verworfen werden duerfen.
+//! Bestimmt anhand aktiver Snapshots, welche invalidierten Schluessel physisch verworfen werden duerfen.
 
-use acta_types::TOMBSTONE_BIT;
+use acta_ids::TOMBSTONE_BIT;
 
 /// Filters a sequence of entries for a SINGLE key (sorted by raw sequence DESCENDING)
 /// according to MVCC retention rules given a `floor` sequence number.

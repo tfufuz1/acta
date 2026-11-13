@@ -1,5 +1,9 @@
-// ANCHOR[acta-mvcc:SEQ-LOG-ROOT]
+// ANCHOR[id=seq-log-module-root]
 //! # Sequenz-Log (`SequenceLog`) für snapshot-isolierte Index-Suchen (`_at`-Familie)
+//!
+//! LINK crates/acta-mvcc/src/lib.rs
+//! LINK crates/acta-mvcc/src/snapshot.rs
+//! LINK crates/acta-mvcc/src/ssi.rs
 //!
 //! Dieses Modul implementiert ein leichtgewichtiges, speicherinternes Versionsprotokoll
 //! für Dokumente. Es zeichnet auf, wann Dokumente eingefügt (`insert_seq`) und wann sie
@@ -11,30 +15,31 @@
 //! - **Ring 0 (Kern)**: Grundlegender Baustein für MVCC (Multi-Version Concurrency Control).
 //! - **Konsumenten**: Vektor- und Text-Indizes, die historische Suchen (`search_at`) unterstützen,
 //!   sowie SSI-Validatoren (`SequenceLogSsiValidator`).
-//! - **Port-Nutzung**: Verwendet den [`Clock`]-Port (`acta-ports`) für deterministische
+//! - **Port-Nutzung**: Verwendet den [`Clock`]-Port (`acta-env`) für deterministische
 //!   Zeitbestimmung (wichtig für TTL-Prüfungen von Snapshot-Pins ohne direkte Systemuhr-Abhängigkeit).
 
 // FILE-CONTEXT
-// STAND: 2026-08-30T18:51:56Z (SESSION: e459bd5f)
 // ZWECK: Shared Versioned Sequence Log für Snapshot-isolierte Index-Suchen (_at Familie).
 // INVARIANTEN: Sichtbarkeitsprüfung: insert_seq <= as_of && (delete_seq.is_none() || delete_seq > as_of).
 // HOTSPOTS: 20-75
 // NICHT-OFFENSICHTLICH: Compaction prunt Einträge erst wenn delete_seq < min_active_seqno.
-// SIEHE AUCH: rules/tag_taxonomy.md, DECISIONS.md (ADR-024)
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use acta_ports::{Clock, SystemClock};
+use acta_env::{Clock, SystemClock};
 
 use crate::types::DocId;
 
-// ANCHOR[acta-mvcc:SEQ-LOG-CONST]
+// SECTION Constants
+// ANCHOR[id=seq-log-constants]
 /// Standard-Lebensdauer für Snapshot-Pins (5 Minuten), bevor Diagnose-Warnungen für
 /// blockierende oder verwaiste Pins ausgelöst werden.
 pub const DEFAULT_MAX_PIN_DURATION: Duration = Duration::from_secs(300);
+// !SECTION Constants
 
-// ANCHOR[acta-mvcc:SEQ-LOG-ENTRY]
+// SECTION Data Types
+// ANCHOR[id=seq-log-entry-struct]
 /// Ein versionierter Protokolleintrag für die Snapshot-Isolation (`_at`-Familie).
 ///
 /// Jeder Eintrag repräsentiert die Lebensspanne einer Dokumentversion:
@@ -44,7 +49,7 @@ pub const DEFAULT_MAX_PIN_DURATION: Duration = Duration::from_secs(300);
 /// Jeder Eintrag belegt 24 Bytes:
 /// - 8 Bytes für `DocId` (Dokument-Kennung)
 /// - 8 Bytes für `insert_seq` (Sequenznummer der Erstellung)
-/// - 8 Bytes für `delete_seq: Option<u64>` (Sequenznummer der Löschung)
+/// - 8 Bytes für `delete_seq: Option<u64>` (Sequenznummer der Entfernung/Deletion)
 ///
 /// Einträge, deren `delete_seq` unterhalb der minimal aktiven Sequenznummer
 /// (`min_active_seqno`) aller aktiven Leser liegt, können via [`SequenceLog::compact`]
@@ -60,8 +65,15 @@ pub struct SeqLogEntry {
 }
 
 impl SeqLogEntry {
-    // ANCHOR[acta-mvcc:SEQ-LOG-VISIBILITY]
+    // ANCHOR[id=seq-log-entry-is-visible]
     /// Prüft in O(1), ob dieser Protokolleintrag zu einem bestimmten Snapshot-Stand `as_of` sichtbar ist.
+    ///
+    /// ### Formale Sichtbarkeitsinvariante (INV-INDEX-SNAPSHOT-1):
+    /// Eine Version `(key, seq)` ist für Snapshot `s` mit Lese-Sequenz `as_of` genau dann sichtbar, wenn:
+    /// `seq <= as_of && (delete_seq.is_none() || delete_seq > as_of)`.
+    ///
+    /// Dies gilt universell für reguläre Datensätze, Updates (neue Version erzeugt `insert_seq` und schließt Vorgänger)
+    /// sowie Tombstones (Tombstone markiert `delete_seq` und maskiert ältere Versionen aus).
     ///
     /// ### Ablauf der Sichtbarkeitsprüfung:
     /// 1. Maskiere eventuell gesetzte Tombstone-Bits (höchstwertiges Bit) auf allen Sequenznummern aus.
@@ -76,14 +88,14 @@ impl SeqLogEntry {
     #[inline]
     pub fn is_visible(&self, as_of: u64) -> bool {
         // NOTE: Tombstone-Bit wird ausmaskiert, damit Berechnungen nicht durch interne Markierungsbits verfälscht werden.
-        let as_of = as_of & !crate::types::TOMBSTONE_BIT;
-        let insert_seq = self.insert_seq & !crate::types::TOMBSTONE_BIT;
-        let delete_seq = self.delete_seq.map(|d| d & !crate::types::TOMBSTONE_BIT);
+        let as_of = as_of & !acta_ids::TOMBSTONE_BIT;
+        let insert_seq = self.insert_seq & !acta_ids::TOMBSTONE_BIT;
+        let delete_seq = self.delete_seq.map(|d| d & !acta_ids::TOMBSTONE_BIT);
         insert_seq <= as_of && delete_seq.is_none_or(|del| del > as_of)
     }
 }
 
-// ANCHOR[acta-mvcc:SEQ-LOG-CHANGE]
+// ANCHOR[id=seq-log-change-enum]
 /// Repräsentiert eine historische Änderung (Einfügen oder Löschen) im Sequenz-Log für Delta-Replays.
 ///
 /// Wird von Abfragen wie [`SequenceLog::changes_since`] erzeugt, um Indizes
@@ -121,8 +133,10 @@ impl SeqLogChange {
         }
     }
 }
+// !SECTION Data Types
 
-// ANCHOR[acta-mvcc:SEQ-LOG-STRUCT]
+// SECTION SequenceLog Engine
+// ANCHOR[id=sequence-log-struct]
 /// Verwaltet das chronologische Sequenz-Protokoll und Sichtbarkeitsfilter für Indexstrukturen.
 ///
 /// ### Funktionsweise:
@@ -168,14 +182,13 @@ impl Default for SequenceLog {
 }
 
 impl SequenceLog {
-    // ANCHOR[acta-mvcc:SEQ-LOG-NEW]
+    // ANCHOR[id=seq-log-constructors]
     /// Erstellt ein neues, leeres `SequenceLog` mit der Standard-Systemuhr [`SystemClock`]
     /// und einer maximalen Pin-Dauer von 5 Minuten.
     pub fn new() -> Self {
         Self::with_clock(Arc::new(SystemClock::new()))
     }
 
-    // ANCHOR[acta-mvcc:SEQ-LOG-WITH-CLOCK]
     /// Erstellt ein neues, leeres `SequenceLog` mit einer benutzerdefinierten Implementierung
     /// des [`Clock`]-Ports (z. B. `ManualClock` in deterministischen Tests).
     pub fn with_clock(clock: Arc<dyn Clock>) -> Self {
@@ -187,6 +200,23 @@ impl SequenceLog {
             max_pin_duration: DEFAULT_MAX_PIN_DURATION,
             clock,
         }
+    }
+
+    /// Erstellt ein `SequenceLog` mit einer anpassbaren Zeitstempel-Closure (State-Passing per `Fn() -> u64`).
+    pub fn with_time_fn<F>(time_fn: F) -> Self
+    where
+        F: Fn() -> u64 + Send + Sync + 'static,
+    {
+        struct ClosureClock<F>(F);
+        impl<F: Fn() -> u64 + Send + Sync + 'static> Clock for ClosureClock<F> {
+            fn now_unix_nanos(&self) -> u64 {
+                (self.0)()
+            }
+            fn monotonic_nanos(&self) -> u64 {
+                (self.0)()
+            }
+        }
+        Self::with_clock(Arc::new(ClosureClock(time_fn)))
     }
 
     /// Gibt eine Referenz auf den aktiven [`Clock`]-Port zurück.
@@ -215,7 +245,7 @@ impl SequenceLog {
         self.max_pin_duration
     }
 
-    // ANCHOR[acta-mvcc:SEQ-LOG-PIN]
+    // ANCHOR[id=seq-log-pinning]
     /// Pinnt eine historische Sequenznummer, um zu verhindern, dass die Hintergrund-Bereinigung
     /// (Rebuild/Compaction) gelöschte Knoten entfernt, die für diesen Stand noch sichtbar sein müssen.
     ///
@@ -229,14 +259,13 @@ impl SequenceLog {
 
     /// Pinnt eine Sequenznummer zu einem expliziten Nanosekunden-Zeitstempel (für deterministische Tests).
     pub fn pin_snapshot_at(&mut self, seq_no: u64, at_nanos: u64) {
-        let seq_no = seq_no & !crate::types::TOMBSTONE_BIT;
+        let seq_no = seq_no & !acta_ids::TOMBSTONE_BIT;
         self.pinned_snapshots
             .entry(seq_no)
             .or_default()
             .push(at_nanos);
     }
 
-    // ANCHOR[acta-mvcc:SEQ-LOG-UNPIN]
     /// Gibt einen gepinnten Snapshot wieder frei.
     ///
     /// ### Ablauf:
@@ -244,7 +273,7 @@ impl SequenceLog {
     /// 2. Den letzten Zeitstempel vom Stack dieses Eintrags entfernen (LIFO).
     /// 3. Ist die Liste der Zeitstempel für diese Sequenznummer leer, den Eintrag vollständig aus der Map löschen.
     pub fn unpin_snapshot(&mut self, seq_no: u64) {
-        let seq_no = seq_no & !crate::types::TOMBSTONE_BIT;
+        let seq_no = seq_no & !acta_ids::TOMBSTONE_BIT;
         if let std::collections::hash_map::Entry::Occupied(mut entry) =
             self.pinned_snapshots.entry(seq_no)
         {
@@ -256,7 +285,6 @@ impl SequenceLog {
         }
     }
 
-    // ANCHOR[acta-mvcc:SEQ-LOG-EXPIRED-PINS]
     /// Findet alle gepinnten Sequenznummern, deren Haltezeit `max_pin_duration` überschreitet,
     /// bezogen auf den übergebenen Monotonie-Zeitstempel `now_nanos`.
     ///
@@ -281,7 +309,6 @@ impl SequenceLog {
         self.expired_pins_at(self.clock.monotonic_nanos())
     }
 
-    // ANCHOR[acta-mvcc:SEQ-LOG-REAP-PINS]
     /// Bereinigt (entpinnt) alle Pins, die die Maximaldauer bezüglich `now_nanos` überschritten haben.
     ///
     /// ### Ablauf:
@@ -302,7 +329,7 @@ impl SequenceLog {
         self.reap_expired_pins_at(now_nanos)
     }
 
-    // ANCHOR[acta-mvcc:SEQ-LOG-MIN-RETENTION]
+    // ANCHOR[id=seq-log-retention-calculation]
     /// Berechnet die kleinste aktuell gepinnte Sequenznummer für Aufbewahrungs- und Pruning-Zwecke.
     ///
     /// Gibt `None` zurück, falls aktuell kein einziger Snapshot gepinnt ist.
@@ -339,7 +366,7 @@ impl SequenceLog {
         self.deletions.get(&doc_id).copied()
     }
 
-    // ANCHOR[acta-mvcc:SEQ-LOG-RECORD-INSERT]
+    // ANCHOR[id=seq-log-mutation-recording]
     /// Zeichnet eine Einfügeoperation für ein Dokument zu einer Sequenznummer auf.
     ///
     /// ### Ablauf:
@@ -349,7 +376,7 @@ impl SequenceLog {
     /// 3. Vorherige Löschmarkierung aus der Schnellsuch-Map `deletions` entfernen.
     /// 4. Neuen Eintrag [`SeqLogEntry`] mit `insert_seq = seq` und `delete_seq = None` anfügen.
     pub fn record_insert(&mut self, doc_id: DocId, seq: u64) {
-        let seq = seq & !crate::types::TOMBSTONE_BIT;
+        let seq = seq & !acta_ids::TOMBSTONE_BIT;
         if let Some(entry) = self
             .entries
             .iter_mut()
@@ -365,7 +392,6 @@ impl SequenceLog {
         });
     }
 
-    // ANCHOR[acta-mvcc:SEQ-LOG-RECORD-DELETE]
     /// Zeichnet eine Löschoperation für ein Dokument zu einer Sequenznummer auf.
     ///
     /// ### Ablauf:
@@ -373,7 +399,7 @@ impl SequenceLog {
     /// 2. Den letzten noch aktiven Eintrag des Dokuments suchen und dessen `delete_seq` auf `seq` setzen.
     /// 3. Dokument und Lösch-Sequenznummer in `deletions` aufnehmen.
     pub fn record_delete(&mut self, doc_id: DocId, seq: u64) {
-        let seq = seq & !crate::types::TOMBSTONE_BIT;
+        let seq = seq & !acta_ids::TOMBSTONE_BIT;
         if let Some(entry) = self
             .entries
             .iter_mut()
@@ -384,21 +410,21 @@ impl SequenceLog {
         }
     }
 
-    // ANCHOR[acta-mvcc:SEQ-LOG-IS-VISIBLE]
+    // ANCHOR[id=seq-log-visibility-check]
     /// Prüft, ob ein Dokument zu einer bestimmten Sequenznummer `seq_no` im Index sichtbar ist.
     ///
     /// Ein Dokument ist sichtbar, wenn es vor oder bei `seq_no` eingefügt wurde und nicht
     /// vor oder bei `seq_no` gelöscht wurde.
     pub fn is_visible(&self, doc_id: DocId, seq_no: u64) -> bool {
-        let seq_no = seq_no & !crate::types::TOMBSTONE_BIT;
+        let seq_no = seq_no & !acta_ids::TOMBSTONE_BIT;
         let mut inserted = false;
         let mut deleted = false;
         for entry in &self.entries {
-            let insert_seq = entry.insert_seq & !crate::types::TOMBSTONE_BIT;
+            let insert_seq = entry.insert_seq & !acta_ids::TOMBSTONE_BIT;
             if entry.doc_id == doc_id && insert_seq <= seq_no {
                 inserted = true;
                 if let Some(del) = entry.delete_seq {
-                    let del_seq = del & !crate::types::TOMBSTONE_BIT;
+                    let del_seq = del & !acta_ids::TOMBSTONE_BIT;
                     deleted = del_seq <= seq_no;
                 } else {
                     deleted = false;
@@ -408,9 +434,9 @@ impl SequenceLog {
         inserted && !deleted
     }
 
-    // ANCHOR[acta-mvcc:SEQ-LOG-COMPACT]
+    // ANCHOR[id=seq-log-compaction]
     /// Verdichtet (kompaktiert) das Sequenz-Log und entfernt historische Versionen,
-    /// deren Löschung strikt kleiner als `min_active_seqno` ist.
+    /// deren Entfernung strikt kleiner als `min_active_seqno` ist.
     ///
     /// ### Invariante:
     /// Versionen mit `delete_seq >= min_active_seqno` MÜSSEN im Speicher verbleiben, da
@@ -422,21 +448,21 @@ impl SequenceLog {
     ///    `delete_seq >= min_active_seqno` ist.
     /// 3. Map `deletions` bereinigen.
     pub fn compact(&mut self, min_active_seqno: u64) {
-        let min_active_seqno = min_active_seqno & !crate::types::TOMBSTONE_BIT;
+        let min_active_seqno = min_active_seqno & !acta_ids::TOMBSTONE_BIT;
         self.compacted_below = Some(
             self.compacted_below
                 .map_or(min_active_seqno, |c| c.max(min_active_seqno)),
         );
         self.entries.retain(|entry| {
             if let Some(del_seq) = entry.delete_seq {
-                let del_seq = del_seq & !crate::types::TOMBSTONE_BIT;
+                let del_seq = del_seq & !acta_ids::TOMBSTONE_BIT;
                 del_seq >= min_active_seqno
             } else {
                 true
             }
         });
         self.deletions
-            .retain(|_, &mut del_seq| (del_seq & !crate::types::TOMBSTONE_BIT) >= min_active_seqno);
+            .retain(|_, &mut del_seq| (del_seq & !acta_ids::TOMBSTONE_BIT) >= min_active_seqno);
     }
 
     /// Gibt die Anzahl der aktuell im Log vorgehaltenen Einträge zurück.
@@ -449,17 +475,17 @@ impl SequenceLog {
         self.entries.is_empty()
     }
 
-    // ANCHOR[acta-mvcc:SEQ-LOG-CHANGES-SINCE]
-    /// Liefert alle Änderungen (Einfügungen und Löschungen), die strikt nach `snapshot_seq`
+    // ANCHOR[id=seq-log-changes-since]
+    /// Liefert alle Änderungen (Einfügungen und Entfernungen), die strikt nach `snapshot_seq`
     /// stattgefunden haben, aufsteigend sortiert nach Sequenznummer.
     ///
     /// Wird verwendet, um einen veralteten Index-Zustand per Delta-Replay schnell
     /// auf einen neueren Stand zu aktualisieren.
     pub fn changes_since(&self, snapshot_seq: u64) -> Vec<SeqLogChange> {
-        let snapshot_seq = snapshot_seq & !crate::types::TOMBSTONE_BIT;
+        let snapshot_seq = snapshot_seq & !acta_ids::TOMBSTONE_BIT;
         let mut changes = Vec::new();
         for entry in &self.entries {
-            let insert_seq = entry.insert_seq & !crate::types::TOMBSTONE_BIT;
+            let insert_seq = entry.insert_seq & !acta_ids::TOMBSTONE_BIT;
             if insert_seq > snapshot_seq {
                 changes.push(SeqLogChange::Insert {
                     doc_id: entry.doc_id,
@@ -467,7 +493,7 @@ impl SequenceLog {
                 });
             }
             if let Some(del_seq) = entry.delete_seq {
-                let del_seq = del_seq & !crate::types::TOMBSTONE_BIT;
+                let del_seq = del_seq & !acta_ids::TOMBSTONE_BIT;
                 if del_seq > snapshot_seq {
                     changes.push(SeqLogChange::Delete {
                         doc_id: entry.doc_id,
@@ -480,12 +506,13 @@ impl SequenceLog {
         changes
     }
 }
+// !SECTION SequenceLog Engine
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use acta_testkit::ManualClock;
+    use acta_env::ManualClock;
 
     // Prüft die O(1)-Sichtbarkeitsprüfung eines einzelnen SeqLogEntry-Eintrags an verschiedenen Grenzwerten.
     #[test]
@@ -720,12 +747,12 @@ mod tests {
     // Prüft TTL-Ablauf und das automatische Bereinigen veralteter Snapshot-Pins über eine manuelle Uhr.
     #[test]
     fn test_sequence_log_pin_ttl_and_expiration() {
-        let clock = Arc::new(ManualClock::new(100_000_000_000));
-        let mut log =
-            SequenceLog::with_clock(clock.clone()).with_max_pin_duration(Duration::from_secs(10));
+        let clock = Arc::new(ManualClock::new(100_000_000_000, 100_000_000_000));
+        let mut log = SequenceLog::with_clock(clock.clone() as Arc<dyn Clock>)
+            .with_max_pin_duration(Duration::from_secs(10));
         assert_eq!(log.max_pin_duration(), Duration::from_secs(10));
 
-        let start_nanos = clock.now_nanos();
+        let start_nanos = clock.now_unix_nanos();
         let past_5s_nanos = start_nanos.saturating_sub(5_000_000_000);
         let past_15s_nanos = start_nanos.saturating_sub(15_000_000_000);
 
@@ -762,14 +789,14 @@ mod tests {
     // Prüft die korrekte Handhabung einer benutzerdefinierten maximalen Pin-Dauer.
     #[test]
     fn test_sequence_log_pin_ttl_custom_duration() {
-        let clock = Arc::new(ManualClock::new(1_000_000_000));
-        let mut log = SequenceLog::with_clock(clock.clone());
+        let clock = Arc::new(ManualClock::new(1_000_000_000, 1_000_000_000));
+        let mut log = SequenceLog::with_clock(clock.clone() as Arc<dyn Clock>);
         assert_eq!(log.max_pin_duration(), DEFAULT_MAX_PIN_DURATION);
 
         log.set_max_pin_duration(Duration::from_millis(50));
         assert_eq!(log.max_pin_duration(), Duration::from_millis(50));
 
-        let now_nanos = clock.now_nanos();
+        let now_nanos = clock.now_unix_nanos();
         let past_100ms_nanos = now_nanos.saturating_sub(100_000_000);
 
         log.pin_snapshot_at(42, past_100ms_nanos);
@@ -788,9 +815,9 @@ mod tests {
     // Prüft, dass rückwärtsspringende Zeitstempel dank sättigender Subtraktion keine Panics auslösen.
     #[test]
     fn test_sequence_log_zero_panic_time_arithmetic() {
-        let clock = Arc::new(ManualClock::new(100_000_000));
-        let mut log = SequenceLog::with_clock(clock.clone());
-        let now_nanos = clock.now_nanos();
+        let clock = Arc::new(ManualClock::new(100_000_000, 100_000_000));
+        let mut log = SequenceLog::with_clock(clock.clone() as Arc<dyn Clock>);
+        let now_nanos = clock.now_unix_nanos();
         let future_nanos = now_nanos + 100_000_000_000;
 
         // Pin in the future (clock skew edge case)
@@ -801,5 +828,31 @@ mod tests {
         assert!(expired.is_empty());
 
         assert_eq!(log.min_retention_seq(), Some(50));
+    }
+
+    // Prüft, dass Updates und Tombstones demselben formalen Sichtbarkeitsgesetz (INV-INDEX-SNAPSHOT-1) folgen.
+    #[test]
+    fn test_sequence_log_tombstones_and_updates_follow_same_law() {
+        let mut log = SequenceLog::new();
+        let doc1 = DocId::from_key("doc_tombstone_test").expect("valid doc id");
+
+        // V1 eingefügt bei Seq 10
+        log.record_insert(doc1, 10);
+        // V2 (Update) bei Seq 20 schließt V1 ab und öffnet V2
+        log.record_insert(doc1, 20);
+        // Tombstone (Delete) bei Seq 30 schließt V2 ab
+        log.record_delete(doc1, 30);
+
+        // Vor Einfügung
+        assert!(!log.is_visible(doc1, 9));
+        // Während V1 aktiv war (10..20)
+        assert!(log.is_visible(doc1, 10));
+        assert!(log.is_visible(doc1, 19));
+        // Während V2 aktiv war (20..30)
+        assert!(log.is_visible(doc1, 20));
+        assert!(log.is_visible(doc1, 29));
+        // Nach Tombstone (ab 30)
+        assert!(!log.is_visible(doc1, 30));
+        assert!(!log.is_visible(doc1, 35));
     }
 }

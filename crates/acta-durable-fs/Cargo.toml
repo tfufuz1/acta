@@ -5,15 +5,41 @@ workspace = true
 name = "acta-durable-fs"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
-rust-version.workspace = true
-description = "Durable filesystem operations and synchronous disk flushing for Acta"
+license = "MIT OR Apache-2.0"
+rust-version = "1.89"
+description = "Crash-sichere Dateisystem-Operationen und synchrones Disk-Flushing für Acta"
+repository = "https://github.com/acta/acta"
+readme = "README.md"
+keywords = ["fsync", "durability", "vfs", "crash-consistency", "storage"]
+categories = ["filesystem"]
+publish = false # Internes Bausteinlager
 
 [package.metadata.acta]
 ring = "0"
+klasse = "A"
+group = "foundation"
+level = 0
+tier = "experimental"
 
 [dependencies]
-acta-sys = { path = "../acta-sys", version = "0.1.0" }
+thiserror = { workspace = true }
+serde = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+crc32fast = { version = "1.3", optional = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+proptest = "1.4"
+criterion = { workspace = true }
+
+[features]
+default = ["std", "crc"]
+std = []
+crc = ["dep:crc32fast"]
+serde = ["dep:serde"]
+tracing = ["dep:tracing"]
+inspect = []
+
+[[bench]]
+name = "fs_bench"
+harness = false

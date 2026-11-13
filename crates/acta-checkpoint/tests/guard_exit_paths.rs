@@ -13,10 +13,9 @@
 //!
 //! Prüft alle Pfade, über die ein CheckpointGuard finalisiert oder vorzeitig verlassen wird.
 
-
 use acta_checkpoint::{CheckpointGuard, PersistentCheckpointStore};
 use acta_ports::{BoxFuture, StorageEngine, StorageStats};
-use acta_types::{ActaError, Result, TxId};
+use acta_types::{Result, TxId};
 use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -358,10 +357,10 @@ async fn test_guard_uncommitted_drop_with_newer_committed_tx_preserves_newer_tx(
         res.is_err(),
         "Explicit rollback must fail serialization barrier check when newer tx exists"
     );
-    if let Err(ActaError::Transaction(msg)) = res {
+    if let Err(acta_checkpoint::CheckpointError::Transaction(msg)) = res {
         assert!(msg.contains("Serialization barrier violation"));
     } else {
-        panic!("Expected ActaError::Transaction serialization barrier error");
+        panic!("Expected acta_checkpoint::CheckpointError::Transaction serialization barrier error");
     }
 }
 

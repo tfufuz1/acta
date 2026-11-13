@@ -6,25 +6,49 @@ name = "acta-rank"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-rust-version.workspace = true
+rust-version = "1.89"
 description = "4-Signal Fusion, Isotonic & Platt Calibration, and Drift Detection for Acta Cognitive OS"
+readme = "README.md"
+repository = "https://github.com/tfufuz1/acta"
+keywords = ["ranking", "rrf", "fusion", "calibration", "retrieval"]
+categories = ["algorithms", "science"]
+include = ["src/**/*", "Cargo.toml", "README.md", "CHANGELOG.md", "LICENSE-*"]
+publish = false # Interner modularer Baustein des Acta-Systems (AD-1)
 
 [package.metadata.acta]
 ring = "0"
-
-[dependencies]
-acta-types.workspace = true
-acta-ports.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-ahash.workspace = true
-tracing.workspace = true
-thiserror.workspace = true
+klasse = "A"
 
 [features]
-dibud = []
+default = ["std", "workspace", "exp-dibud", "exp-resonance", "experimental-rank"]
+std = []
+workspace = ["dep:acta-types", "dep:acta-ports"]
+types-compat = ["workspace"]
+ports-compat = ["workspace"]
+
+# Experimente
+dibud = ["exp-dibud"]
+exp-dibud = []
+exp-resonance = []
+experimental-all = ["exp-dibud", "exp-resonance"]
+experimental-rank = ["experimental-all"]
+
+[dependencies]
+acta-types = { path = "../acta-types", version = "0.1.0", default-features = false, optional = true }
+acta-ports = { path = "../acta-ports", version = "0.1.0", default-features = false, optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = { workspace = true }
+ahash = { version = "0.8", features = ["serde"] }
+tracing = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
-acta-adapt.workspace = true
+acta-types = { path = "../acta-types", version = "0.1.0" }
+acta-ports = { path = "../acta-ports", version = "0.1.0" }
 proptest = "1"
-tokio = { workspace = true, features = ["full"] }
+criterion = { workspace = true }
+tokio = { version = "1", features = ["rt", "macros"] }
+
+[[bench]]
+name = "rank_bench"
+harness = false

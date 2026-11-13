@@ -1,107 +1,29 @@
-# AGENTS.md — acta-mcp
-> Layer 4 | Model Context Protocol (MCP) Server, Sandbox, Security | ~1600 LOC
+# AGENTS.md — `acta-mcp`
 
-## 1. Zweck & Architekturrolle
+> Werkzeug/Crate-Kontext für Agenten. Der obere Teil ist generiert; manuelle Notizen unterhalb ergänzen.
 
-Implementiert den Model Context Protocol (MCP) Server für Acta, wodurch externe Agenten
-(wie Claude oder Jules) die Codebasis über standardisierte JSON-RPC 2.0 Schnittstellen
-steuern können. Enthält eine harte Security-Sandbox (`McpSandbox`), Prompt-Injection-Guards
-und Volatile-Result-Speicherung.
+<!-- BEGIN GENERATED: crate_inventory.py -->
 
-## 2. Modul-Karte
+## Inventar (generiert)
 
-| Datei | Verantwortung |
-|---|---|
-| `lib.rs` | `#![forbid(unsafe_code)]`, `McpServer`, Stdio-Event-Loop (`acta_consolidate`, `acta_cloud_query`, `uvx`-Distribution) |
-| `config.rs` | CLI- und Server-Konfiguration (`McpConfig`) |
-| `protocol.rs` | `McpError`, JSON-RPC 2.0 Message-Parser und Typen |
-| `sandbox.rs` | `McpSandbox`, `SandboxPolicy`, `VolatileToolResult` (verschlüsselter RAM) |
-| `egress_gateway.rs` | Egress Shield Gateway für Cloud Queries (`CloudQueryRequest`, `DefaultEgressClassifier`) |
-| `egress_guard.rs` | Schutz und Validierung ausgehender Anfragen gegen Exfiltration |
-| `prompt_injection.rs` | `PromptInjectionGuard`, `SecurityAuditLogger`, Pattern-Matching |
+- **Pfad:** `crates/acta-mcp` · **Ring:** 4 · **Version:** 0.1.0
+- **Beschreibung:** –
+- **src:** 18 Dateien, 3909 LOC · **unsafe:** 0 Vorkommen, Policy `forbid`
+- **Interne Abhängigkeiten (normal, 12):** `acta`, `acta-crypto`, `acta-infer-candle`, `acta-infer-ollama`, `acta-infer-onnx`, `acta-ports`, `acta-privacy`, `acta-prompt-guard`, `acta-rank`, `acta-router`, `acta-types`, `acta-wire`
+- **Interne Dev/Build-Abhängigkeiten (0):** –
+- **Externe Abhängigkeiten (normal, 13):** `futures-util`, `parking_lot`, `rand`, `scc`, `serde`, `serde_json`, `thiserror`, `tokio`, `tokio-util`, `tracing`, `tracing-subscriber`, `unicode-normalization`, `zeroize`
+- **Reverse-Abhängigkeiten (0):** –
+- **Kopplung an Hub-Crates:** ausgehend `acta`, `acta-ports`, `acta-types`; eingehend –
+- **Features (5):** `candle`, `default`, `ollama`, `onnx`, `test-utils`
 
-## 3. Kritische Invarianten
+### Öffentliche API (grob, aus src/)
+- struct (15): `CollectionSearchEngine`, `EmbeddingConfig`, `ExplainRequest`, `ExplainResponse`, `LlmConfig`, `McpSandbox`, `McpServer`, `MockEmbedder`, `MockLlmGenerator`, `PromptGuardDetector`, `RouterConfig`, `RoutingHandle`, `SandboxPolicy`, `ToolDefinition`, `VolatileToolResult`
+- enum (2): `McpError`, `ToolCategory`
+- fn (44): `available_compiled_providers`, `build_generator`, `build_provider`, `classify_method`, `code`, `create_embedding_provider`, `create_llm_text_generator`, `decrypt`, `encode`, `encrypt`, `execute_with_timeout`, `from_env`, `get_volatile`, `handle`, `handle_value` … (+29)
+- const (8): `MAX_BATCH_SIZE`, `MAX_JSON_DEPTH`, `MAX_RPC_BYTES`, `MAX_SEARCH_QUERY_BYTES`, `MAX_VOLATILE_KEY_BYTES`, `MAX_VOLATILE_OUTPUT_BYTES`, `MAX_VOLATILE_RESULTS`, `TOOL_REGISTRY`
+- mod (18): `audit`, `bulk_exfiltration_detector`, `config`, `egress_gateway`, `egress_guard`, `explain`, `guard`, `io`, `policy`, `prompt_injection`, `protocol`, `routing`, `sandbox`, `server`, `server_dispatch` … (+3)
+- pub use: `bulk_exfiltration_detector::{ BulkExfiltrationDetector, BulkExfiltrationOutcome, SessionId, }`, `config::*`, `acta_privacy::bulk_exfiltration_detector::*`, `acta_privacy::egress_gateway::*`, `acta_privacy::egress_guard::*`, `acta_privacy::egress_vault::{EgressClassification, EgressClassifier}`, `acta_prompt_guard::audit::{SecurityAuditLogger, SecurityAuditRecord}`, `acta_prompt_guard::guard::{NormalizedPattern, PromptInjectionGuard}`, `acta_prompt_guard::policy::{ PromptInjectionConfig, QuarantinePolicy, DEFAULT_REDACTION_PLACEHOLDER, }`, `acta_prompt_guard::{ audit::{SecurityAuditLogger, SecurityAuditRecord}, clock::{Clock, SystemClock}, error::GuardError, guard::{NormalizedPattern, PromptInjectionGuard}, policy::{PromptInjectionConfig, QuarantinePolicy, DEFAULT_REDACTION_PLACEHOLDER}, }` … (+8)
 
-### Nur Stdio-Transport (ADR-010)
-Der MCP-Server kommuniziert **ausschließlich** über Stdio (Standard I/O) mittels JSON-RPC 2.0.
-Die HTTP-Schnittstelle wurde laut ADR-010 aus Sicherheitsgründen restlos entfernt.
-Ein Einbau von `axum` oder `hyper` ist ein Security-Blocker!
+Regeneriert mit `python3 tools/crate_inventory.py agents`. Manuelle Notizen stehen außerhalb dieses Blocks.
 
-### Sandbox-Defaults
-Die `SandboxPolicy` definiert harte Grenzen:
-- `allow_db_reads`: true
-- `allow_db_writes`: false (muss explizit opt-in via Env-Var `ACTA_MCP_WRITE_ALLOW`)
-- `allow_code_execution`: false (strikt verboten by default)
-- `allow_cloud_egress`: false (Cloud-Egress strikt verboten by default; erfordert explizites Opt-in)
-Schreibende Operationen (Write-Authorization, ADR-044) sowie Cloud-Egress-Aufrufe werden vor Ausführung blockiert, wenn deaktiviert.
-
-### Prompt-Injection Guard (Quarantäne)
-Eingehende Texte (für Embeddings/Graph) passieren den `PromptInjectionGuard`.
-Treffer auf Patterns (wie `ignore all previous instructions`) lösen sofortige Quarantäne aus.
-Diese Events werden im `SecurityAuditLogger` unwiderruflich erfasst.
-
-### Volatile Results (Anthropic Containment)
-Sehr große Tool-Ergebnisse (MAX_VOLATILE_OUTPUT_BYTES = 16 MB) oder sensitive Daten 
-werden nicht als JSON im Klartext zurückgeschickt, sondern im `VolatileToolResult` 
-RAM-verschlüsselt (via `acta-crypto::VolatileEncryptionKey`, Cargo-Package-Name: `acta-privacy`). Der Agent erhält
-nur einen Reference-Key, den andere Tools einlösen können.
-Die Anzahl ist begrenzt (`MAX_VOLATILE_RESULTS` = 1000).
-
-## 4. Public API Quick-Reference
-
-```rust
-// === McpServer (lib.rs) ===
-pub struct McpServer { ... }
-impl McpServer {
-    pub fn new(collection: Arc<Collection<LsmStorage>>) -> Self;
-    pub fn with_sandbox(self, sandbox: Arc<McpSandbox>) -> Self;
-    pub fn with_injection_guard(self, guard: Arc<PromptInjectionGuard>) -> Self;
-    pub async fn run_stdio(self: Arc<Self>) -> Result<(), Box<dyn Error>>;
-}
-
-// === Sandbox & Security (sandbox.rs, prompt_injection.rs) ===
-pub struct SandboxPolicy {
-    pub allow_db_reads: bool,
-    pub allow_db_writes: bool,
-    pub allow_code_execution: bool,
-    pub allow_cloud_egress: bool,
-    pub max_execution_ms: u64,
-}
-pub struct McpSandbox { ... }
-impl McpSandbox {
-    pub async fn execute_with_timeout<F, T, E>(&self, category: ToolCategory, future: F) -> Result<T, McpError>;
-}
-pub struct PromptInjectionGuard { ... }
-```
-
-## 5. Anti-Patterns & LLM-Fallstricke
-
-```rust
-// ❌ FALSCH — Timeout im Tool ignorieren:
-let result = tool_call().await;
-// ✅ KORREKT — Alle Tool-Ausführungen MÜSSEN durch die Sandbox:
-let result = sandbox.execute_with_timeout(ToolCategory::DatabaseRead, tool_call()).await?;
-
-// ❌ FALSCH — HTTP Server hinzufügen:
-// ✅ KORREKT — MCP läuft exklusiv über `run_stdio`.
-```
-
-## 6. Concurrency & Lock-Hierarchie
-
-`McpSandbox` verwaltet die `VolatileToolResult` in einer `HashMap`, die durch 
-ein **einziges**, nicht geschachteltes `parking_lot::Mutex` geschützt ist.
-Regel `detect_nested_locks.yml` verbietet geschachtelte Locks innerhalb von Layer 4 strikt.
-
-## 7. Cross-Crate-Schnittstellen & DAG-Grenzen
-
-- **Erlaubte Imports**: Alle L0-L3 Crates (`acta-core`, `acta-db`, `acta-agent`, `acta-crypto` / `acta-privacy`)
-- **Verbotene Imports**: Keine (Layer 4 Top Crate)
-- **Genutzt von**: CLI (`acta`) und externen MCP-Clients (Cursor, Jules, Claude)
-
-## 8. Relevante ADRs & Rules
-
-| ADR/Rule | Relevanz |
-|---|---|
-| ADR-010 | Entfernung der HTTP-Schicht (Nur Stdio) |
-| ADR-044 | MCP Write-Authorization (Opt-In Security) |
-| `rules/detect_nested_locks.yml` | Verbietet Deadlock-anfällige Lock-Schachtelungen |
+<!-- END GENERATED: crate_inventory.py -->

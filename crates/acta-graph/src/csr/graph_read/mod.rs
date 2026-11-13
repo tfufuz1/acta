@@ -3,17 +3,29 @@
 //! # Zweck
 //! Bündelt Nachbarschaftsabfragen, PageRank-Evaluation und Pfadfindungszugriffe.
 
+// FILE-CONTEXT
+// STAND: 2026-11-15T12:00:00Z
+// ZWECK: Compressed Sparse Row (CSR) Graph-Engine Kern.
+// INVARIANTEN: Bitemporale Sichtbarkeit, lock-freie Lesepfade.
+// HOTSPOTS: Keine kritischen Bottlenecks identifiziert
+// SIEHE AUCH: docs/SPEC.md, crates/acta-graph/SPEC.md
+
+
+// SECTION Mod Core Implementation
 pub mod communities;
 pub mod pagerank;
 pub mod path_rag;
 
+#[cfg(feature = "ports-compat")]
 use crate::GraphIndexExt;
-use acta_types::{EntityId, Result, TxId};
+#[cfg(feature = "ports-compat")]
+use acta_types::TxId;
+use acta_types::{EntityId, Result};
 
 use super::graph_write::CsrGraph;
 
 impl CsrGraph {
-// ANCHOR[acta-graph:SRC-CSR-GRAPH-READ-MOD-001]
+    // ANCHOR[acta-graph:SRC-CSR-GRAPH-READ-MOD-001]
     pub fn compact(&self) {
         let snapshot = self.inner.load();
         let num_nodes = snapshot.reverse_map.len();
@@ -125,7 +137,7 @@ impl CsrGraph {
         Ok(neighbors)
     }
 
-// ANCHOR[acta-graph:SRC-CSR-GRAPH-READ-MOD-002]
+    // ANCHOR[acta-graph:SRC-CSR-GRAPH-READ-MOD-002]
     pub fn entity_count(&self) -> usize {
         self.inner_read()
             .entities
@@ -134,7 +146,7 @@ impl CsrGraph {
             .count()
     }
 
-// ANCHOR[acta-graph:SRC-CSR-GRAPH-READ-MOD-003]
+    // ANCHOR[acta-graph:SRC-CSR-GRAPH-READ-MOD-003]
     pub fn entity_exists(&self, id: EntityId) -> bool {
         let inner = self.inner_read();
         if let Some(&idx) = inner.id_map.get(&id) {
@@ -152,7 +164,7 @@ impl CsrGraph {
         false
     }
 
-// ANCHOR[acta-graph:SRC-CSR-GRAPH-READ-MOD-004]
+    // ANCHOR[acta-graph:SRC-CSR-GRAPH-READ-MOD-004]
     pub fn edge_count(&self) -> usize {
         let inner = self.inner_read();
         inner.targets.len()
@@ -160,7 +172,10 @@ impl CsrGraph {
             + inner.staged_edges.values().map(|v| v.len()).sum::<usize>()
     }
 
+    #[cfg(feature = "ports-compat")]
     pub async fn remove_entity(&self, tx: TxId, entity: EntityId) -> Result<()> {
         GraphIndexExt::remove_entity(self, tx, entity).await
     }
 }
+
+// !SECTION Mod Core Implementation

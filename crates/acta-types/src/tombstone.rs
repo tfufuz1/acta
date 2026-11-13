@@ -1,9 +1,9 @@
 //! Trait und Referenzimplementierung für Tombstone-Semantikprüfung in Sequenzprotokollen und Indizes.
 //!
-//! # Zweck & Architektur-Rolle: Ring 0
+//! # Zweck & Architektur-Rolle: Typen-Fundament (contracts)
 //!
-//! In Multi-Version Concurrency Control (MVCC) und LSM-Tree-Speichern werden Datensätze
-//! bei einer Löschung nicht physisch überschrieben, sondern mit einem Löschmarker ("Tombstone")
+//! In Multi-Version Concurrency Control (MVCC) und sequentiellen/append-only Speichern werden Datensätze
+//! bei Invalidierung nicht physisch überschrieben, sondern mit einem Tombstone-Marker
 //! versehen.
 //!
 //! Gemäß ADR-041 und IP-07 wird dafür das höchstwertige Bit 63 der Sequenznummer (`u64`) reserviert.
@@ -15,6 +15,7 @@
 // ZWECK: Trait und Referenzimplementierung für Tombstone-Semantik (IP-07 / ADR-041).
 // INVARIANTEN: Bit 63 der SeqNo kennzeichnet Tombstones (TOMBSTONE_BIT). Trait-Methoden paniken niemals.
 
+#[allow(deprecated)]
 use crate::types::TOMBSTONE_BIT;
 
 // ANCHOR[acta-types:TOMB-001]

@@ -1,29 +1,31 @@
 # AGENTS.md — `acta-wire`
 
-## 1. Rolle
-`acta-wire` verwaltet performante Zero-Copy FlatBuffers Wire-Protokolle und Deserialisierungs-Primitiven.
+> Werkzeug/Crate-Kontext für Agenten. Der obere Teil ist generiert; manuelle Notizen unterhalb ergänzen.
 
-## 2. Ring, Klasse, Reifegrad & `may_use`
-- **Ring:** Ring 0 (Unsafe-Insel 3 von 3)
-- **Klasse:** Kern `[K]`
-- **Reifegrad:** `stable`
-- **`may_use` (Obergrenze):** `acta-types` (Spec §6.9, `capabilities.toml`)
+<!-- BEGIN GENERATED: crate_inventory.py -->
 
-## 3. Garantien & Anforderungen (§33, §6.7)
-- **REQ-WIR-001:** FlatBuffers Schema-Generierung mit `file_identifier "CTRA";`.
-- **REQ-WIR-002:** Safe Buffer Verification (`*_buffer_has_identifier`) vor Deserialisierung.
-- **Durchsetzungsmechanismus (§27.6):** Post-Processing der FlatBuffers Generierung, Miri Fuzz-Tests.
+## Inventar (generiert)
 
-## 4. Verbotene Muster
-- `unsafe`-Blöcke in handgeschriebenem Code ohne `// SAFETY:` Begründung.
-- Deserialisierung ohne Buffer-Bound & Identifier Check.
+- **Pfad:** `crates/acta-wire` · **Ring:** 0 · **Version:** 0.1.0
+- **Beschreibung:** Ring 0 Unsafe Island: Auto-generated FlatBuffers IPC code and zero-copy adapters for Acta
+- **src:** 6 Dateien, 2131 LOC · **unsafe:** 45 Vorkommen, Policy `deny`
+- **Interne Abhängigkeiten (normal, 0):** –
+- **Interne Dev/Build-Abhängigkeiten (0):** –
+- **Externe Abhängigkeiten (normal, 6):** `bytes`, `flatbuffers`, `serde`, `serde_json`, `thiserror`, `tracing`
+- **Reverse-Abhängigkeiten (3):** `acta-mcp`, `acta-py`, `acta-router`
+- **Kopplung an Hub-Crates:** ausgehend –; eingehend –
+- **Features (5):** `default`, `inspect`, `serde`, `std`, `tracing`
 
-## 5. Implementierte & konsumierte Ports (Anhang A)
-- Stellt `WireWiring` und Wire-Protokoll-Typen bereit.
+### Öffentliche API (grob, aus src/)
+- struct (32): `Embedding`, `EmbeddingArgs`, `EmbeddingBuilder`, `FlatBufferConfig`, `HyperEdge`, `HyperEdgeArgs`, `HyperEdgeBuilder`, `HyperEdgeId`, `HyperEdgeIdArgs`, `HyperEdgeIdBuilder`, `JsonRpcConfig`, `JsonRpcError`, `JsonRpcRequest`, `JsonRpcResponse`, `RoleBinding` … (+17)
+- enum (11): `EmbeddingOffset`, `Error`, `FlatBufferError`, `HyperEdgeIdOffset`, `HyperEdgeOffset`, `JsonRpcPayload`, `RoleBindingOffset`, `RoleIdOffset`, `ScoredDocumentOffset`, `SearchResponseOffset`, `VectorIndexUpdateOffset`
+- trait (1): `VerifiableRoot`
+- fn (80): `add_business_valid_from`, `add_business_valid_to`, `add_child_edge_ids`, `add_data`, `add_embedding`, `add_entity`, `add_id`, `add_metadata`, `add_metric`, `add_participants`, `add_predicate`, `add_processing_time_ms`, `add_quantized_u8`, `add_results`, `add_role` … (+65)
+- type (1): `Result`
+- const (21): `VT_BUSINESS_VALID_FROM`, `VT_BUSINESS_VALID_TO`, `VT_CHILD_EDGE_IDS`, `VT_DATA`, `VT_EMBEDDING`, `VT_ENTITY`, `VT_ID`, `VT_METADATA`, `VT_METRIC`, `VT_PARTICIPANTS`, `VT_PREDICATE`, `VT_PROCESSING_TIME_MS`, `VT_QUANTIZED_U8`, `VT_RESULTS`, `VT_ROLE` … (+6)
+- mod (7): `adapter`, `acta`, `acta_generated`, `generated`, `ipc`, `jsonrpc`, `verification`
+- pub use: `adapter::*`, `generated::acta_generated`, `generated::acta_generated::acta::ipc::*`, `jsonrpc::*`, `verification::*`
 
-## 6. Tests & Gates
-- **Fuzzing (REQ-QA-003):** FlatBuffers IPC Deserialisierungs-Fuzzer.
-- **Miri Gate:** Miri-Verifikation für FlatBuffers Reader.
+Regeneriert mit `python3 tools/crate_inventory.py agents`. Manuelle Notizen stehen außerhalb dieses Blocks.
 
-## 7. Offene Punkte
-- keine.
+<!-- END GENERATED: crate_inventory.py -->

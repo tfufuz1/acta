@@ -1,214 +1,141 @@
-//! # Virtuelles Dateisystem (VFS - Virtual File System)
-//!
-//! Zweck: Bereitstellung einer Schnittstellenabstraktion für Dateisystemoperationen,
-//! um positionsbasiertes I/O (`read_at`, `write_at`), Dateisynchronisation (`sync_data`, `sync_all`)
-//! und Verzeichnisverwaltung testbar und mockbar zu machen.
-//!
-//! Ring-Zugehörigkeit: Ring 0 (I/O- und Speicherschnittstellen).
-//! Wird genutzt von: Index- und Speicher-Engines (z. B. HNSW-Vektorindex, Blockmanager).
-//! Wichtigste Typen:
-//! - [`Vfs`]: Der abstrakte Trait für Dateisystemaktionen (Öffnen, Löschen, Umbenennen).
-//! - [`VfsFile`]: Der Trait für positionsabhängige Lese- und Schreibzugriffe auf offene Dateien.
-//! - [`VfsOpenOptions`]: Parameter zum Öffnen von Dateien (Lesen, Schreiben, Erstellen, Kürzen).
-//! - [`RealFs`]: Standardimplementierung, die Aufrufe an das reale Host-Dateisystem weiterleitet.
-//! - [`RealFsFile`]: Dateihandle-Wrapper für [`std::fs::File`] mit plattformspezifischen Erweiterungen.
-//!
-//! Invarianten:
-//! - Schnittstellenvertrag: Deterministische I/O-Fehlerweiterleitung ohne `panic!`.
-//! - Plattformunabhängigkeit: Verwendet auf Unix `FileExt::read_at`/`write_at` und auf Windows `FileExt::seek_read`/`seek_write`.
-
-// FILE-CONTEXT
-// STAND: 2026-10-12
-// ZWECK: Virtual File System (VFS) Abstraktion fuer deterministische I/O-Injektion und Testbarkeit.
-// INVARIANTEN: Zero-Panic, Fail-Closed, SCHNITTSTELLENVERTRAG exakt eingehalten.
-
+use crate::error::{DurableFsError, Result};
+use crate::platform::{sync_file, FlushKind};
 use std::fs::{self, File, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
-#[cfg(unix)]
-use std::os::unix::fs::FileExt;
+/// Lokaler Zähler für temporäre Dateinamen bei atomaren Schreibvorgängen.
+static ATOMIC_TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-#[cfg(windows)]
-use std::os::windows::fs::FileExt;
+/// Synchroner Trait für virtuelle Dateisystemoperationen (Klasse A).
+pub trait Vfs: Send + Sync {
+    /// Liest den gesamten Inhalt einer Datei.
+    fn read(&self, path: &Path) -> Result<Vec<u8>>;
 
-// ANCHOR[acta-durable-fs:VFS-OPTIONS-001]
-/// Optionen zum Öffnen von Dateien über das virtuelle Dateisystem ([`Vfs::open`]).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct VfsOpenOptions {
-    /// Öffnet die Datei mit Leserechten.
-    pub read: bool,
-    /// Öffnet die Datei mit Schreibrechten.
-    pub write: bool,
-    /// Erstellt eine neue Datei, falls sie noch nicht existiert.
-    pub create: bool,
-    /// Erstellt eine neue Datei und schlägt fehl, falls sie bereits existiert (`create_new`).
-    pub create_new: bool,
-    /// Setzt die Dateilänge beim Öffnen sofort auf 0 zurück (`truncate`).
-    pub truncate: bool,
-    /// Hängt neue Schreiboperationen immer an das Dateiende an (`append`).
-    pub append: bool,
-}
+    /// Schreibt Daten atomar und crash-sicher in eine Datei (`INV-VFS-ATOMIC-1`).
+    fn write_atomic(&self, path: &Path, data: &[u8]) -> Result<()>;
 
-// ANCHOR[acta-durable-fs:VFS-TRAIT-001]
-/// Abstrakte Schnittstelle für Dateisysteme zur Entkopplung von Speicherkomponenten.
-pub trait Vfs: Send + Sync + 'static {
-    // ANCHOR[acta-durable-fs:VFS-OPEN]
-    /// Öffnet eine Datei gemäß den übergebenen Optionen.
-    fn open(&self, path: &Path, opts: &VfsOpenOptions) -> std::io::Result<Box<dyn VfsFile>>;
-    // ANCHOR[acta-durable-fs:VFS-CREATE-DIR-ALL]
-    /// Erstellt das angegebene Verzeichnis inklusive aller übergeordneten Ordner.
-    fn create_dir_all(&self, path: &Path) -> std::io::Result<()>;
-    // ANCHOR[acta-durable-fs:VFS-REMOVE-FILE]
-    /// Entfernt eine Datei dauerhaft aus dem Dateisystem.
-    fn remove_file(&self, path: &Path) -> std::io::Result<()>;
-    // ANCHOR[acta-durable-fs:VFS-RENAME]
-    /// Benennt eine Datei atomar von `from` nach `to` um.
-    fn rename(&self, from: &Path, to: &Path) -> std::io::Result<()>;
-    // ANCHOR[acta-durable-fs:VFS-READ-DIR]
-    /// Liest alle Einträge eines Verzeichnisses aus.
-    fn read_dir(&self, path: &Path) -> std::io::Result<Vec<PathBuf>>;
-    // ANCHOR[acta-durable-fs:VFS-EXISTS]
-    /// Prüft, ob ein Pfad (Datei oder Ordner) im Dateisystem existiert.
-    fn exists(&self, path: &Path) -> std::io::Result<bool>;
-    // ANCHOR[acta-durable-fs:VFS-SYNC-DIR]
-    /// Synchronisiert die Verzeichnismetadaten auf stabile Speichermedien.
-    fn sync_dir(&self, path: &Path) -> std::io::Result<()>;
-}
+    /// Hängt Daten an eine Datei an und flusht synchron.
+    fn append(&self, path: &Path, data: &[u8]) -> Result<()>;
 
-// ANCHOR[acta-durable-fs:VFS-FILE-TRAIT-001]
-/// Abstraktes Dateihandle mit Unterstützung für positionsbasiertes I/O (Offset-Zugriff).
-pub trait VfsFile: Send + Sync {
-    // ANCHOR[acta-durable-fs:VFS-FILE-READ-AT]
-    /// Liest Daten ab einem festen Byte-Offset `offset` in den Puffer `buf`, ohne den Dateizeiger zu verändern.
-    fn read_at(&self, buf: &mut [u8], offset: u64) -> std::io::Result<usize>;
-    // ANCHOR[acta-durable-fs:VFS-FILE-WRITE-AT]
-    /// Schreibt Daten aus `buf` an den festen Byte-Offset `offset`, ohne den Dateizeiger zu verändern.
-    fn write_at(&self, buf: &[u8], offset: u64) -> std::io::Result<usize>;
-    // ANCHOR[acta-durable-fs:VFS-FILE-SET-LEN]
-    /// Ändert die physische Größe der Datei (Kürzen oder Erweitern).
-    fn set_len(&self, len: u64) -> std::io::Result<()>;
-    // ANCHOR[acta-durable-fs:VFS-FILE-LEN]
-    /// Fragt die aktuelle Dateigröße in Bytes ab.
-    fn len(&self) -> std::io::Result<u64>;
-    // ANCHOR[acta-durable-fs:VFS-FILE-IS-EMPTY]
-    /// Prüft, ob die Datei 0 Bytes groß ist.
-    fn is_empty(&self) -> std::io::Result<bool> {
-        Ok(self.len()? == 0)
+    /// Synchronisiert eine Datei auf stabilen Speicher.
+    fn sync_file(&self, path: &Path) -> Result<()>;
+
+    /// Synchronisiert die Metadaten eines Verzeichnisses auf stabilen Speicher.
+    fn sync_dir(&self, path: &Path) -> Result<()>;
+
+    /// Entfernt eine Datei dauerhaft und flusht das übergeordnete Verzeichnis.
+    fn remove(&self, path: &Path) -> Result<()>;
+
+    /// Benennt eine Datei atomar um und flusht das übergeordnete Verzeichnis.
+    fn rename(&self, from: &Path, to: &Path) -> Result<()>;
+
+    /// Listet alle Dateinamen in einem Verzeichnis lexikografisch sortiert auf.
+    fn list(&self, path: &Path) -> Result<Vec<String>>;
+
+    /// Prüft, ob ein Pfad existiert.
+    fn exists(&self, path: &Path) -> bool {
+        path.exists()
     }
-    // ANCHOR[acta-durable-fs:VFS-FILE-SYNC-DATA]
-    /// Synchronisiert die geschriebenen Nutzdatenblöcke auf die Festplatte (`fdatasync`).
-    fn sync_data(&self) -> std::io::Result<()>;
-    // ANCHOR[acta-durable-fs:VFS-FILE-SYNC-ALL]
-    /// Synchronisiert Nutzdaten und alle Dateimetadaten auf die Festplatte (`fsync`).
-    fn sync_all(&self) -> std::io::Result<()>;
+
+    /// Gibt die Größe einer Datei in Bytes zurück.
+    fn len(&self, path: &Path) -> Result<u64> {
+        fs::metadata(path)
+            .map(|m| m.len())
+            .map_err(|e| map_io_err(e, path))
+    }
+
+    /// Erstellt ein Verzeichnis inklusive aller Zwischenverzeichnisse.
+    fn create_dir_all(&self, path: &Path) -> Result<()> {
+        fs::create_dir_all(path).map_err(DurableFsError::Io)
+    }
 }
 
-// ANCHOR[acta-durable-fs:REAL-FS-001]
-/// Standard-Implementierung des [`Vfs`], die direkt mit dem Host-Betriebssystem interagiert.
+/// Standard-Implementierung von [`Vfs`] auf Basis von `std::fs`.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct RealFs;
+pub struct StdVfs;
 
-impl Vfs for RealFs {
-    fn open(&self, path: &Path, opts: &VfsOpenOptions) -> std::io::Result<Box<dyn VfsFile>> {
-        let mut std_opts = OpenOptions::new();
-        std_opts
-            .read(opts.read)
-            .write(opts.write)
-            .create(opts.create)
-            .create_new(opts.create_new)
-            .truncate(opts.truncate)
-            .append(opts.append);
+/// Alias für bestehende Workspace-Kompatibilität (`RealFs`).
+pub type RealFs = StdVfs;
 
-        let file = std_opts.open(path)?;
-        Ok(Box::new(RealFsFile { file }))
+impl Vfs for StdVfs {
+    fn read(&self, path: &Path) -> Result<Vec<u8>> {
+        fs::read(path).map_err(|e| map_io_err(e, path))
     }
 
-    fn create_dir_all(&self, path: &Path) -> std::io::Result<()> {
-        fs::create_dir_all(path)
+    fn write_atomic(&self, path: &Path, data: &[u8]) -> Result<()> {
+        crate::atomic_replace(path, data)
     }
 
-    fn remove_file(&self, path: &Path) -> std::io::Result<()> {
+    fn append(&self, path: &Path, data: &[u8]) -> Result<()> {
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .map_err(|e| map_io_err(e, path))?;
+        file.write_all(data).map_err(DurableFsError::Io)?;
+        sync_file(&file, FlushKind::DataAndMetadata).map_err(DurableFsError::Io)
+    }
+
+    fn sync_file(&self, path: &Path) -> Result<()> {
+        let file = File::open(path).map_err(|e| map_io_err(e, path))?;
+        sync_file(&file, FlushKind::DataAndMetadata).map_err(DurableFsError::Io)
+    }
+
+    fn sync_dir(&self, path: &Path) -> Result<()> {
+        crate::sync_dir(path)
+    }
+
+    fn remove(&self, path: &Path) -> Result<()> {
         crate::durable_remove(path)
     }
 
-    fn rename(&self, from: &Path, to: &Path) -> std::io::Result<()> {
-        // NOTE: Verwendet rename_durable aus acta-sys zur dauerhaften Umbenennung.
-        acta_sys::rename_durable(from, to)?;
-        if let Some(parent) = to.parent() {
-            let _ = crate::sync_dir(parent);
-        }
-        Ok(())
+    fn rename(&self, from: &Path, to: &Path) -> Result<()> {
+        crate::rename_durable(from, to)
     }
 
-    fn read_dir(&self, path: &Path) -> std::io::Result<Vec<PathBuf>> {
-        let entries = fs::read_dir(path)?;
-        let mut res = Vec::new();
+    fn list(&self, path: &Path) -> Result<Vec<String>> {
+        let entries = fs::read_dir(path).map_err(|e| map_io_err(e, path))?;
+        let mut names = Vec::new();
         for entry in entries {
-            res.push(entry?.path());
+            let entry = entry.map_err(DurableFsError::Io)?;
+            if let Some(s) = entry.file_name().to_str() {
+                names.push(s.to_string());
+            }
         }
-        Ok(res)
-    }
-
-    fn exists(&self, path: &Path) -> std::io::Result<bool> {
-        Ok(path.exists())
-    }
-
-    fn sync_dir(&self, path: &Path) -> std::io::Result<()> {
-        crate::sync_dir(path)
+        names.sort();
+        Ok(names)
     }
 }
 
-// ANCHOR[acta-durable-fs:REAL-FS-FILE-001]
-/// Implementierung von [`VfsFile`] auf Basis von [`std::fs::File`].
-#[derive(Debug)]
-pub struct RealFsFile {
-    file: File,
+fn map_io_err(e: std::io::Error, path: &Path) -> DurableFsError {
+    if e.kind() == std::io::ErrorKind::NotFound {
+        DurableFsError::NotFound {
+            path: path.to_path_buf(),
+        }
+    } else {
+        DurableFsError::Io(e)
+    }
 }
 
-impl VfsFile for RealFsFile {
-    fn read_at(&self, buf: &mut [u8], offset: u64) -> std::io::Result<usize> {
-        #[cfg(unix)]
-        {
-            FileExt::read_at(&self.file, buf, offset)
-        }
-        #[cfg(windows)]
-        {
-            FileExt::seek_read(&self.file, buf, offset)
-        }
-        #[cfg(not(any(unix, windows)))]
-        {
-            compile_error!("Unsupported target OS for positional VfsFile");
-        }
-    }
+/// RAII-Guard zum automatischen Löschen temporärer Zwischendateien bei Fehlern oder Panics.
+pub(crate) struct TmpFileGuard<'a>(pub &'a Path);
 
-    fn write_at(&self, buf: &[u8], offset: u64) -> std::io::Result<usize> {
-        #[cfg(unix)]
-        {
-            FileExt::write_at(&self.file, buf, offset)
-        }
-        #[cfg(windows)]
-        {
-            FileExt::seek_write(&self.file, buf, offset)
-        }
-        #[cfg(not(any(unix, windows)))]
-        {
-            compile_error!("Unsupported target OS for positional VfsFile");
-        }
+impl<'a> Drop for TmpFileGuard<'a> {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(self.0);
     }
+}
 
-    fn set_len(&self, len: u64) -> std::io::Result<()> {
-        self.file.set_len(len)
-    }
-
-    fn len(&self) -> std::io::Result<u64> {
-        self.file.metadata().map(|m| m.len())
-    }
-
-    fn sync_data(&self) -> std::io::Result<()> {
-        self.file.sync_data()
-    }
-
-    fn sync_all(&self) -> std::io::Result<()> {
-        self.file.sync_all()
-    }
+/// Hilfsfunktion zur Erzeugung eines eindeutigen temporären Dateipfads im Zielordner.
+pub(crate) fn generate_tmp_path(target: &Path) -> Result<PathBuf> {
+    let parent = target.parent().ok_or_else(|| {
+        DurableFsError::InvalidArgument("target path has no parent directory".to_string())
+    })?;
+    let stem = target.file_name().and_then(|s| s.to_str()).unwrap_or("tmp");
+    let count = ATOMIC_TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let pid = std::process::id();
+    let tmp_name = format!(".{}.tmp.{}.{}", stem, pid, count);
+    Ok(parent.join(tmp_name))
 }

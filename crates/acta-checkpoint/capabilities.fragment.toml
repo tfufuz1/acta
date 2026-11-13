@@ -1,0 +1,9 @@
+[crates.acta-checkpoint]
+group = "retrieval"
+level = 1
+tier = "beta"
+allowed_internal = ["acta-ids", "acta-env"]
+feature_closure_allowed = ["acta-types", "acta-ports"]
+klasse = "A"
+may_depend_on = ["acta-ids", "acta-env"]
+transitional = ["workspace", "types-compat", "ports-compat"]

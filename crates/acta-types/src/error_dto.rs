@@ -1,6 +1,7 @@
+#![allow(deprecated)]
 //! Serialisierbare DTO-Repräsentation von `ActaError` für IPC- und FFI-Schnittstellen (ADR-028).
 //!
-//! # Zweck & Architektur-Rolle: Ring 0
+//! # Zweck & Architektur-Rolle: Typen-Fundament (contracts)
 //!
 //! Bei der Übertragung von Fehlern über FFI-Grenzen (z. B. zu Python via `acta-py` oder
 //! Tauri/Web-Frontends via IPC) gehen bei einfachen String-Repräsentationen die Typinformationen

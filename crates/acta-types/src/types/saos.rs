@@ -1,8 +1,8 @@
 //! Query-Abstraktionen (wie `HybridQuery` und `HybridQueryBuilder`) sowie Signal-Fusionstypen.
 //!
-//! # Architektur-Rolle: Ring 0 (Hybride Multi-Signal-Suche)
+//! # Architektur-Rolle: Typen-Fundament (Hybride Multi-Signal-Suche)
 //!
-//! Acta synthetisiert Antworten über vier Suchkanäle (Dense Vector, Sparse Text/BM25, Graph und Recency).
+//! Acta synthetisiert Antworten über vier Suchkanäle (Dense Vector, Sparse Text, Graph und Recency).
 //!
 //! Dieses Modul stellt bereit:
 //! - `HybridQuery`: Zentrale Abfragestruktur mit Text, Embedding, Startknoten und Filtern.
@@ -19,6 +19,7 @@
 // NICHT-OFFENSICHTLICH: metadata signal weight ist in FusionWeights reserviert und liefert via pub fn metadata() 0.0 zurück.
 // SIEHE AUCH: rules/tag_taxonomy.md, DECISIONS.md (ADR-021)
 
+#[allow(deprecated)]
 use super::domain::{DocId, EntityId, MemoryType, PprConfig};
 use super::filter::FilterExpr;
 use crate::error::{ActaError, Result};
@@ -130,6 +131,7 @@ pub enum GraphTraversalStrategy {
         max_hops: usize,
     },
     /// Personalized PageRank power iteration starting from seed nodes.
+    #[allow(deprecated)]
     PersonalizedPageRank(PprConfig),
     /// PathRAG bidirectional Dijkstra traversal with sufficiency filtering.
     PathRag {
@@ -248,8 +250,8 @@ pub struct ContextChunk {
 }
 
 impl ContextChunk {
-    /// Kombinierten Text für BM25-Indizierung und Embedding.
-    /// Entspricht dem etablierten Contextual-BM25-Schema: prefix + "\n\n" + content.
+    /// Kombinierten Text für Text-Indizierung und Embedding.
+    /// Entspricht dem etablierten Contextual-Schema: prefix + "\n\n" + content.
     ///
     /// Allokiert nur wenn `contextual_prefix` gesetzt. Akzeptabel für
     /// Ingestion-Pipeline (1× pro Chunk, kein Hot-Path).
@@ -319,7 +321,7 @@ impl std::fmt::Display for ContextWindow {
 pub enum Signal {
     /// Dense vector embedding search signal.
     Vector,
-    /// Lexical full-text BM25 search signal.
+    /// Lexical full-text search signal.
     Text,
     /// Graph traversal / PageRank signal.
     Graph,
@@ -345,7 +347,7 @@ impl std::fmt::Display for Signal {
 ///   fusion across the remaining successful signals. The returned results bear a non-empty
 ///   `degraded_signals` list detailing which signals failed.
 ///
-/// *Note*: An empty but valid result from a signal (e.g. no documents matched BM25 or zero vector)
+/// *Note*: An empty but valid result from a signal (e.g. no documents matched lexical text or zero vector)
 /// is NOT a signal failure and does not trigger this behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 // ANCHOR[acta-types:SAOS-FAILPOLICY]
@@ -361,7 +363,7 @@ pub enum OnSignalFailure {
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 // ANCHOR[acta-types:SAOS-REWRITE]
 pub struct QueryRewriteOutput {
-    /// Textual reformulation intended for BM25 keyword search.
+    /// Textual reformulation intended for lexical keyword search.
     pub text_query: Option<String>,
     /// Semantic reformulation intended for dense vector embedding search.
     pub semantic_query: Option<String>,
@@ -481,7 +483,7 @@ impl HybridQuery {
 /// Builder for HybridQuery to improve DX.
 ///
 /// # Abgrenzung
-/// `acta_types::HybridQueryBuilder` ist ein speicherfreier, reiner Value-Builder in Ring 0,
+/// `acta_types::HybridQueryBuilder` ist ein speicherfreier, reiner Value-Builder auf Vertragsebene,
 /// der eine unveränderliche `HybridQuery`-Value-Instanz erzeugt.
 /// Im Gegensatz dazu ist `acta_engine::collection::query_builder::builder::HybridQueryBuilder`
 /// an eine aktive `Collection`-Instanz mit Storage- und Vektorindex-Handles gebunden und führt

@@ -8,8 +8,6 @@
 // ZWECK: Snapshot-Vergleich, der garantiert, dass Isotonic- und Platt-Kalibrierung nach dem Verschieben nach acta-rank identische Ergebnisse liefern.
 
 use acta_rank::{IsotonicCalibrator, PlattScaler};
-
-// ANCHOR[acta-rank:CAL-TEST-003]
 #[test]
 fn test_isotonic_migration_snapshot() {
     let mut calibrator = IsotonicCalibrator::new(10, 100);
@@ -49,7 +47,7 @@ fn test_isotonic_migration_snapshot() {
     }
 }
 
-    // Testet das erwartete Verhalten und mathematische Invarianten.
+// Testet das erwartete Verhalten und mathematische Invarianten.
 #[test]
 fn test_platt_scaler_migration_snapshot() {
     let obs = vec![

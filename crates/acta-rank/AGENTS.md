@@ -1,30 +1,31 @@
 # AGENTS.md — `acta-rank`
 
-## 1. Rolle
-`acta-rank` bietet Score-Kalibrierung (Platt, Isotonisch, Conformal) und Ergebnis-Anreicherungen zur Verfeinerung von Retrieval-Rankings.
+> Werkzeug/Crate-Kontext für Agenten. Der obere Teil ist generiert; manuelle Notizen unterhalb ergänzen.
 
-## 2. Ring, Klasse, Reifegrad & `may_use`
-- **Ring:** Ring 0 (Ranking & Kalibrierung)
-- **Klasse:** Rand `[R]`
-- **Reifegrad:** `experimental` (Anmerkung: In `capabilities.toml` aktuell als `stable` geführt, siehe `docs/status/ABW-L3.md`)
-- **`may_use` (Obergrenze):** `acta-types`, `acta-ports` (Spec §6.9, `capabilities.toml`)
+<!-- BEGIN GENERATED: crate_inventory.py -->
 
-## 3. Garantien & Anforderungen (§33, §12)
-- **REQ-RNK-001:** Deterministischer Tie-Breaker (bei gleichen Scores Sortierung nach DocId aufsteigend).
-- **REQ-RNK-002:** Konforme Kalibrierung und Platt/Isotonische Skalierung ohne Mutation der Ursprungsscores.
-- **Durchsetzungsmechanismus (§27.6):** `#![forbid(unsafe_code)]`, Ranking Unit-Tests.
+## Inventar (generiert)
 
-## 4. Verbotene Muster
-- **Keine Hintergrund-Threads ohne Port.**
-- Kein `unsafe` (`#![forbid(unsafe_code)]`).
-- **Keine zweite Standardfusion:** RRF-Standardfusion liegt im Kern (`engine`), `rank` bietet nur Kalibrierer/Erweiterungen (§6.10, Punkt 10).
+- **Pfad:** `crates/acta-rank` · **Ring:** 0 · **Version:** 0.1.0
+- **Beschreibung:** 4-Signal Fusion, Isotonic & Platt Calibration, and Drift Detection for Acta Cognitive OS
+- **src:** 31 Dateien, 4440 LOC · **unsafe:** 0 Vorkommen, Policy `forbid`
+- **Interne Abhängigkeiten (normal, 2):** `acta-ports`, `acta-types`
+- **Interne Dev/Build-Abhängigkeiten (2):** `acta-ports`, `acta-types`
+- **Externe Abhängigkeiten (normal, 5):** `ahash`, `serde`, `serde_json`, `thiserror`, `tracing`
+- **Reverse-Abhängigkeiten (5):** `acta-bench`, `acta-cognition`, `acta-db`, `acta-infer-candle`, `acta-mcp`
+- **Kopplung an Hub-Crates:** ausgehend `acta-ports`, `acta-types`; eingehend `acta-db`
+- **Features (10):** `default`, `dibud`, `exp-dibud`, `exp-resonance`, `experimental-all`, `experimental-rank`, `ports-compat`, `std`, `types-compat`, `workspace`
 
-## 5. Implementierte & konsumierte Ports (Anhang A)
-- Implementiert: `Calibrator` Port.
-- Konsumiert: Port `Metric`.
+### Öffentliche API (grob, aus src/)
+- struct (28): `AdaptiveConformalCalibrator`, `BoundedTopK`, `ConfigFingerprint`, `DiBudFusionState`, `DiBudOutcome`, `DocId`, `DriftDetector`, `ExplanationEntry`, `FusionBudget`, `FusionWeights`, `GlobalFusionConfig`, `GlobalFusionStrategy`, `IsotonicCalibrator`, `PlattScaler`, `PortsClockAdapter` … (+13)
+- enum (11): `BudgetedChannel`, `Calibrator`, `ConformalError`, `DiBudStep`, `DriftStatus`, `FusionStrategy`, `MetadataMergePriority`, `RankError`, `Signal`, `SignalFailurePolicy`, `SignalKind`
+- trait (4): `Clock`, `ConformalCalibrator`, `IsotonicPortsClockExt`, `ResonanceModifier`
+- fn (103): `accesses`, `alpha`, `analyze`, `apply`, `apply_resonance_bonus`, `apply_temporal_validity_filter`, `apply_temporal_validity_filter_at`, `apply_temporal_validity_filter_with_clock`, `apply_temporal_validity_filter_with_ports_clock`, `as_bytes`, `as_str`, `as_u64`, `bm25`, `build`, `cached_ece` … (+88)
+- type (3): `FusedScore`, `FusionResult`, `Result`
+- const (6): `DEFAULT_INITIAL_THRESHOLD`, `DEFAULT_LEARNING_RATE`, `DEFAULT_MAX_THRESHOLD`, `DEFAULT_MIN_THRESHOLD`, `MAX_SEARCH_K`, `ZERO`
+- mod (21): `calibration`, `clock`, `compat`, `conformal`, `contract`, `dibud`, `drift`, `driver`, `error`, `explain`, `ext`, `fusion`, `isotonic`, `local_types`, `metrics` … (+6)
+- pub use: `calibration::{ calibrate_score, AdaptiveConformalCalibrator, Calibrator, Clock, ConformalCalibrator, ConformalError, IsotonicCalibrator, PlattScaler, SystemClock, }`, `clock::{IsotonicPortsClockExt, PortsClockAdapter}`, `conformal::{AdaptiveConformalCalibrator, ConformalCalibrator, ConformalError}`, `crate::compat::types::signal_contribution_synthesized_from_types`, `crate::compat::types::weights_to_signal_factors_types_compat`, `crate::fusion::SignalKind`, `crate::local_types::FusionStrategy`, `crate::local_types::SignalFailurePolicy`, `crate::local_types::{FusionStrategy, SignalFusionStrategies}`, `dibud::{ fuse_exact_prefix, fuse_exact_prefix_async, BudgetedChannel, DiBudFusionState, DiBudOutcome, DiBudStep, FusionBudget, }` … (+26)
 
-## 6. Tests & Gates
-- **Ranking Tie-Breaker Tests:** Determinismus-Tests für identische Fusion-Scores.
+Regeneriert mit `python3 tools/crate_inventory.py agents`. Manuelle Notizen stehen außerhalb dieses Blocks.
 
-## 7. Offene Punkte
-- keine.
+<!-- END GENERATED: crate_inventory.py -->

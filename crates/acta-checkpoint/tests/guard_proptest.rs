@@ -14,7 +14,6 @@
 //!
 //! Generiert zufällige Transaktionsfolgen zur Verifikation der Guard-Invarianten.
 
-
 use acta_checkpoint::{CheckpointManifest, CheckpointMeta, PersistentCheckpointStore};
 use acta_ports::{BoxFuture, StorageEngine, StorageStats};
 use acta_types::{Result, TxId};
@@ -218,6 +217,7 @@ proptest! {
             tx_id: TxId::new(tx),
             metadata: serde_json::json!({"prop": true}),
             created_at: 1000,
+        id_width_bits: acta_checkpoint::CURRENT_ID_WIDTH_BITS,
         };
 
         let manifest_res = CheckpointManifest::new(meta, components);

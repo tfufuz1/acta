@@ -1,8 +1,8 @@
 # Acta – Spezifikation Fassung 1.0-E
 
 **Konsolidierter Entwurf** aus drei Quellen · Stand 2026-11-12
-Quellen: Repository `tfufuz1/contextra` (Klon, HEAD `5f3ccbb`, 39 Crates), `SPEC.md` (Acta v2, Fassung 0.2), `ACTA_SPEC.md` (Acta v0.1).
-Begleitdokument: `ACTA_DATEIZUORDNUNG.md` (jede Contextra-Datei mit Zielpfad in Acta oder Verwerfungsgrund).
+Quellen: Repository `tfufuz1/acta` (Klon, HEAD `5f3ccbb`, 39 Crates), `SPEC.md` (Acta v2, Fassung 0.2), `ACTA_SPEC.md` (Acta v0.1).
+Begleitdokument: `ACTA_DATEIZUORDNUNG.md` (jede Acta-Datei mit Zielpfad in Acta oder Verwerfungsgrund).
 
 ---
 
@@ -50,8 +50,8 @@ Es ersetzt `SPEC.md` 0.2 und `ACTA_SPEC.md` 0.1 vollständig für alle Punkte, z
 | Aussage | Stand |
 |---|---|
 | Acta ist gebaut | **nein** |
-| Contextra ist gebaut oder getestet (durch mich) | **nein**. In der Arbeitsumgebung ist kein `cargo` verfügbar. Ich habe weder kompiliert noch Tests ausgeführt. |
-| Strukturbehauptungen über Contextra | **[V]** am Dateisystem oder am Quelltext geprüft (Methode in 0.3) |
+| Acta ist gebaut oder getestet (durch mich) | **nein**. In der Arbeitsumgebung ist kein `cargo` verfügbar. Ich habe weder kompiliert noch Tests ausgeführt. |
+| Strukturbehauptungen über Acta | **[V]** am Dateisystem oder am Quelltext geprüft (Methode in 0.3) |
 | Übernommene Befunde aus Vorlagen | **[A]** aus `SPEC.md` 19.1 übernommen, nicht erneut geprüft |
 | Repo-eigene Aussagen (`docs/SPEC.md` v5) | **[Ü]** übernommen; einzelne Punkte stichprobenartig geprüft |
 | Kryptografische Testvektoren Anhang B.2 bis B.7 | **ja**, Vorlage `SPEC.md` B, am 2026-11-06 mit zwei unabhängigen Wegen erzeugt |
@@ -111,7 +111,7 @@ Jede Zusage hat mindestens einen Test (Kapitel 20). Ohne Test ist sie keine Zusa
 
 ### 1.4 Zusagen, die Acta nicht macht
 
-Verboten in allen Attestierungsklassen: „DSGVO-konform“, „garantiert gelöscht“, „unwiederbringlich gelöscht“, „zertifiziert“, „revisionssicher“, „fehlerfrei“, „bewiesen sicher“, „Löschung aus allen Sicherungen“ (Contextra-Regel INV-7 übernommen).
+Verboten in allen Attestierungsklassen: „DSGVO-konform“, „garantiert gelöscht“, „unwiederbringlich gelöscht“, „zertifiziert“, „revisionssicher“, „fehlerfrei“, „bewiesen sicher“, „Löschung aus allen Sicherungen“ (Acta-Regel INV-7 übernommen).
 
 Nicht gelöscht werden durch Acta: Klartext im RAM, Swap, Core-Dumps, Hibernation; Backups des Custodians und des Datenverzeichnisses; Daten bei externen Verarbeitern; Prompts, Antworten, Logs des Aufrufers. Prüfung von Aufbewahrungspflichten (Art. 17 Abs. 3 DSGVO) liegt beim Aufrufer vor `erase()`.
 
@@ -151,25 +151,25 @@ Domäne D  Auditor                      eigener Code, eigener Zugang zu B und C
 
 Die drei Quellen widersprechen sich an mehreren Stellen. Jede Entscheidung unten ist verbindlich. Sie hat eine ID (D-xx), die im Text referenziert wird.
 
-| ID | Thema | SPEC.md | ACTA_SPEC | Contextra | **Entscheidung** | Begründung |
+| ID | Thema | SPEC.md | ACTA_SPEC | Acta | **Entscheidung** | Begründung |
 |---|---|---|---|---|---|---|
 | D-01 | Zeitreise | Nicht-Ziel 1.5 | Kern (Ebene N, MVCC) | MVCC, keine Zeitreise im Löschpfad | **Zeitreise nur auf Ebene N (Chronik) unbegrenzt, auf Ebene P innerhalb eines Horizonts** | Erfüllt beide Anforderungen ohne MVCC-Eigenbau |
-| D-02 | Speicher-Engine | SQLite, kein Eigenbau | `acta-store` (Contextra-LSM erweitert) | LSM, 31.868 Zeilen Produktionscode | **SQLite** (`bundled`, Pin ≥ 3.40) | Contextra-LSM ist nicht auf Löschsemantik ausgelegt (Befund 19.2) und zu groß für den Kern |
+| D-02 | Speicher-Engine | SQLite, kein Eigenbau | `acta-store` (Acta-LSM erweitert) | LSM, 31.868 Zeilen Produktionscode | **SQLite** (`bundled`, Pin ≥ 3.40) | Acta-LSM ist nicht auf Löschsemantik ausgelegt (Befund 19.2) und zu groß für den Kern |
 | D-03 | Nebenläufigkeit | Mutex W, RwLock S, Mutex C | MVCC mit SSI | MVCC, TxBuffer, SequenceLog | **SPEC.md-Modell** (eine Schreibsperre, eine SQLite-Verbindung) | Ein Schreiber, SQLite serialisiert ohnehin; SSI erfordert Löschwissen in MVCC (Befund ACTA 6.6) |
 | D-04 | Schlüsselhierarchie | DEK aus TK, DK (HKDF), Schlüssel nur beim Custodian | `KeyAnchor` wrappt je Einheit DEK, KEK je Epoche | DEK je Dokument, `AncestorSalts`, Ersatzwert `[0u8;32]` | **SPEC.md-Modell**; `KeyAnchor`, `EpochSeal`, DEK-Wrapping entfallen | Kein gespeicherter DEK, kein Wrapping, kein Schlüssel im Datenverzeichnis (I-3). Ableitung aus Custodian-Schlüsseln ist auditierbar (Anhang B) |
-| D-05 | Verschlüsselungsverfahren | XChaCha20-Poly1305, 192-Bit-Nonce | nicht festgelegt | AES-256-GCM-SIV, 96-Bit-Nonce, **Nonce als Parameter** `seal_record_with_nonce` | **XChaCha20-Poly1305** (Anhang B verifiziert). Contextra-AES-GCM-SIV ist die dokumentierte Alternative O2 | 192-Bit-Zufallsnonce; Nonce ist nicht Parameter der öffentlichen API (I-23) |
+| D-05 | Verschlüsselungsverfahren | XChaCha20-Poly1305, 192-Bit-Nonce | nicht festgelegt | AES-256-GCM-SIV, 96-Bit-Nonce, **Nonce als Parameter** `seal_record_with_nonce` | **XChaCha20-Poly1305** (Anhang B verifiziert). Acta-AES-GCM-SIV ist die dokumentierte Alternative O2 | 192-Bit-Zufallsnonce; Nonce ist nicht Parameter der öffentlichen API (I-23) |
 | D-06 | Löschbeleg | Custodian-Beleg (A1/A2) | Ed25519-signierter `ErasureProof` aus Acta, Checkpoints signiert | Ed25519-Beleg vom Prozess selbst (`DeletionProofKeyPair::generate`) | **Kein Acta-Signierschlüssel**. Beleg kommt vom Custodian, Acta speichert ihn unverändert | Selbstsignatur ist Klasse A0 und darf nicht als Löschnachweis gelten (SPEC 1.2) |
 | D-07 | Löschprotokoll | Zustände Active, Gated, Destroyed, Completed + `pending` | `ErasureState` mit `Escalated`, `Restricted`, `Hygiene`, Pending | `saga/core.rs` mit Phasen 6/7/9/10 | **SPEC.md-Zustandsmodell** plus `Escalated` als Ereignis (nicht als Zustand): `pending`-Ursache mit `ErasePastSla` | Vier Zustände sind prüfbar; `Failed` existiert nicht (Wiederholung bis Erfolg) |
 | D-08 | Zeitbegriff der Chronik | `valid` × `recorded` (ACTA) | — | — | **Übernommen aus ACTA**; Zeitstempel `recorded` als Sequenz (`commit_seq`) plus Wanduhr-Millisekunden | Sequenz ist die einzige Ordnung, die Acta selbst erzeugt |
 | D-09 | Checkpoint-Signatur | — | Ed25519 mit Schlüssel im Prozess | — | **Hashkette und Merkle-Wurzel ohne Signatur**; externe Verankerung über Port `Notary` (RFC 3161) in 1.1 | Signierschlüssel im Prozess widerspricht I-3; Signatur ist ab 2.0 über Custodian-Operation `sign` (Klasse A2) |
 | D-10 | Beleg-Signatur allgemein | — | Ed25519-`ErasureProof` | Ed25519 in `deletion_proof`, `report/signing` | **Entfällt** (Folge aus D-06) | — |
-| D-11 | SIMD | — | Vektor-SIMD in `acta-vector` (ACTA 6.6) | `contextra-simd` mit AVX2/AVX-512/NEON, 270 `unsafe` (grob gezählt) | **Skalar, 8 feste Akkumulatoren** (SPEC 8.5). SIMD ist Version 1.1 und nur mit Determinismsnachweis | Ergebnisgleichheit über Plattformen (INV-5) ist mit unterschiedlicher Reduktion nicht gegeben |
+| D-11 | SIMD | — | Vektor-SIMD in `acta-vector` (ACTA 6.6) | `acta-simd` mit AVX2/AVX-512/NEON, 270 `unsafe` (grob gezählt) | **Skalar, 8 feste Akkumulatoren** (SPEC 8.5). SIMD ist Version 1.1 und nur mit Determinismsnachweis | Ergebnisgleichheit über Plattformen (INV-5) ist mit unterschiedlicher Reduktion nicht gegeben |
 | D-12 | `unsafe` | Nur in `acta-sys` | Nur in `acta-sys` | Inseln `simd`, `sys`, `wire`, `vector` (teils) | **Kein `unsafe` in Acta-Crates.** `#![forbid(unsafe_code)]` in allen | Mlock, mmap, SIMD sind Nicht-Ziele. SQLite-C bleibt Restrisiko R15 |
 | D-13 | Schlüssel-IDs | `ctx2/<store>/t|s/...` | `KeyKind` mit 11 Arten | `KeyPurpose` in `governance/key_purposes.toml` | **`KeyId`-Namensraum aus SPEC 5.4**, erweitert um `c` (Chronik-Schlüssel), `k` (Commitment-Epoche) | Zwei Präfixe je Zweck, Kollisionsfrei |
-| D-14 | Ports und Composition Root | `Custodian`, `BlobStore` als Trait | `Wiring` mit Pflichtfeldern in `acta-node` | Traits in `contextra-ports` (Zentral-Brücke) | **Port-Traits im konsumierenden Crate** (R2). **`BlobStore` ist kein Port**: SQLite ist die einzige Engine (D-02). Composition Root ist die Anwendung; `Acta::open(Config)` nimmt Custodian, Registry, Observer, Clock, Rng als Pflichtparameter | Port nur dort, wo Austausch Sinn hat (Custodian, Registry). Keine Dead-Port-Gefahr bei einer Implementierung |
+| D-14 | Ports und Composition Root | `Custodian`, `BlobStore` als Trait | `Wiring` mit Pflichtfeldern in `acta-node` | Traits in `acta-ports` (Zentral-Brücke) | **Port-Traits im konsumierenden Crate** (R2). **`BlobStore` ist kein Port**: SQLite ist die einzige Engine (D-02). Composition Root ist die Anwendung; `Acta::open(Config)` nimmt Custodian, Registry, Observer, Clock, Rng als Pflichtparameter | Port nur dort, wo Austausch Sinn hat (Custodian, Registry). Keine Dead-Port-Gefahr bei einer Implementierung |
 | D-15 | Tenant-Schlüssel und Chronik | — | Chronik-Schlüssel nicht definiert | — | **CK_t** (Chronik-Schlüssel je Mandant) im Custodian. Wird nur mit dem Mandanten vernichtet | Chronik-Payloads sind vertraulich, aber nicht betroffenenbezogen |
 | D-16 | Kollektionen als Löschziel | — | `Collection`-Target | — | **Nicht in v1** (1.1, O15) | Komplexität ohne Anforderung im Auftrag |
-| D-17 | Ingest und Klassifikation | — | `acta-ingest`, `Classifier`, `Redactor` | `contextra-ingest` (21.140 Zeilen Produktionscode) | **Nicht in v1.** Acta nimmt nur Einheiten entgegen, deren Klasse der Aufrufer erklärt | Klassifikation ist unscharf und gehört nicht in den Löschkern. Vgl. Contextra-Zerlegung |
+| D-17 | Ingest und Klassifikation | — | `acta-ingest`, `Classifier`, `Redactor` | `acta-ingest` (21.140 Zeilen Produktionscode) | **Nicht in v1.** Acta nimmt nur Einheiten entgegen, deren Klasse der Aufrufer erklärt | Klassifikation ist unscharf und gehört nicht in den Löschkern. Vgl. Acta-Zerlegung |
 | D-18 | Löschregister | — | — | — | **Übernommen aus SPEC 13.4**: `ErasureRegistry`, Konfiguration `Required` (Standard) | — |
 
 ---
@@ -232,11 +232,11 @@ Acta prüft die Klasse nicht inhaltlich. Der Aufrufer erklärt sie (`Subjects::P
 
 ### 5.2 Verbotene Muster
 
-Übernommen aus SPEC 3.2 (V-1 bis V-11) und Contextra:
+Übernommen aus SPEC 3.2 (V-1 bis V-11) und Acta:
 
 | ID | Verbot | Durchsetzung |
 |---|---|---|
-| V-1 | `unwrap`, `expect`, `panic!`, `unreachable!`, `todo!`, `unimplemented!`, Indexzugriff in Produktionscode | Clippy `deny`; `unwrap-gate` aus Contextra |
+| V-1 | `unwrap`, `expect`, `panic!`, `unreachable!`, `todo!`, `unimplemented!`, Indexzugriff in Produktionscode | Clippy `deny`; `unwrap-gate` aus Acta |
 | V-2 | `let _ =` auf `Result` | Clippy `let_underscore_must_use` = `deny` |
 | V-3 | `from_utf8_lossy`, `unwrap_or_default` auf Fehlerpfaden, abschneidende `as`-Casts | `clippy.toml` `disallowed-methods`; `cast_possible_truncation = deny` |
 | V-4 | Öffentliche Konstruktoren für Beweistypen | `trybuild` (T-TYPE-1) |
@@ -248,7 +248,7 @@ Acta prüft die Klasse nicht inhaltlich. Der Aufrufer erklärt sie (`Subjects::P
 | V-10 | Legacy-Pfade, `compat`-Module, Altformate | `grep legacy` in CI (T-ARCH-8) |
 | V-11 | Mock im Datenpfad der Gates G1 und G2 | TR-1 |
 | **V-12** | **Neu.** Standard-Features, die `workspace`, `test-utils` oder `exp-*` enthalten | T-ARCH-5 (Default-Liste leer oder nur `std`) |
-| **V-13** | **Neu.** Konstanten als Ersatz für Hierarchiebestandteile (Contextra `dek.rs:76`, Befund A-3) | Architekturtest T-ARCH-11 (Suche nach `[0u8; N]` in Ableitungspfaden) |
+| **V-13** | **Neu.** Konstanten als Ersatz für Hierarchiebestandteile (Acta `dek.rs:76`, Befund A-3) | Architekturtest T-ARCH-11 (Suche nach `[0u8; N]` in Ableitungspfaden) |
 | **V-14** | **Neu.** `CI || true` oder `continue-on-error` in Gate-Jobs | T-ARCH-12 (Workflow-Scan) |
 
 ---
@@ -268,7 +268,7 @@ Acta prüft die Klasse nicht inhaltlich. Der Aufrufer erklärt sie (`Subjects::P
 
 **Verpflichtung vor G4:** Versionen, Advisories, Prüfstatus (`cargo audit`, `cargo deny`). Nicht von mir ausgeführt.
 
-**Ausschluss der Contextra-Primitive** (D-05): AES-256-GCM-SIV ist in `contextra-crypto` verwendet. Acta übernimmt die Crate nicht. Begründung: Nonce-Parameter von außen (I-23) und die Entscheidung für eine auditierbare Standardkonstruktion mit 192-Bit-Zufallsnonce.
+**Ausschluss der Acta-Primitive** (D-05): AES-256-GCM-SIV ist in `acta-crypto` verwendet. Acta übernimmt die Crate nicht. Begründung: Nonce-Parameter von außen (I-23) und die Entscheidung für eine auditierbare Standardkonstruktion mit 192-Bit-Zufallsnonce.
 
 ### 6.2 Geheimnisse
 
@@ -293,7 +293,7 @@ info = "ctx/v2/dek" ‖ 0x00 ‖ tenant_id (16) ‖ collection_id (16) ‖ n (1)
 DEK  = HKDF-Expand( PRK, info, L = 32 )
 ```
 
-Änderung gegenüber Contextra (`dek.rs:76`): Ein fehlender Hierarchiebestandteil führt zu Fehler, nicht zu Nullen. Ein Dokument ohne Betroffene hat `n = 0` und `IKM = TK_t`. Jeder Versuch, einen Bestandteil durch Konstanten zu ersetzen, ist ein Typfehler (V-13).
+Änderung gegenüber Acta (`dek.rs:76`): Ein fehlender Hierarchiebestandteil führt zu Fehler, nicht zu Nullen. Ein Dokument ohne Betroffene hat `n = 0` und `IKM = TK_t`. Jeder Versuch, einen Bestandteil durch Konstanten zu ersetzen, ist ein Typfehler (V-13).
 
 ### 6.4 Chronik-Schlüssel
 
@@ -469,7 +469,7 @@ K-1 `put` nur anlegen. K-2 `get` liefert `NotFound`/`Disabled` nur bei fehlendem
 
 Crate auf E3. Wie SPEC 5.6, mit folgenden Präzisierungen:
 
-- `MK` kommt vom Aufrufer (Keyring, Hardware oder Passphrase-Ableitung im **eigenen** Code). Acta implementiert keine Passphrase-Ableitung (Contextra-Crate `argon2` bleibt außerhalb).
+- `MK` kommt vom Aufrufer (Keyring, Hardware oder Passphrase-Ableitung im **eigenen** Code). Acta implementiert keine Passphrase-Ableitung (Acta-Crate `argon2` bleibt außerhalb).
 - Verzeichnis außerhalb des Datenverzeichnisses, kanonische Pfadprüfung.
 - Eintrag `<sha256(key_id) hex>.k`: `version(1) ‖ nonce(24) ‖ XChaCha20-Poly1305(MK, nonce, aad = "ctx2/local/" ‖ key_id, secret)`.
 - `destroy`: Zufallsüberschreiben, `fsync`, `unlink`, Verzeichnis-`fsync`, Marker `<hash>.gone`, `fsync`.
@@ -768,29 +768,29 @@ SPEC 7.5 unverändert: Ersatzdokumente zuerst (durabel), dann `erase(B)`. Abstur
 
 Kein persistierter Index. Beim Öffnen werden Envelopes nicht gesperrter Ziele entschlüsselt und Indizes gebaut. Klartext wird nicht gehalten, nur Terme, Vektoren, Filterwerte (SPEC 8.1).
 
-Begründung gegenüber ACTA 6.3 (`KvPort`, persistierte Ableitungen): Eine persistierte Ableitung ist nach Löschung zu reparieren oder zu purgen. Das ist die Quelle der Komplexität in Contextra (`kv_shredding`, `purge/phase.rs`, `compat/purge.rs` in Text und Vektor). Der RAM-Index vermeidet diese Klasse.
+Begründung gegenüber ACTA 6.3 (`KvPort`, persistierte Ableitungen): Eine persistierte Ableitung ist nach Löschung zu reparieren oder zu purgen. Das ist die Quelle der Komplexität in Acta (`kv_shredding`, `purge/phase.rs`, `compat/purge.rs` in Text und Vektor). Der RAM-Index vermeidet diese Klasse.
 
 ### 11.2 Analyzer `a1` (SPEC 8.3)
 
 NFKC, UAX #29, Kleinschreibung, Token > 64 Byte nicht indiziert (im Report ausgewiesen). Variante `a1-de`: Snowball-Stemmer Deutsch. Keine Stoppwörter, keine Dekomposition, kein Präfix/Regex.
 
-Übernahme aus Contextra: `contextra-text/src/tokenizer.rs` nach Entfernung der Morphologie-Pfade (D-19).
+Übernahme aus Acta: `acta-text/src/tokenizer.rs` nach Entfernung der Morphologie-Pfade (D-19).
 
 ### 11.3 BM25 (SPEC 8.4)
 
 `idf(t) = ln(1 + (N − n_t + 0.5)/(n_t + 0.5))`, `k1 = 1.2`, `b = 0.75`. Anfrageterme deduplizieren, lexikografisch sortieren, Summe in `f64`. Sortierung: Score absteigend (`total_cmp`), dann `doc_id` aufsteigend.
 
-Übernahme aus Contextra: `contextra-text/src/bm25.rs` als Muster für Postings und Score-Struktur. Formel und Reihenfolge werden gegen T-IDX-1 neu geprüft.
+Übernahme aus Acta: `acta-text/src/bm25.rs` als Muster für Postings und Score-Struktur. Formel und Reihenfolge werden gegen T-IDX-1 neu geprüft.
 
 ### 11.4 Vektorsuche (SPEC 8.5)
 
 Exakt, `Cosine` und `Dot`. Skalarprodukt mit 8 festen Akkumulatoren (`acc[i mod 8]`), Reduktion `((a0+a1)+(a2+a3))+((a4+a5)+(a6+a7))`. Kein SIMD (D-11).
 
-Übernahme: Die Reihenfolge der Akkumulatoren ist neu. `contextra-vector/src/distance/scalar.rs` wird nicht übernommen, weil seine Reduktion nicht spezifiziert ist (Prüfung in AP4).
+Übernahme: Die Reihenfolge der Akkumulatoren ist neu. `acta-vector/src/distance/scalar.rs` wird nicht übernommen, weil seine Reduktion nicht spezifiziert ist (Prüfung in AP4).
 
 ### 11.5 RRF (SPEC 8.6)
 
-`rrf(d) = Σ_r 1/(60 + rank_r(d))`, Rang ab 1, Summation in fester Reihenfolge (Text, Vektor). Übernahme: `contextra-rank/src/fusion/rrf.rs` (753 Zeilen, davon viele Testhilfen), auf Kern reduziert.
+`rrf(d) = Σ_r 1/(60 + rank_r(d))`, Rang ab 1, Summation in fester Reihenfolge (Text, Vektor). Übernahme: `acta-rank/src/fusion/rrf.rs` (753 Zeilen, davon viele Testhilfen), auf Kern reduziert.
 
 ### 11.6 Filter (SPEC 8.7)
 
@@ -952,7 +952,7 @@ Synchron, keine Async-Laufzeit (Nicht-Ziel). `Acta: Send + Sync`. Ein Worker-Thr
 
 `TargetGate` enthält `AtomicU8` mit Zustandscode. Einträge werden nie auf kleineren Wert gesetzt (I-10).
 
-Gegenüber Contextra entfällt das Sperrschema aus `contextra-mvcc` (SequenceLog, SSI, TxBuffer-Shards) vollständig (D-03).
+Gegenüber Acta entfällt das Sperrschema aus `acta-mvcc` (SequenceLog, SSI, TxBuffer-Shards) vollständig (D-03).
 
 ---
 
@@ -1089,11 +1089,11 @@ Verlust von `MK` oder des Custodians macht alle Daten unlesbar (R9). Beabsichtig
 
 ### 16.5 Formatversionen
 
-`application_id` und `user_version = 2` kennzeichnen die Datei. Eine Datei mit anderer Version öffnet nicht. Acta v1 ist das erste Release; daher keine Migration aus Contextra oder Altrepo (V-10). Eine Formatänderung erhöht `version` (Envelope) oder `user_version` und die Spezifikationsversion.
+`application_id` und `user_version = 2` kennzeichnen die Datei. Eine Datei mit anderer Version öffnet nicht. Acta v1 ist das erste Release; daher keine Migration aus Acta oder Altrepo (V-10). Eine Formatänderung erhöht `version` (Envelope) oder `user_version` und die Spezifikationsversion.
 
 ### 16.6 Plattform und Toolchain
 
-Linux (ext4, XFS), macOS (APFS). Rust `1.89.0` in `rust-toolchain.toml` gepinnt (Contextra INV-9 übernommen), Edition 2021, `--locked` in allen Aufrufen.
+Linux (ext4, XFS), macOS (APFS). Rust `1.89.0` in `rust-toolchain.toml` gepinnt (Acta INV-9 übernommen), Edition 2021, `--locked` in allen Aufrufen.
 
 ---
 
@@ -1198,7 +1198,7 @@ Produktionscode gesamt [Ziel]: ≈ 16.000 Zeilen. **Löschkern** = `acta-model`,
 
 **Gegenüber ACTA_SPEC entfallen** v1: `acta-mvcc`, `acta-derive`, `acta-vault` (als eigenes Crate, Inhalt in `acta`), `acta-proof` (Inhalt in `acta::evidence`), `acta-backup` (1.1), `acta-query` (Phase 2), `acta-adapter-*` (nicht nötig, D-14), `acta-node` (D-14), `acta-sys`, `acta-codec` (Inhalt in `acta-seal`).
 
-**Gegenüber Contextra entfallen**: alle 39 Crates als Ganzes; Übernahmen in `ACTA_DATEIZUORDNUNG.md`.
+**Gegenüber Acta entfallen**: alle 39 Crates als Ganzes; Übernahmen in `ACTA_DATEIZUORDNUNG.md`.
 
 ### 18.2 Abhängigkeitsrichtung (Gate G-L1)
 
@@ -1214,7 +1214,7 @@ Produktionscode gesamt [Ziel]: ≈ 16.000 Zeilen. **Löschkern** = `acta-model`,
   E0       └─── ids ◄── env ◄────────────────────────────────┘
 ```
 
-Regeln wie Contextra R1 bis R14, übernommen und ergänzt:
+Regeln wie Acta R1 bis R14, übernommen und ergänzt:
 
 | Regel | Inhalt |
 |---|---|
@@ -1228,13 +1228,13 @@ Regeln wie Contextra R1 bis R14, übernommen und ergänzt:
 | **R8** | Kern (E0–E2) enthält kein `tokio`, kein `std::fs` außerhalb `acta-store`, kein `SystemTime`, kein `thread_rng`. |
 | **R9** | `#![forbid(unsafe_code)]` in allen Crates (D-12). |
 | **R10** | `unwrap`, `expect`, `panic!`, Indexzugriff in Produktionscode `deny` (V-1). |
-| **R11** | Dev-Kanten zeigen nur nach unten (INV-8 aus Contextra). Integrationstests der Gates G1 und G2 liegen in `acta-testkit/tests/`. |
+| **R11** | Dev-Kanten zeigen nur nach unten (INV-8 aus Acta). Integrationstests der Gates G1 und G2 liegen in `acta-testkit/tests/`. |
 | **R12** | `acta-testkit` ist kein Dependency-Ziel eines Produktionscrates. |
 | **R13** | Kanten innerhalb einer Ebene nur als Feature, Kantengraph azyklisch. |
 | **R14** | Jedes Crate ist Workspace-Mitglied. Ausschluss nur mit ADR. |
 | **R15** | **Neu.** Adapter (E3) implementieren Ports; Kern kennt nur Traits. |
 
-Prüfung: `tools/gate_layering.py` aus Contextra, **ohne** `|| true` (V-14).
+Prüfung: `tools/gate_layering.py` aus Acta, **ohne** `|| true` (V-14).
 
 ### 18.3 Ports und Besitz
 
@@ -1256,7 +1256,7 @@ Prüfung: `tools/gate_layering.py` aus Contextra, **ohne** `|| true` (V-14).
 - `Completed` verlangt `&DestroyProof` und `&PurgeProof`.
 - T-TYPE-1 (`trybuild`): diese Typen sind nicht konstruierbar.
 
-Das ist die Umsetzung von V-4 und ACTA 15.6. Sie ersetzt die Contextra-Praxis, Zeugen über öffentliche `const fn` zu erzeugen (Befund B-18).
+Das ist die Umsetzung von V-4 und ACTA 15.6. Sie ersetzt die Acta-Praxis, Zeugen über öffentliche `const fn` zu erzeugen (Befund B-18).
 
 ### 18.5 Repository-Layout
 
@@ -1264,12 +1264,12 @@ Das ist die Umsetzung von V-4 und ACTA 15.6. Sie ersetzt die Contextra-Praxis, Z
 acta/
   Cargo.toml  Cargo.lock  rust-toolchain.toml  deny.toml  clippy.toml  justfile
   docs/SPEC.md                    diese Datei (nicht löschen, T-DOC-1)
-  docs/decisions/ADR-*.md         Entscheidungen, Format wie Contextra ADR
+  docs/decisions/ADR-*.md         Entscheidungen, Format wie Acta ADR
   crates/<crate>/                 nach 18.1
   crates/acta-testkit/tests/      Integrations- und Absturztests
   fuzz/                           Fuzz-Ziele (Envelope, P1, Chronik, Analyzer)
   audit/                          Referenzprüfer (Python), Vektoren, Anleitung
-  tools/                          Gate-Skripte (übernommen aus Contextra, Schritt AP0)
+  tools/                          Gate-Skripte (übernommen aus Acta, Schritt AP0)
   governance/                     gates.toml, ratchet.toml, protected-paths.toml
   .github/workflows/              CI (ohne `|| true`)
 ```
@@ -1317,7 +1317,7 @@ acta/
 
 ### 19.7 Commits
 
-Conventional Commits. Ein Schritt, ein Commit-Paar: Commit A verschiebt, Commit B baut um (INV-3 Contextra). `commit-msg`-Hook fehlt bei Contextra (`.githooks/` enthält nur `pre-commit`, `pre-push`) und wird in Acta angelegt.
+Conventional Commits. Ein Schritt, ein Commit-Paar: Commit A verschiebt, Commit B baut um (INV-3 Acta). `commit-msg`-Hook fehlt bei Acta (`.githooks/` enthält nur `pre-commit`, `pre-push`) und wird in Acta angelegt.
 
 ---
 
@@ -1433,20 +1433,20 @@ Mutationsziel `cargo-mutants` auf `acta-seal`, `acta-model`, `acta-chronicle`, `
 | **G4** Krypto-Prüfung | Externer Prüfer für `acta-seal` und Chronik-Ableitungen | Prüfliste 6.13 beantwortet; Funde behoben; `audit`/`deny` ohne offene Advisories |
 | **G5** Recht | Einordnung der Vernichtung und Chronik-Speicherung | schriftliche Einschätzung; erst dann Anhang C erweiterbar |
 
-Engineering-Gates zusätzlich (übernommen aus Contextra `governance/gates.toml`, ohne `|| true`):
+Engineering-Gates zusätzlich (übernommen aus Acta `governance/gates.toml`, ohne `|| true`):
 
 | Gate | Werkzeug | Herkunft |
 |---|---|---|
-| E-G1 Layering | `gate_layering.py` | Contextra |
-| E-G2 Feature-Matrix | `cargo-hack --each-feature` | Contextra |
-| E-G3 Unwrap | `unwrap-gate.yml` | Contextra |
-| E-G4 Determinismus | `determinism_guard.py` | Contextra |
-| E-G5 Dokumentwahrheit | `doc_lint.py` (Compliance-Wörter, Versionen) | Contextra |
-| E-G6 Lizenz/Advisories | `cargo deny`, `cargo audit` | Contextra |
-| E-G7 Fuzz | `fuzz-extended.yml` | Contextra |
-| E-G8 Mutation | `cargo-mutants` (ohne `continue-on-error`) | Contextra, korrigiert |
-| E-G9 Loom | `loom-gate.yml` | Contextra |
-| E-G10 Format-Korpus | Golden-Dateien mit `MANIFEST.sha256` | Contextra G-F1 |
+| E-G1 Layering | `gate_layering.py` | Acta |
+| E-G2 Feature-Matrix | `cargo-hack --each-feature` | Acta |
+| E-G3 Unwrap | `unwrap-gate.yml` | Acta |
+| E-G4 Determinismus | `determinism_guard.py` | Acta |
+| E-G5 Dokumentwahrheit | `doc_lint.py` (Compliance-Wörter, Versionen) | Acta |
+| E-G6 Lizenz/Advisories | `cargo deny`, `cargo audit` | Acta |
+| E-G7 Fuzz | `fuzz-extended.yml` | Acta |
+| E-G8 Mutation | `cargo-mutants` (ohne `continue-on-error`) | Acta, korrigiert |
+| E-G9 Loom | `loom-gate.yml` | Acta |
+| E-G10 Format-Korpus | Golden-Dateien mit `MANIFEST.sha256` | Acta G-F1 |
 
 ---
 
@@ -1456,7 +1456,7 @@ Engineering-Gates zusätzlich (übernommen aus Contextra `governance/gates.toml`
 
 | Paket | Inhalt | Ende |
 |---|---|---|
-| **AP0** | Repository aus Contextra-Gerüst (Gates, CI, Lints, `docs/SPEC.md`, `tools/`); `acta-ids`, `acta-env`; alle Architekturtests | Architekturtests grün; **T-WALK-1 rot eingecheckt** |
+| **AP0** | Repository aus Acta-Gerüst (Gates, CI, Lints, `docs/SPEC.md`, `tools/`); `acta-ids`, `acta-env`; alle Architekturtests | Architekturtests grün; **T-WALK-1 rot eingecheckt** |
 | **AP1** | `acta-model` (Zustände, `next`), `acta-seal` (Secret, Envelope, P1, Ableitungen, AEAD), Anhang-B-Vektoren | T-SEAL-1 bis 4, T-TYPE-*, T-CHR-4 (Hashkette, pur), M-1, M-4 bis M-8 tot |
 | **AP2** | `acta-custodian`, `acta-custodian-local`, `acta-conformance` | T-CUST-1, M-9, M-10, M-25 |
 | **AP3** | `acta-store`: Schema 2, Pragmas, `erase_log`-Kette, Chronik-Tabelle | T-STORE-1, T-STORE-2, T-LOG-1 |
@@ -1483,9 +1483,9 @@ Alle G1 bis G5, Spezifikation als „Fassung 1.0“ mit Messwerten (0.2), mindes
 
 ### 21.4 Version 2
 
-- Ingest, Klassifikation, Redaktion (ACTA 4.4, 4.5, D-17) als eigene Crates `acta-ingest`, `acta-classify`, `acta-redact`. Parser aus Contextra (`contextra-ingest`) werden hier evaluiert.
+- Ingest, Klassifikation, Redaktion (ACTA 4.4, 4.5, D-17) als eigene Crates `acta-ingest`, `acta-classify`, `acta-redact`. Parser aus Acta (`acta-ingest`) werden hier evaluiert.
 - `ContextRequest`/`ContextBundle` und `ContextReceipt` (ACTA 8.5), LLM-Anbindung über `EgressGuard` (ACTA 8.5, Z4).
-- Server, MCP und CLI: `acta-server`, `acta-mcp`, `acta-cli` (ACTA 6.1), Python-Bindings (Contextra `contextra-py` als Vorlage).
+- Server, MCP und CLI: `acta-server`, `acta-mcp`, `acta-cli` (ACTA 6.1), Python-Bindings (Acta `acta-py` als Vorlage).
 - Custodian-Operation `sign` für A2-Belege (D-09).
 
 ---
@@ -1522,7 +1522,7 @@ Alle G1 bis G5, Spezifikation als „Fassung 1.0“ mit Messwerten (0.2), mindes
 | ID | Frage | Vorschlag | Status |
 |---|---|---|---|
 | O1 | Speicher | SQLite | entschieden (D-02) |
-| O2 | Chiffre | XChaCha20-Poly1305. Alternative AES-256-GCM-SIV (Contextra) | vorläufig, Vorbehalt G4 |
+| O2 | Chiffre | XChaCha20-Poly1305. Alternative AES-256-GCM-SIV (Acta) | vorläufig, Vorbehalt G4 |
 | O3 | Erster produktiver Custodian | Key-Dienst mit Karenz und signiertem Beleg | offen |
 | O4 | Index für mehr als 10⁶ Chunks | Snapshots unter Epochenschlüssel, 1.1 | zurückgestellt |
 | O5 | Lesezugriff bei `EXCLUSIVE` | eine Verbindung; Leser warten auf Commits | offen, G3 misst |
@@ -1545,23 +1545,23 @@ Alle G1 bis G5, Spezifikation als „Fassung 1.0“ mit Messwerten (0.2), mindes
 | O22 | Rolle des Commitments für die Klasse | keine eigene Klasse, nur Verankerungshinweis | vorläufig |
 | O23 | Löschkern-Budget | ≤ 7.000 Zeilen | Ratchet |
 
-### 22.3 Befunde aus dem Contextra-Repository
+### 22.3 Befunde aus dem Acta-Repository
 
 Verifiziert am Klon (Methode 0.3). Einige Befunde betreffen die Quelle und dienen als Regel, nicht als Schuldzuweisung.
 
 | ID | Befund | Stufe | Fundstelle | Acta-Regel | Test |
 |---|---|---|---|---|---|
-| **A-1** | `seal_record` ruft `seal_record_with_rng(...).unwrap_or_default()` auf. Bei Fehler entsteht ein **leerer Ciphertext** ohne Fehlersignal. Im Produktionscode, vor `#[cfg(test)]` (Zeile 121). | [V] | `contextra-crypto/src/aead.rs:71` | Z7, C-5, 6.11 | T-SEAL-2, M-8 |
-| **A-2** | `derive_dek` ersetzt einen fehlenden Hierarchiebestandteil (`a.s == None`) durch 32 Nullbytes im Hash. Die Ableitung wird still eine andere. | [V] | `contextra-crypto/src/dek.rs:76` | V-13, 6.3 | T-ARCH-11, T-SEAL-3 |
-| **A-3** | `seal_record_with_nonce` ist öffentlich und nimmt die Nonce als Parameter. Die Nonce-Disziplin liegt beim Aufrufer. | [V] | `contextra-crypto/src/aead.rs:24` | I-23, C-2 | T-ARCH-10 |
-| **A-4** | `String::from_utf8_lossy(file_id)` bei Schlüsselbezeichnern. Verlustbehaftet. | [V] | `contextra-crypto/src/wal_crypto.rs:229` | I-18, V-3 | T-TYPE-3 |
-| **A-5** | Ein hartkodierter Legacy-Integritätsschlüssel steht in `contextra-store/src/wal/hmac.rs:33`. **Nur hinter `#[cfg(feature = "legacy-wal-key")]`**, also nicht im Standardpfad. Die Feature-Kante verändert das Verhalten. | [V] | `contextra-store/src/wal/hmac.rs:33` | I-4, V-8 | T-ARCH-5 |
-| **A-6** | `get_segments` liefert bei fehlendem Mandanten `unwrap_or_default()`, also eine leere Liste ohne Fehler. Leseseitig, geringeres Risiko. | [V] | `contextra-crypto/src/kv_segment/store.rs:293` | I-5 | T-LIMIT-1 |
-| **A-7** | `DeletionProofKeyPair::generate()` erzeugt Ed25519-Schlüssel im Prozess. Belege sind Selbstauskunft (Klasse A0). | [V] | `contextra-erasure/src/deletion_proof.rs:131` | D-06, I-22 | T-ARCH-9 |
+| **A-1** | `seal_record` ruft `seal_record_with_rng(...).unwrap_or_default()` auf. Bei Fehler entsteht ein **leerer Ciphertext** ohne Fehlersignal. Im Produktionscode, vor `#[cfg(test)]` (Zeile 121). | [V] | `acta-crypto/src/aead.rs:71` | Z7, C-5, 6.11 | T-SEAL-2, M-8 |
+| **A-2** | `derive_dek` ersetzt einen fehlenden Hierarchiebestandteil (`a.s == None`) durch 32 Nullbytes im Hash. Die Ableitung wird still eine andere. | [V] | `acta-crypto/src/dek.rs:76` | V-13, 6.3 | T-ARCH-11, T-SEAL-3 |
+| **A-3** | `seal_record_with_nonce` ist öffentlich und nimmt die Nonce als Parameter. Die Nonce-Disziplin liegt beim Aufrufer. | [V] | `acta-crypto/src/aead.rs:24` | I-23, C-2 | T-ARCH-10 |
+| **A-4** | `String::from_utf8_lossy(file_id)` bei Schlüsselbezeichnern. Verlustbehaftet. | [V] | `acta-crypto/src/wal_crypto.rs:229` | I-18, V-3 | T-TYPE-3 |
+| **A-5** | Ein hartkodierter Legacy-Integritätsschlüssel steht in `acta-store/src/wal/hmac.rs:33`. **Nur hinter `#[cfg(feature = "legacy-wal-key")]`**, also nicht im Standardpfad. Die Feature-Kante verändert das Verhalten. | [V] | `acta-store/src/wal/hmac.rs:33` | I-4, V-8 | T-ARCH-5 |
+| **A-6** | `get_segments` liefert bei fehlendem Mandanten `unwrap_or_default()`, also eine leere Liste ohne Fehler. Leseseitig, geringeres Risiko. | [V] | `acta-crypto/src/kv_segment/store.rs:293` | I-5 | T-LIMIT-1 |
+| **A-7** | `DeletionProofKeyPair::generate()` erzeugt Ed25519-Schlüssel im Prozess. Belege sind Selbstauskunft (Klasse A0). | [V] | `acta-erasure/src/deletion_proof.rs:131` | D-06, I-22 | T-ARCH-9 |
 | **A-8** | `crypto/Cargo.toml` setzt `default = ["kv-encryption", "workspace"]`, `erasure/Cargo.toml` setzt `default = ["signing", "vault", "async"]`. Die Regel R10 der Quellspezifikation verbietet `workspace` im Default. | [V] | `Cargo.toml` der Crates | V-12 | T-ARCH-5 |
 | **A-9** | In `rust-ci.yml` stehen drei `|| true`: Zeile 28 (`cargo check --workspace`), Zeile 43 (`gate_layering.py`), Zeile 57 (`docid-128`-Check). Ein Gate kann damit nicht fehlschlagen. Ich habe das im Klon gelesen; die Ausführung habe ich nicht geprüft. | [V] | `.github/workflows/rust-ci.yml` | V-14 | T-ARCH-12 |
-| **A-10** | Die Quellspezifikation nennt `contextra-vault` als ausgeschlossen (`exclude`). Der Crate-Inhalt liegt in `contextra-vault/src/vault.rs` und wird von `contextra-db` re-exportiert. | [V] | `Cargo.toml` (`exclude`), `crates/contextra-db` | R14 | T-ARCH-1 |
-| **A-11** | `contextra-engine` ist eine deprecated Fassade mit 15 Zeilen Quelltext. Das Crate zählt in der Matrix trotzdem als E2. | [V] | `crates/contextra-engine/src/lib.rs` | R9 | T-ARCH-7 |
+| **A-10** | Die Quellspezifikation nennt `acta-vault` als ausgeschlossen (`exclude`). Der Crate-Inhalt liegt in `acta-vault/src/vault.rs` und wird von `acta-db` re-exportiert. | [V] | `Cargo.toml` (`exclude`), `crates/acta-db` | R14 | T-ARCH-1 |
+| **A-11** | `acta-engine` ist eine deprecated Fassade mit 15 Zeilen Quelltext. Das Crate zählt in der Matrix trotzdem als E2. | [V] | `crates/acta-engine/src/lib.rs` | R9 | T-ARCH-7 |
 | **A-12** | Cargo steht im Arbeitsumfeld nicht zur Verfügung. Ich habe nichts gebaut oder getestet. Die Aussagen über Kompilierbarkeit stammen aus `docs/SPEC.md` v5 und sind **[Ü]**. | [V] | Umgebung | 0.2 | — |
 
 **Übernommene Befunde** aus `SPEC.md` 19.1 (B-01 bis B-37, betreffen das Altrepo `tfufuz1/acta`) bleiben gültig. Das Altrepo wurde nicht geklont. Die Zuordnung zu Acta-Regeln steht in `SPEC.md` 19.1.

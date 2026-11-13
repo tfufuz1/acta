@@ -22,6 +22,8 @@ use std::sync::Arc;
 /// Operating mode for [`ApprhSelector`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 // ANCHOR[acta-graph:SRC-APPRH-SELECTOR-001]
+
+// SECTION Selector Core Implementation
 pub enum ApprhMode {
     /// APPRH disabled; authoritative Forward-Push PPR is returned.
     Off,
@@ -74,7 +76,7 @@ pub struct ApprhSelector {
 
 impl ApprhSelector {
     /// Creates a new [`ApprhSelector`] with the specified configuration and gate monitor.
-// ANCHOR[acta-graph:SRC-APPRH-SELECTOR-004]
+    // ANCHOR[acta-graph:SRC-APPRH-SELECTOR-004]
     pub fn new(config: ApprhSelectorConfig, monitor: Arc<ApprhGateMonitor>) -> Self {
         Self {
             config,
@@ -88,14 +90,14 @@ impl ApprhSelector {
     ///
     /// # Errors
     /// Returns [`ApprhError`] if monitor configuration fails validation.
-// ANCHOR[acta-graph:SRC-APPRH-SELECTOR-005]
+    // ANCHOR[acta-graph:SRC-APPRH-SELECTOR-005]
     pub fn with_default_monitor(config: ApprhSelectorConfig) -> Result<Self, ApprhError> {
         let monitor = Arc::new(ApprhGateMonitor::default());
         Ok(Self::new(config, monitor))
     }
 
     /// Returns the current operating mode of the selector.
-// ANCHOR[acta-graph:SRC-APPRH-SELECTOR-006]
+    // ANCHOR[acta-graph:SRC-APPRH-SELECTOR-006]
     pub fn mode(&self) -> ApprhMode {
         *self.mode.read()
     }
@@ -105,7 +107,7 @@ impl ApprhSelector {
     /// # Errors
     /// Returns [`ApprhError::InvalidParameter`] if attempting to promote to `Production` mode
     /// when `monitor.production_ready()` is `false`.
-// ANCHOR[acta-graph:SRC-APPRH-SELECTOR-007]
+    // ANCHOR[acta-graph:SRC-APPRH-SELECTOR-007]
     pub fn set_mode(&self, new_mode: ApprhMode) -> Result<(), ApprhError> {
         if new_mode == ApprhMode::Production && !self.monitor.production_ready() {
             return Err(ApprhError::InvalidParameter(
@@ -121,19 +123,19 @@ impl ApprhSelector {
     ///
     /// # Errors
     /// Returns [`ApprhError::InvalidParameter`] if gate monitor is not production ready.
-// ANCHOR[acta-graph:SRC-APPRH-SELECTOR-008]
+    // ANCHOR[acta-graph:SRC-APPRH-SELECTOR-008]
     pub fn promote_to_production(&self) -> Result<(), ApprhError> {
         self.set_mode(ApprhMode::Production)
     }
 
     /// Explicitly demotes the selector to `Shadow` mode.
-// ANCHOR[acta-graph:SRC-APPRH-SELECTOR-009]
+    // ANCHOR[acta-graph:SRC-APPRH-SELECTOR-009]
     pub fn demote_to_shadow(&self) {
         *self.mode.write() = ApprhMode::Shadow;
     }
 
     /// Returns a reference to the internal [`ApprhGateMonitor`].
-// ANCHOR[acta-graph:SRC-APPRH-SELECTOR-010]
+    // ANCHOR[acta-graph:SRC-APPRH-SELECTOR-010]
     pub fn monitor(&self) -> &ApprhGateMonitor {
         &self.monitor
     }
@@ -142,7 +144,7 @@ impl ApprhSelector {
     ///
     /// # Errors
     /// Returns [`ApprhError`] if graph execution fails in non-recoverable paths.
-// ANCHOR[acta-graph:SRC-APPRH-SELECTOR-011]
+    // ANCHOR[acta-graph:SRC-APPRH-SELECTOR-011]
     pub fn evaluate_and_run<G: PathGraph>(
         &self,
         graph: &G,
@@ -220,3 +222,5 @@ impl std::fmt::Debug for ApprhSelector {
             .finish()
     }
 }
+
+// !SECTION Selector Core Implementation

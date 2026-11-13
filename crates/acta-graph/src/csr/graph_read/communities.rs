@@ -3,13 +3,22 @@
 //! # Zweck
 //! Verknüpft Knotenindizes mit identifizierten Community-Gruppen für globales Clustering.
 
+// FILE-CONTEXT
+// STAND: 2026-11-15T12:00:00Z
+// ZWECK: Compressed Sparse Row (CSR) Graph-Engine Kern.
+// INVARIANTEN: Bitemporale Sichtbarkeit, lock-freie Lesepfade.
+// HOTSPOTS: Keine kritischen Bottlenecks identifiziert
+// SIEHE AUCH: docs/SPEC.md, crates/acta-graph/SPEC.md
+
 use super::super::graph_write::CsrGraph;
 use super::super::types::GRAPH_COMMUNITY_PREFIX;
 use acta_types::{EntityId, Result};
 use std::collections::HashMap;
 
+
+// SECTION Communities Core Implementation
 impl CsrGraph {
-// ANCHOR[acta-graph:SRC-CSR-GRAPH-READ-COMMUNITIES-001]
+    // ANCHOR[acta-graph:SRC-CSR-GRAPH-READ-COMMUNITIES-001]
     pub fn set_communities_batch(&self, assignments: &[crate::CommunityAssignment]) {
         let mut inner = self.inner_write();
         for a in assignments {
@@ -64,3 +73,5 @@ impl CsrGraph {
         }
     }
 }
+
+// !SECTION Communities Core Implementation

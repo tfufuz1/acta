@@ -11,24 +11,15 @@ use acta_graph::cascade::{
 };
 use acta_graph::csr::{CsrGraph, EdgeType};
 use acta_graph::hyperedge::{HyperEdge, HyperEdgeId, RoleBinding, RoleId};
+use acta_graph::test_doubles::InMemoryStorageEngine;
 use acta_ports::StorageEngine;
-use acta_store::{LsmConfig, LsmStorage};
 use acta_types::{DocId, EntityId, TxId};
 use std::sync::Arc;
-use tempfile::tempdir;
 
 // ANCHOR[acta-graph:TESTS-HYPEREDGE-CASCADE-QUEUE-PERSISTENCE-001]
 #[tokio::test]
 async fn test_hyperedge_cascade_queue_persistence_and_drain() {
-    let dir = tempdir().unwrap();
-    let storage = Arc::new(
-        LsmStorage::new(LsmConfig {
-            path: dir.path().to_path_buf(),
-            ..Default::default()
-        })
-        .await
-        .unwrap(),
-    );
+    let storage = Arc::new(InMemoryStorageEngine::new());
 
     let graph = CsrGraph::with_storage(storage.clone());
     let doc_a = DocId::from_key("doc-cascade-test").unwrap();

@@ -20,7 +20,6 @@ pub(super) fn cmp_scores(a: f32, b: f32) -> std::cmp::Ordering {
 /// zur Akkumulation der K besten Kandidaten während der Multi-Signal-Fusion (RRF / Score-Normalisierung).
 /// Er ist zu unterscheiden von `acta_text::wand::BoundedTopK`, welcher speziell für den
 /// WAND-Algorithmus zur Trefferbeschränkung bei der Invertierten-Index-Suche eingesetzt wird.
-// ANCHOR[acta-rank:TOPK-001]
 /// Größenbeschränkter Min-Heap für die Top-K-Kandidatenselektion während der Rangfusion.
 pub struct BoundedTopK<T> {
     heap: std::collections::BinaryHeap<T>,
@@ -30,7 +29,7 @@ pub struct BoundedTopK<T> {
 impl<T: Ord> BoundedTopK<T> {
     /// Creates a new `BoundedTopK` container with maximum capacity `k`.
     pub fn new(capacity: usize) -> Self {
-        let capacity = capacity.min(acta_types::MAX_SEARCH_K);
+        let capacity = capacity.min(crate::local_types::MAX_SEARCH_K);
         Self {
             heap: std::collections::BinaryHeap::with_capacity(capacity.saturating_add(1)),
             capacity,

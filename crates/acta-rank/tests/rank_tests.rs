@@ -14,10 +14,8 @@ mod tests {
     use acta_rank::fusion::{
         reciprocal_rank_fusion, BoundedTopK, ProvenanceBuilder, SearchResult,
     };
-    use acta_types::ConfigFingerprint;
-
-    // ANCHOR[acta-rank:RNK-TEST-001]
-#[test]
+    use acta_rank::ConfigFingerprint;
+    #[test]
     fn test_rrf_k_zero_boundary() {
         let prov = ProvenanceBuilder::new(0.0)
             .vector(0.9, 1, 1.0)

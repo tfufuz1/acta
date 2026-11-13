@@ -1,3 +1,8 @@
+// FILE-CONTEXT
+// ZWECK: Index-Validierung für ungültige Vektorkomponenten (NaN, Inf, -Inf).
+// INVARIANTEN: Konsistente Ablehnung mit Err(InvalidInput) vor Index-Mutation.
+// HOTSPOTS: 20-90
+// STAND: 2026-11-12
 use acta_ports::VectorIndex;
 use acta_types::{ActaError, DistanceMetric, DocId, TxId};
 use acta_vector::distance::{compute_distance_trusted, validate_vector};

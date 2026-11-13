@@ -1,0 +1,20 @@
+[crates.acta-mcp]
+group = "apps"
+level = 3
+tier = "beta"
+path = "crates/acta-mcp"
+unsafe_island = false
+allowed_internal = [
+    "acta",
+    "acta-types",
+    "acta-ports",
+    "acta-wire",
+    "acta-rank",
+    "acta-crypto",
+    "acta-privacy",
+    "acta-router",
+    "acta-prompt-guard",
+]
+feature_closure_allowed = { candle = ["acta-infer-candle"], ollama = ["acta-infer-ollama"], onnx = ["acta-infer-onnx"] }
+dev_allowed = []
+test = "cargo test -p acta-mcp --locked"

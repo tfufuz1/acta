@@ -9,7 +9,7 @@
 
 use acta_rank::dibud::{fuse_exact_prefix, DiBudFusionState, FusionBudget};
 use acta_rank::fusion::{weighted_reciprocal_rank_fusion, SearchResult};
-use acta_types::DocId;
+use acta_rank::DocId;
 
 struct SimpleLcg {
     state: u64,
@@ -44,8 +44,6 @@ fn make_doc_id(key_num: u64) -> DocId {
 fn make_doc_key_string(key_num: u64) -> String {
     format!("doc_{key_num:05}")
 }
-
-// ANCHOR[acta-rank:DIBUD-TEST-001]
 #[test]
 fn test_dibud_unlimited_budget_equivalence_200_fixtures() {
     let mut lcg = SimpleLcg::new(0xDEAD_BEEF_1234_5678);
@@ -172,7 +170,7 @@ fn test_dibud_unlimited_budget_equivalence_200_fixtures() {
     }
 }
 
-    // Testet das erwartete Verhalten und mathematische Invarianten.
+// Testet das erwartete Verhalten und mathematische Invarianten.
 #[test]
 fn test_dibud_limited_budget_prefix_property() {
     let mut lcg = SimpleLcg::new(0xCAFE_BABE_9876_5432);

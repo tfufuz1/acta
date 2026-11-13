@@ -3,13 +3,10 @@
 //! Validiert Roundtrips, Framing-Grenzfaelle und Bitflips.
 
 use super::*;
-#[cfg(feature = "encryption-at-rest")]
 use crate::wal::KeyManager;
-use acta_types::TxId;
-#[cfg(feature = "encryption-at-rest")]
+use acta_ids::TxId;
 use std::sync::Arc;
 use tempfile::tempdir;
-#[cfg(feature = "encryption-at-rest")]
 use tokio::fs;
 
 #[test]
@@ -120,7 +117,6 @@ fn test_wal_entry_crc_roundtrip() {
     }
 }
 
-#[cfg(feature = "encryption-at-rest")]
 #[tokio::test]
 async fn test_batch_encryption_single_nonce_layout() {
     let dir = tempdir().expect("tempdir"); // expect
@@ -181,7 +177,6 @@ async fn test_batch_encryption_single_nonce_layout() {
     assert_eq!(nonce_bytes.len(), 12);
 }
 
-#[cfg(not(feature = "encryption-at-rest"))]
 #[tokio::test]
 async fn test_batch_plaintext_layout() {
     let dir = tempdir().expect("tempdir");
@@ -237,7 +232,7 @@ fn test_wal_op_from_bytes_oversized_key_val() {
 
     let res = WalEntry::from_bytes(&data);
     assert!(res.is_err());
-    if let Err(ActaError::Serialization(msg)) = res {
+    if let Err(crate::error::StoreError::Serialization(msg)) = res {
         assert!(msg.contains("key_len exceeds 1 MiB limit"));
     } else {
         panic!("Expected Serialization error for key_len limit");
@@ -249,7 +244,7 @@ fn test_wal_entry_from_bytes_invalid_cases() {
     // 1. Too short data (< 94 bytes)
     let short_data = vec![0u8; 50];
     let res = WalEntry::from_bytes(&short_data);
-    assert!(matches!(res, Err(ActaError::Serialization(_))));
+    assert!(matches!(res, Err(crate::error::StoreError::Serialization(_))));
 
     // 2. Invalid WalOp tag (e.g., tag = 255)
     let mut payload = vec![0u8; 90];
@@ -260,5 +255,5 @@ fn test_wal_entry_from_bytes_invalid_cases() {
     data.extend_from_slice(&payload);
 
     let res_op = WalEntry::from_bytes(&data);
-    assert!(matches!(res_op, Err(ActaError::Serialization(_))));
+    assert!(matches!(res_op, Err(crate::error::StoreError::Serialization(_))));
 }

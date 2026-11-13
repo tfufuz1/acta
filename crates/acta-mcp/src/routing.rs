@@ -1,3 +1,7 @@
+// =========================================================================
+// SECTION: routing
+// =========================================================================
+// ANCHOR[acta-mcp:ROUTING-001]
 use crate::config::RouterConfig;
 use acta::Acta;
 use acta_types::{ContextChunk, ContextWindow, ActaError, EntityId, TokenBudget};
@@ -5,7 +9,7 @@ use std::sync::Arc;
 
 struct CollectionAdapter(Arc<acta::Collection>);
 
-impl acta_router::ports_local::HybridSearchProvider for CollectionAdapter {
+impl acta_ports::HybridSearchProvider for CollectionAdapter {
     fn search_hybrid<'a>(
         &'a self,
         query_text: &'a str,
@@ -35,7 +39,7 @@ impl acta_router::ports_local::HybridSearchProvider for CollectionAdapter {
 
 struct CommunityAdapter;
 
-impl acta_router::ports_local::CommunityResolver for CommunityAdapter {
+impl acta_ports::CommunityResolver for CommunityAdapter {
     fn get_community<'a>(
         &'a self,
         _entity_id: EntityId,
@@ -46,7 +50,7 @@ impl acta_router::ports_local::CommunityResolver for CommunityAdapter {
 
 struct ContextPreparerAdapter;
 
-impl acta_router::ports_local::ContextPreparer for ContextPreparerAdapter {
+impl acta_ports::ContextPreparer for ContextPreparerAdapter {
     fn prepare_context(
         &self,
         chunks: Vec<ContextChunk>,
@@ -117,3 +121,5 @@ pub async fn setup_routing(
         _drift_adapter: drift_adapter,
     })))
 }
+
+// !SECTION: routing

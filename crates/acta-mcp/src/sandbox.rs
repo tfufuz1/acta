@@ -1,3 +1,7 @@
+// =========================================================================
+// SECTION: sandbox
+// =========================================================================
+// ANCHOR[acta-mcp:SANDBOX-001]
 // FILE-CONTEXT
 // STAND:       2026-09-10T19:25:24Z (SESSION: ae8c2fb9)
 // ZWECK:       MCP Sandbox & Zero-Trust Tool Isolation Layer
@@ -8,7 +12,8 @@
 // acta-mcp/src/sandbox.rs
 // MCP Tool Isolation Layer (Acta Volatile-Output Isolation)
 
-use acta_types::{ActaError, Result};
+use acta_types::ActaError;
+type Result<T> = std::result::Result<T, ActaError>;
 use parking_lot::Mutex;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -41,10 +46,10 @@ pub struct ToolDefinition {
 /// | `acta_explain` | `DatabaseRead` | Retrieval explanation and provenance breakdown |
 /// | `acta_insert` | `DatabaseWrite` | Store document (auto-embedding, auto-chunking) |
 /// | `acta_upsert` | `DatabaseWrite` | Insert/update document idempotently by key |
-/// | `acta_delete` | `DatabaseWrite` | Delete document without measured proof |
-/// | `acta_forget` | `DatabaseWrite` | Delete document or drop collection with verified DeletionProof |
+/// | `acta_delete` | `DatabaseWrite` | Delete document |
+/// | `acta_forget` | `DatabaseWrite` | Delete document (Alias for acta_delete) |
 /// | `acta_create_collection` | `DatabaseWrite` | Create collection with DeploymentTier |
-/// | `acta_drop_collection` | `DatabaseWrite` | Delete entire collection and issue a verified DeletionProof |
+/// | `acta_drop_collection` | `DatabaseWrite` | Delete entire collection |
 pub const TOOL_REGISTRY: &[ToolDefinition] = &[
     ToolDefinition {
         name: "acta_search",
@@ -91,15 +96,14 @@ pub const TOOL_REGISTRY: &[ToolDefinition] = &[
     ToolDefinition {
         name: "acta_forget",
         category: ToolCategory::DatabaseWrite,
-        description: "Delete a document (unverified) or drop an entire collection (with verified DeletionProof export).",
+        description: "Delete a document without verification receipt (Alias for acta_delete).",
         input_schema: || json!({
             "type": "object",
             "properties": {
-                "collection": { "type": "string" },
                 "id":         { "type": "string" },
-                "confirm":    { "type": "boolean" }
+                "collection": { "type": "string", "default": "default" }
             },
-            "required": ["collection", "confirm"]
+            "required": ["id"]
         }),
     },
     ToolDefinition {
@@ -143,7 +147,7 @@ pub const TOOL_REGISTRY: &[ToolDefinition] = &[
     ToolDefinition {
         name: "acta_delete",
         category: ToolCategory::DatabaseWrite,
-        description: "Delete a single document without measured deletion proof.",
+        description: "Delete a single document.",
         input_schema: || json!({
             "type": "object",
             "properties": {
@@ -169,7 +173,7 @@ pub const TOOL_REGISTRY: &[ToolDefinition] = &[
     ToolDefinition {
         name: "acta_drop_collection",
         category: ToolCategory::DatabaseWrite,
-        description: "Delete an entire collection and issue a verified collection-wide cryptographic DeletionProof.",
+        description: "Delete an entire collection.",
         input_schema: || json!({
             "type": "object",
             "properties": {
@@ -539,7 +543,7 @@ mod tests {
     }
 
     #[test]
-    fn volatile_tool_result_roundtrip() {
+    fn test_volatile_tool_result_roundtrip() {
         let key =
             acta_crypto::CryptoKey::try_new("0123456789abcdef0123456789abcdef", b"salt1234")
                 .unwrap(); // unwrap
@@ -755,3 +759,5 @@ mod tests {
             .contains("limit reached"));
     }
 }
+
+// !SECTION: sandbox

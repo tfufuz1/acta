@@ -15,7 +15,7 @@
 
 use acta_checkpoint::{CheckpointManifest, CheckpointMeta, PersistentCheckpointStore};
 use acta_ports::{BoxFuture, StorageEngine, StorageStats};
-use acta_types::{ActaError, Result, TxId};
+use acta_types::{Result, TxId};
 use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -194,6 +194,7 @@ async fn test_crash_recovery_reconstructs_highest_txid_when_meta_missing_or_corr
         tx_id: highest_tx,
         metadata: serde_json::json!({}),
         created_at: 1000,
+        id_width_bits: acta_checkpoint::CURRENT_ID_WIDTH_BITS,
     };
     let manifest = CheckpointManifest::new(meta, vec!["storage".to_string()]).unwrap();
     let value = serde_json::to_vec(&manifest).unwrap();
@@ -268,6 +269,7 @@ async fn test_txid_regression_collision_check_returns_hard_error() {
         tx_id: scanned_tx,
         metadata: serde_json::json!({}),
         created_at: 1000,
+        id_width_bits: acta_checkpoint::CURRENT_ID_WIDTH_BITS,
     };
     let manifest = CheckpointManifest::new(meta, vec!["storage".to_string()]).unwrap();
     let value = serde_json::to_vec(&manifest).unwrap();
@@ -291,7 +293,7 @@ async fn test_txid_regression_collision_check_returns_hard_error() {
         res.is_err(),
         "Store open must fail when persisted HWM < scanned highest TxId"
     );
-    if let Err(ActaError::Internal(msg)) = res {
+    if let Err(acta_checkpoint::CheckpointError::Internal(msg)) = res {
         assert!(
             msg.contains("TxId collision / regression detected"),
             "Error message must indicate TxId collision / regression: {msg}"

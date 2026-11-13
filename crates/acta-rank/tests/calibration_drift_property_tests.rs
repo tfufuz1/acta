@@ -5,8 +5,6 @@ use acta_rank::calibration::{
 };
 use acta_rank::drift::{DriftDetector, DriftStatus};
 use proptest::prelude::*;
-
-// ANCHOR[acta-rank:CAL-TEST-002]
 proptest! {
     // Testet das erwartete Verhalten und mathematische Invarianten.
     #[test]
@@ -75,7 +73,7 @@ proptest! {
     }
 }
 
-    // Testet das erwartete Verhalten und mathematische Invarianten.
+// Testet das erwartete Verhalten und mathematische Invarianten.
 #[test]
 fn test_conformal_coverage_empirical_guarantee_synthetic() {
     let alpha = 0.10_f32;
@@ -116,7 +114,7 @@ fn test_conformal_coverage_empirical_guarantee_synthetic() {
     );
 }
 
-    // Testet das erwartete Verhalten und mathematische Invarianten.
+// Testet das erwartete Verhalten und mathematische Invarianten.
 #[test]
 fn test_platt_scaler_fit_properties_range() {
     let obs = vec![

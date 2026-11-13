@@ -1,3 +1,5 @@
+#![deny(missing_docs)]
+#![allow(deprecated)]
 #![deny(dead_code)]
 // FILE-CONTEXT: Layer 1 text search integration facade (acta-text).
 // ZWECK: Exportiert Bm25Scorer, InvertedIndex, Morphologie-Tools und BM25-Modelle für DB-Hybrid-Suche.
@@ -20,10 +22,11 @@
 //! - **Normal**: `acta-ports`, `acta-types`, sowie Hilfs-Bibliotheken (`bincode`, `blake3`,
 //!   `bytes`, `futures`, `itoa`, `parking_lot`, `regex`, `serde`, `serde_json`, `thiserror`, `tracing`,
 //!   `unicode-segmentation`).
-//! - **Wird genutzt von**: `acta-engine`, `acta-db`, `acta-router`, `acta-agent`.
+//! - **Wird genutzt von**: `acta-engine`, `acta-db`, `acta-router`, `acta-agent`
+//!   sowie Benchmarks (`acta-bench`).
 //!
 //! # Haupttypen
-//! - [`Bm25Scorer`]: Öffentliche Fassade zur Anbindung an den Port [`TextIndex`].
+//! - `Bm25Scorer`: Öffentliche Fassade zur Anbindung an den Port `TextIndex` (unter Feature `workspace`).
 //! - [`InvertedIndex`]: Kern des persistenten invertierten Index mit MVCC-Snapshot-Isolation.
 //! - [`BM25`] & [`BM25F`]: Mathematische Scoring-Modelle für Dokument-Relevanz.
 //! - [`Bm25CandidateStream`]: Asynchroner Pull-Stream zur iterativen Ermittlung von Treffern.
@@ -31,9 +34,35 @@
 //! ## Scoring Models & Opt-in Features
 //! - **Standard BM25**: Default scoring algorithm used for keyword and morphological search.
 //! - **BM25F (Field-Weighted BM25)**: Opt-in field-weighted scoring model available via the
-//!   `bm25f` Cargo feature. BM25F is strictly opt-in and is not part of the default execution path.
+//!   `bm25f` Cargo feature.
+//!
+//! # Schnellstart (Standalone)
+//! ```rust
+//! use acta_text::bm25::BM25;
+//!
+//! let bm25 = BM25::default();
+//! let score = bm25.score_term(2, 50, 100.0, 5, 100);
+//! assert!(score > 0.0);
+//! ```
 
 #![forbid(unsafe_code)]
+
+#[cfg(feature = "types-compat")]
+pub mod compat;
+pub mod contract;
+pub mod error;
+pub mod memory_index;
+pub mod storage;
+pub mod traits;
+pub mod types;
+
+pub use contract::{Clock, DocKey, Epoch, Error as ContractError, Result as ContractResult, Rng};
+
+pub use error::{Result as LocalResult, TextError};
+pub use memory_index::{CompactStats, MemoryTextIndex};
+pub use storage::PostingStore;
+pub use traits::{Index, Maintain};
+pub use types::{DocId as LocalDocId, TextHit, MAX_SEARCH_K as LOCAL_MAX_SEARCH_K};
 
 pub mod bm25;
 pub mod domain;
@@ -46,296 +75,16 @@ pub mod wand;
 
 pub use bm25::{score_term_bm25f, FieldId, FieldWeight, BM25, BM25F};
 pub use domain::{DomainVocabulary, LegalDomainVocabulary, MedicalDomainVocabulary};
+pub use inverted::{InvertedIndex, Language};
+#[cfg(feature = "types-compat")]
 pub use inverted::{
-    text_purger, text_scanner, BM25MorphIndex, InvertedIndex, Language, PurgeReport, TextPurger,
-    TextScanner,
+    text_purger, text_scanner, BM25MorphIndex, PurgeReport, TextPurger, TextScanner,
 };
 pub use morphology::{normalize_umlauts, GermanCompoundSplitter, MorphologicalTokenizer};
 pub use posting_list::{Posting, PostingList, ResidentPostingIndex};
 pub use stream::{Bm25CandidateStream, DEFAULT_STREAM_BATCH_SIZE};
 pub use tokenizer::{DefaultTokenizer, GermanMorphTokenizer, Tokenizer};
 
-use acta_ports::{TextIndex, TextIndexStats};
-use acta_types::{DocId, Result, ScoredDocument, TxId};
+#[cfg(feature = "types-compat")]
+pub use crate::compat::scorer::Bm25Scorer;
 
-// ANCHOR[acta-text:LIB-001]
-/// Berechnet Begriffsgewichte und wendet die Standard-BM25-Relevanzbewertung an.
-///
-/// `Bm25Scorer` fungiert als primäre Integrationsfassade für den Port [`TextIndex`].
-/// Alle Operationen (Suche, Einfügen, Löschen, Transaktions-Commit/-Rollback) werden
-/// direkt an den internen [`InvertedIndex`] delegiert.
-///
-/// # Generische Parameter
-/// - `S`: Implementierung von [`acta_ports::StorageEngine`], über welche
-///   Posting-Listen und Dokument-Längen persistent abgelegt werden.
-pub struct Bm25Scorer<S: acta_ports::StorageEngine> {
-    index: InvertedIndex<S>,
-}
-
-impl<S: acta_ports::StorageEngine> Bm25Scorer<S> {
-    // ANCHOR[acta-text:LIB-002]
-    /// Erzeugt eine neue `Bm25Scorer`-Instanz über der angegebenen Speicher-Engine.
-    ///
-    /// # Ablauf
-    /// 1. Übernahme der Referenz auf die `StorageEngine`.
-    /// 2. Initialisierung des internen [`InvertedIndex`] mit dem Namensraum-Präfix.
-    ///
-    /// # Parameter
-    /// - `storage`: Referenzgezählter Zeiger ([`std::sync::Arc`]) auf den Speicher-Port.
-    /// - `namespace`: Präfix zur Mandanten- und Tabellen-Isolation der Schlüssel.
-    pub fn new(storage: std::sync::Arc<S>, namespace: &str) -> Self {
-        Self {
-            index: InvertedIndex::new(storage, namespace),
-        }
-    }
-}
-
-impl<S: acta_ports::StorageEngine> TextIndex for Bm25Scorer<S> {
-    // ANCHOR[acta-text:LIB-003]
-    /// Führt eine Volltextsuche anhand der Query aus und liefert bis zu `k` Treffer.
-    ///
-    /// # Ablauf
-    /// 1. Tokenisierung der Anfrage mit dem Standard-Tokenizer.
-    /// 2. Ermittlung der Kandidaten und Bewertung per BM25.
-    /// 3. Sortierung nach Relevanzwert (absteigend) und DocId (aufsteigend bei Gleichstand).
-    async fn search(&self, query: &str, k: usize) -> Result<Vec<ScoredDocument>> {
-        self.index.search(query, k).await
-    }
-
-    // ANCHOR[acta-text:LIB-004]
-    /// Führt eine Volltextsuche zu einem bestimmten MVCC-Sequenznummer-Snapshot aus.
-    ///
-    /// Snapshot-Isolation wird garantiert, indem nur Einträge berücksichtigt werden,
-    /// deren Sequenznummer kleiner oder gleich `seq_no` ist.
-    async fn search_at(&self, query: &str, k: usize, seq_no: u64) -> Result<Vec<ScoredDocument>> {
-        self.index.search_at(query, k, seq_no).await
-    }
-
-    // ANCHOR[acta-text:LIB-005]
-    /// Fügt ein Dokument unter der Transaktions-ID `tx` in den Index ein.
-    ///
-    /// # Ablauf
-    /// 1. Tokenisierung und Ermittlung von Termfrequenzen und Dokumentlänge.
-    /// 2. Vorbereitung der Änderungen im Transaktions-Staging-Puffer.
-    async fn insert(&self, tx: TxId, id: DocId, text: &str) -> Result<()> {
-        self.index.insert(tx, id, text).await
-    }
-
-    // ANCHOR[acta-text:LIB-006]
-    /// Markiert ein Dokument unter der Transaktions-ID `tx` als gelöscht (Tombstone).
-    async fn delete(&self, tx: TxId, id: DocId) -> Result<()> {
-        self.index.delete(tx, id).await
-    }
-
-    // ANCHOR[acta-text:LIB-007]
-    /// Schreibt alle für Transaktion `tx` vorgemerkten Änderungen dauerhaft in die Storage-Engine.
-    async fn commit(&self, tx: TxId) -> Result<()> {
-        self.index.commit(tx).await
-    }
-
-    // ANCHOR[acta-text:LIB-008]
-    /// Verwirft alle für die Transaktion `tx` im Speicher gepufferten Änderungen.
-    async fn rollback(&self, tx: TxId) -> Result<()> {
-        self.index.rollback(tx).await
-    }
-
-    // ANCHOR[acta-text:LIB-009]
-    /// Führt einen Rollback aller Transaktionen bis einschließlich `tx_id` aus.
-    async fn rollback_to_tx(&self, tx_id: TxId) -> Result<()> {
-        self.index.rollback_to_tx(tx_id).await
-    }
-
-    // ANCHOR[acta-text:LIB-010]
-    /// Liefert die höchste im Index registrierte Transaktions-ID.
-    async fn last_tx_id(&self) -> Result<TxId> {
-        self.index.last_tx_id().await
-    }
-
-    // ANCHOR[acta-text:LIB-011]
-    /// Liefert die Gesamtzahl aktiver Dokumente im Index.
-    async fn len(&self) -> usize {
-        self.index.len().await
-    }
-
-    // ANCHOR[acta-text:LIB-012]
-    /// Liefert statistische Kennzahlen über den Textindex (z. B. Dokumentenanzahl, Terme).
-    async fn stats(&self) -> Result<TextIndexStats> {
-        self.index.stats().await
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use acta_ports::BoxFuture;
-    use acta_ports::{StorageEngine, StorageStats};
-    use std::collections::HashMap;
-    use std::sync::Mutex;
-
-    struct MockStorage {
-        data: Mutex<HashMap<Vec<u8>, Vec<u8>>>,
-    }
-
-    impl MockStorage {
-        fn new() -> Self {
-            Self {
-                data: Mutex::new(HashMap::new()),
-            }
-        }
-    }
-
-    impl StorageEngine for MockStorage {
-        fn get<'a>(&'a self, key: &'a [u8]) -> BoxFuture<'a, Result<Option<bytes::Bytes>>> {
-            Box::pin(async move {
-                Ok(self
-                    .data
-                    .lock()
-                    .unwrap()
-                    .get(key)
-                    .cloned()
-                    .map(bytes::Bytes::from)) // unwrap allowed
-            })
-        }
-
-        fn put<'a>(
-            &'a self,
-            _tx_id: TxId,
-            key: &'a [u8],
-            value: &'a [u8],
-        ) -> BoxFuture<'a, Result<()>> {
-            Box::pin(async move {
-                self.data
-                    .lock()
-                    .unwrap() // unwrap allowed
-                    .insert(key.to_vec(), value.to_vec());
-                Ok(())
-            })
-        }
-
-        fn delete<'a>(&'a self, _tx_id: TxId, key: &'a [u8]) -> BoxFuture<'a, Result<()>> {
-            Box::pin(async move {
-                self.data.lock().unwrap().remove(key); // unwrap allowed
-                Ok(())
-            })
-        }
-
-        fn commit<'a>(&'a self, _tx_id: TxId) -> BoxFuture<'a, Result<()>> {
-            Box::pin(async move { Ok(()) })
-        }
-
-        fn rollback<'a>(&'a self, _tx_id: TxId) -> BoxFuture<'a, Result<()>> {
-            Box::pin(async move { Ok(()) })
-        }
-
-        fn rollback_to_tx<'a>(&'a self, _tx_id: TxId) -> BoxFuture<'a, Result<()>> {
-            Box::pin(async move { Ok(()) })
-        }
-
-        fn get_at_seq<'a>(
-            &'a self,
-            key: &'a [u8],
-            _seq: u64,
-        ) -> BoxFuture<'a, Result<Option<bytes::Bytes>>> {
-            Box::pin(async move { self.get(key).await })
-        }
-
-        fn last_seq_no<'a>(&'a self) -> BoxFuture<'a, Result<u64>> {
-            Box::pin(async move { Ok(1) })
-        }
-
-        fn last_tx_id<'a>(&'a self) -> BoxFuture<'a, Result<TxId>> {
-            Box::pin(async move { Ok(TxId::new(1)) })
-        }
-
-        fn flush<'a>(&'a self) -> BoxFuture<'a, Result<()>> {
-            Box::pin(async move { Ok(()) })
-        }
-
-        fn stats<'a>(&'a self) -> BoxFuture<'a, Result<StorageStats>> {
-            Box::pin(async move {
-                Ok(StorageStats {
-                    num_segments: 0,
-                    total_size_bytes: 0,
-                    memtable_size_bytes: 0,
-                })
-            })
-        }
-
-        fn pin_checkpoint<'a>(&'a self, _id: u64) -> BoxFuture<'a, Result<()>> {
-            Box::pin(async move { Ok(()) })
-        }
-
-        fn unpin_checkpoint<'a>(&'a self, _id: u64) -> BoxFuture<'a, Result<()>> {
-            Box::pin(async move { Ok(()) })
-        }
-
-        fn scan<'a>(
-            &'a self,
-            _start: std::ops::Bound<&'a [u8]>,
-            _end: std::ops::Bound<&'a [u8]>,
-            _: Option<usize>,
-        ) -> BoxFuture<'a, Result<Vec<(Vec<u8>, Vec<u8>)>>> {
-            Box::pin(async move { Ok(Vec::new()) })
-        }
-
-        fn scan_prefix<'a>(
-            &'a self,
-            prefix: &'a [u8],
-        ) -> BoxFuture<'a, Result<Vec<(Vec<u8>, Vec<u8>)>>> {
-            Box::pin(async move {
-                let data = self.data.lock().unwrap(); // unwrap allowed
-                let mut res = Vec::new();
-                for (k, v) in data.iter() {
-                    if k.starts_with(prefix) {
-                        res.push((k.clone(), v.clone()));
-                    }
-                }
-                Ok(res)
-            })
-        }
-
-        fn scan_prefix_at<'a>(
-            &'a self,
-            prefix: &'a [u8],
-            _seq_no: u64,
-        ) -> BoxFuture<'a, Result<Vec<(Vec<u8>, Vec<u8>)>>> {
-            Box::pin(async move { self.scan_prefix(prefix).await })
-        }
-    }
-
-    // ANCHOR[acta-text:TEST-LIB-001]
-    // Prüft den gesamten Lebenszyklus des Bm25Scorer: Insert, Commit, Suche, Stats, Delete und Rollback.
-    #[tokio::test]
-    async fn bm25_scorer_case_full_lifecycle() -> Result<()> {
-        let storage = std::sync::Arc::new(MockStorage::new());
-        let scorer = Bm25Scorer::new(storage, "test_ns");
-
-        let tx = TxId::new(1);
-        let doc_id = DocId::from(100u64);
-
-        scorer.insert(tx, doc_id, "rust text search engine").await?;
-        scorer.commit(tx).await?;
-
-        assert_eq!(scorer.len().await, 1);
-
-        let results = scorer.search("rust engine", 10).await?;
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].doc_id, doc_id);
-
-        let stats = scorer.stats().await?;
-        assert_eq!(stats.num_documents, 1);
-        assert_eq!(scorer.last_tx_id().await?, TxId(1));
-
-        scorer.delete(tx, doc_id).await?;
-        scorer.commit(tx).await?;
-        assert_eq!(scorer.len().await, 0);
-
-        scorer.rollback(tx).await?;
-        scorer.rollback_to_tx(tx).await?;
-
-        Ok(())
-    }
-
-    // REVIEW-PASS[1/2] Re-verified gate-stack, zero unsafe, APM-7 slicing safety, and chaos engineering scenarios. (TS: 2026-09-10T23:48:00Z) (SESSION: f3f5ff38) (PRÜFER-KONTEXT: FRESH)
-    // REVIEW-PASS[2/2] Tier-2 audit verified: gate-stack green, 0 unsafe, APM-14/16/22/23/24/36 validated, 3x concurrency runs clean. (TS: 2026-09-13T01:25:00Z) (SESSION: 89a61398) (PRÜFER-KONTEXT: FRESH)
-}

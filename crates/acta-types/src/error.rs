@@ -1,6 +1,7 @@
+#![allow(deprecated)]
 //! Fehlertypen für `Acta`.
 //!
-//! # Architektur-Rolle: Ring 0 (Kanonische Fehlerdefinition)
+//! # Architektur-Rolle: Typen-Fundament (Kanonische Fehlerdefinition)
 //!
 //! Dieses Modul stellt das zentrale `ActaError`-Enum bereit.
 //! In Übereinstimmung mit dem Zero-Panic-Prinzip werden Fehler strukturiert modelliert
@@ -30,6 +31,10 @@ use thiserror::Error;
 /// Errors that can occur during HNSW graph deletion and repair operations.
 #[derive(Error, Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 // ANCHOR[acta-types:ERR-001]
+#[deprecated(
+    since = "0.1.0",
+    note = "Löschfehler gehören in die Erasure-Familie (acta-erasure-spi per D-E1)"
+)]
 pub enum HnswDeletionError {
     /// Target node with doc_id not found in graph.
     #[error("Node for doc_id {0:?} not found in HNSW index")]
@@ -205,6 +210,10 @@ pub enum ActaError {
     },
 
     /// HNSW graph degradation warning threshold reached.
+    #[deprecated(
+        since = "0.1.0",
+        note = "Indexspezifische Fehler gehören in das Crate acta-vector"
+    )]
     #[error("HNSW graph connectivity degraded: {deleted_ratio:.1}% deleted nodes")]
     HnswConnectivityDegraded {
         /// Ratio of deleted tombstone nodes in graph.
@@ -330,7 +339,7 @@ pub enum ActaError {
         tx_id: u64,
     },
 
-    /// KV-seitige `KvDeleteMode`-Konfiguration inkonsistent mit `deletion_proof_active`.
+    /// KV-seitige `KvDeleteMode`-Konfiguration inkonsistent mit aktiven Invarianten.
     #[error("KV delete mode configuration error: {0}")]
     KvDeleteModeConfig(&'static str),
 
@@ -351,6 +360,10 @@ pub enum ActaError {
     PinBudgetExceeded(String),
 
     /// HNSW graph repair failure.
+    #[deprecated(
+        since = "0.1.0",
+        note = "Indexspezifische Fehler gehören in das Crate acta-vector"
+    )]
     #[error("graph repair failed: {0}")]
     GraphRepairFailed(#[from] HnswDeletionError),
 
@@ -494,6 +507,21 @@ impl ActaError {
 impl From<std::array::TryFromSliceError> for ActaError {
     fn from(e: std::array::TryFromSliceError) -> Self {
         Self::ParseError(e.to_string())
+    }
+}
+
+
+impl From<acta_ids::IdError> for ActaError {
+    fn from(err: acta_ids::IdError) -> Self {
+        match err {
+            acta_ids::IdError::TxIdAllocationOverflow(offset) => {
+                ActaError::Transaction(format!(
+                    "Internal TxId allocation offset {offset} overflows u64::MAX (INTERNAL_BASE={})",
+                    acta_ids::TxId::INTERNAL_BASE
+                ))
+            }
+            other => ActaError::InvalidInput(other.to_string()),
+        }
     }
 }
 

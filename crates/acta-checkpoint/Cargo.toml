@@ -8,14 +8,27 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 description = "Backup and snapshot management for Acta storage"
+repository = "https://github.com/tfufuz1/acta"
+readme = "README.md"
+keywords = ["checkpoint", "snapshot", "backup", "recovery", "persistence"]
+categories = ["database-implementations", "data-structures"]
+publish = false # Internes Acta-Bausteinlager; kein crates.io-Release
 
 [package.metadata.acta]
 ring = "1"
 
+[features]
+default = ["workspace"]
+workspace = ["dep:acta-types", "dep:acta-ports"]
+types-compat = ["workspace"]
+ports-compat = ["workspace"]
+docid-128 = ["acta-ids/docid-128"]
+
 [dependencies]
-acta-types = { version = "0.1.0", path = "../acta-types" }
-acta-ports = { version = "0.1.0", path = "../acta-ports" }
-acta-mvcc = { version = "0.1.0", path = "../acta-mvcc" }
+acta-ids = { version = "0.1.0", path = "../acta-ids" }
+acta-env = { version = "0.1.0", path = "../acta-env" }
+acta-types = { version = "0.1.0", path = "../acta-types", optional = true }
+acta-ports = { version = "0.1.0", path = "../acta-ports", optional = true }
 bytes = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
@@ -23,16 +36,13 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 parking_lot = { workspace = true }
 blake3 = { workspace = true }
-futures-executor = "0.3"
-dirs = "6.0.0"
+thiserror = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 proptest = "1.4"
 criterion = { version = "0.5", features = ["async_tokio"] }
-acta-testkit = { version = "0.1.0", path = "../acta-testkit" }
-acta-store = { version = "0.1.0", path = "../acta-store" }
 
 [[bench]]
 name = "checkpoint_bench"

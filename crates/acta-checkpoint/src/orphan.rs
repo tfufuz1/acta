@@ -15,9 +15,10 @@
 //! 3. Ein "Dirty"-Flag markiert die Registry für das nächste Persistieren (Piggyback-Flush oder Shutdown).
 //! 4. Beim nächsten Store-Start oder Recovery-Lauf (`recover_orphaned_pins`) werden die verwaisten Pins entpinnt.
 
+use crate::error::Result;
 use crate::meta::StateCheckpoint;
-use acta_ports::SystemClock;
-use acta_types::{Result, TxId};
+use acta_env::{Clock, SystemClock};
+use acta_ids::TxId;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -84,18 +85,18 @@ pub fn global_orphan_registry() -> &'static OrphanRegistry {
 /// Ermittelt das Standard-Datenverzeichnis für verwaiste Statusdateien.
 ///
 /// # Sicherheit & Persistenz
-/// Nutzt `dirs::data_local_dir()`. Falls nicht verfügbar, Fallback auf `std::env::temp_dir()`.
+/// Nutzt `std::env::temp_dir()`.
 /// Im Produktivbetrieb sollte der Pfad explizit konfiguriert werden.
 fn default_data_dir() -> std::path::PathBuf {
-    dirs::data_local_dir().unwrap_or_else(std::env::temp_dir)
+    std::env::temp_dir()
 }
 
 // ANCHOR[acta-checkpoint:ORP-004]
 /// Liest einen Millisekunden-Zeitstempel deterministisch über die übergebene Clock-Port-Instanz.
 ///
 /// # Parameter
-/// - `clock`: Referenz auf eine Implementierung des [`acta_ports::Clock`]-Traits.
-pub fn monotonic_timestamp_ms_with(clock: &dyn acta_ports::Clock) -> u64 {
+/// - `clock`: Referenz auf eine Implementierung des [`Clock`]-Traits.
+pub fn monotonic_timestamp_ms_with(clock: &dyn Clock) -> u64 {
     // NOTE: Zeit und Zufall dürfen gemäß Regel 3 / INV-CHECKPOINT-DETERMINISM-1 nur über Ports fließen
     clock.now_unix_nanos() / 1_000_000
 }
@@ -108,7 +109,7 @@ pub fn monotonic_timestamp_ms() -> u64 {
 }
 
 /// Crate-interner Helfer zum Lesen der aktuellen Zeit in Millisekunden über einen Clock-Port.
-pub(crate) fn clock_timestamp_ms(clock: &dyn acta_ports::Clock) -> u64 {
+pub(crate) fn clock_timestamp_ms(clock: &dyn Clock) -> u64 {
     monotonic_timestamp_ms_with(clock)
 }
 
@@ -176,7 +177,7 @@ impl OrphanRegistry {
     /// 2. Für jeden Pin `storage.unpin_checkpoint` aufrufen.
     /// 3. Bei Erfolg den Pin aus der inneren Registry entfernen.
     /// 4. Liste der erfolgreich wiederhergestellten Pins zurückgeben.
-    pub async fn recover_and_clean<S: acta_ports::StorageEngine>(
+    pub async fn recover_and_clean<S: crate::snapshot_source::SnapshotSource>(
         &self,
         storage: &S,
     ) -> Result<Vec<PinId>> {
@@ -210,7 +211,9 @@ fn orphan_file_path() -> std::path::PathBuf {
 /// - `timestamp_ms`: Zeitpunkt der Registrierung in Millisekunden.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PinnedSeqNoOrphan {
+    /// Die verwaiste LSM-Sequenznummer.
     pub seq_no: u64,
+    /// Zeitstempel der Pin-Erstellung in Millisekunden.
     pub timestamp_ms: u64,
 }
 
@@ -236,13 +239,16 @@ pub fn register_pinned_seq_no_orphan(orphan: PinnedSeqNoOrphan) {
 /// - `persist_path`: Dateipfad zur dauerhaften Ablage im JSON-Format.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct OrphanState {
+    /// Liste der verwaisten Checkpoints.
     pub checkpoints: Vec<StateCheckpoint>,
+    /// Liste der verwaisten Sequenznummern-Pins.
     pub pinned_seq_nos: Vec<PinnedSeqNoOrphan>,
+    /// Dateipfad zur Persistierung des Zustands.
     pub persist_path: std::path::PathBuf,
 }
 
 impl OrphanState {
-    /// Schreibt den Zustand synchron als formatierte JSON-Datei auf die Festplatte.
+    /// Schreibt den Zustand synchron als formatierte JSON-Datei auf die Festplatte (ggf. über Vfs).
     pub fn persist_sync(&self) -> std::io::Result<()> {
         if self.persist_path.as_os_str().is_empty() {
             return Ok(());
@@ -251,11 +257,36 @@ impl OrphanState {
         std::fs::write(&self.persist_path, data)
     }
 
+    /// Schreibt den Zustand über die Vfs-Schnittstelle crash-konsistent (`write_atomic`).
+    pub fn persist_vfs(&self, vfs: &dyn crate::vfs::CheckpointVfs) -> std::io::Result<()> {
+        if self.persist_path.as_os_str().is_empty() {
+            return Ok(());
+        }
+        let data = serde_json::to_vec_pretty(self)?;
+        vfs.write_atomic(&self.persist_path, &data)
+    }
+
     /// Lädt den Zustand synchron von der Festplatte oder liefert einen leeren Zustand bei Fehlern.
     pub fn load_sync(path: &std::path::Path) -> Self {
         if let Ok(data) = std::fs::read(path) {
             if let Ok(state) = serde_json::from_slice::<OrphanState>(&data) {
                 return state;
+            }
+        }
+        Self {
+            checkpoints: Vec::new(),
+            pinned_seq_nos: Vec::new(),
+            persist_path: path.to_path_buf(),
+        }
+    }
+
+    /// Lädt den Zustand über die Vfs-Schnittstelle.
+    pub fn load_vfs(vfs: &dyn crate::vfs::CheckpointVfs, path: &std::path::Path) -> Self {
+        if !path.as_os_str().is_empty() {
+            if let Ok(data) = vfs.read(path) {
+                if let Ok(state) = serde_json::from_slice::<OrphanState>(&data) {
+                    return state;
+                }
             }
         }
         Self {
@@ -277,7 +308,8 @@ pub struct InstanceOrphanRegistry {
     checkpoints: Mutex<Vec<StateCheckpoint>>,
     persist_path: std::path::PathBuf,
     is_dirty: AtomicBool,
-    clock: Arc<dyn acta_ports::Clock>,
+    clock: Arc<dyn Clock>,
+    vfs: Option<Arc<dyn crate::vfs::CheckpointVfs>>,
 }
 
 impl std::fmt::Debug for InstanceOrphanRegistry {
@@ -305,25 +337,45 @@ impl InstanceOrphanRegistry {
         Self::load_sync(&path)
     }
 
+    /// Erzeugt eine neue instanzgebundene Registry über den VFS-Port.
+    pub fn new_with_vfs(
+        persist_path: impl Into<std::path::PathBuf>,
+        vfs: Arc<dyn crate::vfs::CheckpointVfs>,
+    ) -> Self {
+        let path = persist_path.into();
+        Self::load_vfs_internal(&path, vfs)
+    }
+
     /// Konfiguriert die Registry mit einer spezifischen Clock-Implementierung.
-    pub fn with_clock(mut self, clock: Arc<dyn acta_ports::Clock>) -> Self {
+    pub fn with_clock(mut self, clock: Arc<dyn Clock>) -> Self {
         self.clock = clock;
         self
     }
 
+    /// Konfiguriert die Registry mit einer VFS-Implementierung.
+    pub fn with_vfs(mut self, vfs: Arc<dyn crate::vfs::CheckpointVfs>) -> Self {
+        self.vfs = Some(vfs);
+        self
+    }
+
     /// Setzt die Clock-Implementierung nachträglich.
-    pub fn set_clock(&mut self, clock: Arc<dyn acta_ports::Clock>) {
+    pub fn set_clock(&mut self, clock: Arc<dyn Clock>) {
         self.clock = clock;
     }
 
     /// Liefert eine Referenz auf den injizierten Clock-Port.
-    pub fn clock(&self) -> &Arc<dyn acta_ports::Clock> {
+    pub fn clock(&self) -> &Arc<dyn Clock> {
         &self.clock
+    }
+
+    /// Liefert eine Referenz auf das injizierte VFS (falls vorhanden).
+    pub fn vfs(&self) -> Option<&Arc<dyn crate::vfs::CheckpointVfs>> {
+        self.vfs.as_ref()
     }
 
     /// Lädt den Zustand synchron von der Festplatte.
     pub fn load_sync(path: &std::path::Path) -> Self {
-        let clock: Arc<dyn acta_ports::Clock> = Arc::new(SystemClock::new());
+        let clock: Arc<dyn Clock> = Arc::new(SystemClock::new());
         if !path.as_os_str().is_empty() {
             if let Ok(data) = std::fs::read(path) {
                 if let Ok(state) = serde_json::from_slice::<OrphanState>(&data) {
@@ -333,6 +385,7 @@ impl InstanceOrphanRegistry {
                         persist_path: path.to_path_buf(),
                         is_dirty: AtomicBool::new(false),
                         clock,
+                        vfs: None,
                     };
                 }
             }
@@ -343,10 +396,24 @@ impl InstanceOrphanRegistry {
             persist_path: path.to_path_buf(),
             is_dirty: AtomicBool::new(false),
             clock,
+            vfs: None,
         }
     }
 
-    /// Persistiert den aktuellen Zustand synchron auf die Festplatte.
+    fn load_vfs_internal(path: &std::path::Path, vfs: Arc<dyn crate::vfs::CheckpointVfs>) -> Self {
+        let clock: Arc<dyn Clock> = Arc::new(SystemClock::new());
+        let state = OrphanState::load_vfs(vfs.as_ref(), path);
+        Self {
+            pins: Mutex::new(state.pinned_seq_nos),
+            checkpoints: Mutex::new(state.checkpoints),
+            persist_path: path.to_path_buf(),
+            is_dirty: AtomicBool::new(false),
+            clock,
+            vfs: Some(vfs),
+        }
+    }
+
+    /// Persistiert den aktuellen Zustand synchron auf die Festplatte (bevorzugt über Vfs).
     pub fn persist_sync(&self) -> std::io::Result<()> {
         if self.persist_path.as_os_str().is_empty() {
             return Ok(());
@@ -356,8 +423,12 @@ impl InstanceOrphanRegistry {
             pinned_seq_nos: self.pins.lock().clone(),
             persist_path: self.persist_path.clone(),
         };
-        let data = serde_json::to_vec_pretty(&state)?;
-        std::fs::write(&self.persist_path, data)
+        if let Some(ref vfs) = self.vfs {
+            state.persist_vfs(vfs.as_ref())
+        } else {
+            let data = serde_json::to_vec_pretty(&state)?;
+            std::fs::write(&self.persist_path, data)
+        }
     }
 
     // ANCHOR[acta-checkpoint:ORP-010]
@@ -373,7 +444,7 @@ impl InstanceOrphanRegistry {
             let seq_no = orphan.seq_no;
             lock.push(orphan);
             drop(lock);
-            // NOTE: Ordering::Release garantiert, dass der Vector-Eintrag vor dem Dirty-Flag sichtbar ist
+            // NOTE: Ordering::Release stellt sicher, dass der Vector-Eintrag vor dem Dirty-Flag sichtbar ist
             self.is_dirty.store(true, Ordering::Release);
             tracing::debug!(
                 seq = seq_no,
@@ -681,6 +752,45 @@ mod tests {
 
         let state = OrphanState::default();
         assert!(state.persist_sync().is_ok());
+    }
+
+    struct MockVfs(parking_lot::Mutex<std::collections::BTreeMap<std::path::PathBuf, Vec<u8>>>);
+    impl crate::vfs::CheckpointVfs for MockVfs {
+        fn write_atomic(&self, path: &std::path::Path, data: &[u8]) -> std::io::Result<()> {
+            self.0.lock().insert(path.to_path_buf(), data.to_vec());
+            Ok(())
+        }
+        fn read(&self, path: &std::path::Path) -> std::io::Result<Vec<u8>> {
+            self.0
+                .lock()
+                .get(path)
+                .cloned()
+                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "not found"))
+        }
+    }
+
+    // Prüft, dass die Orphan-Registry über ein injiziertes Vfs sauber lädt und speichert.
+    #[test]
+    fn test_instance_orphan_registry_with_vfs() {
+        let vfs = Arc::new(MockVfs(parking_lot::Mutex::new(
+            std::collections::BTreeMap::new(),
+        )));
+        let path = std::path::PathBuf::from("/test/orphans.json");
+
+        let reg = InstanceOrphanRegistry::new_with_vfs(&path, vfs.clone());
+        reg.register_orphan_sync(PinnedSeqNoOrphan {
+            seq_no: 777,
+            timestamp_ms: 5000,
+        });
+
+        reg.persist_sync()
+            .expect("persist_sync via VFS must succeed");
+
+        // Neuer Ladevorgang über VFS
+        let loaded_reg = InstanceOrphanRegistry::new_with_vfs(&path, vfs);
+        let orphans = loaded_reg.get_orphan_pins();
+        assert_eq!(orphans.len(), 1);
+        assert_eq!(orphans[0].seq_no, 777);
     }
 
     // Prüft die strikte Trennung und gegenseitige Isolation zweier unabhängiger InstanceOrphanRegistry-Instanzen.

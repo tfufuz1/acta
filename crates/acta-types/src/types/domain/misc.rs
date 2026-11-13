@@ -1,6 +1,6 @@
 //! Wissensgraphen-Elemente (`Entity`, `Edge`), `MemoryType`, `WorkflowState` und Verfallskonstanten.
 //!
-//! # Architektur-Rolle: Ring 0 (Wissensgraph & Gedächtnismodelle)
+//! # Architektur-Rolle: Typen-Fundament (Wissensgraph & Gedächtnismodelle)
 //!
 //! Dieses Modul enthält Strukturen für:
 //! - `WorkflowState`: Eingefrorener Workflow-Zustand mit Transaktions- und Graph-Hash als Savepoint.
@@ -68,8 +68,16 @@ pub struct WorkflowState {
 
 // INVARIANT: Bit 63 der SeqNo markiert Tombstones.
 /// Bit mask for identifying tombstones in sequence numbers.
+///
+/// # Deprecation
+/// Moved to [`acta_ids::TOMBSTONE_BIT`] per ADR-0120.
+/// This re-export remains until S-70 (INV-2 / R9).
 // ANCHOR[acta-types:MISC-TOMBSTONE-BIT]
-pub const TOMBSTONE_BIT: u64 = 1 << 63;
+#[deprecated(
+    since = "0.2.0",
+    note = "Use `acta_ids::TOMBSTONE_BIT` per ADR-0120. This re-export will be removed in S-70."
+)]
+pub use acta_ids::TOMBSTONE_BIT;
 
 /// Reserved metadata key for sequence-based document TTL expiration.
 // ANCHOR[acta-types:MISC-EXPIRY-KEY]
@@ -77,12 +85,12 @@ pub const EXPIRY_METADATA_KEY: &str = "__expires_at_seq";
 
 /// Maximum number of search results that any hybrid/vector/text search may return.
 ///
-/// Callers in acta-mcp and acta-db both enforce this limit before forwarding k to HNSW/BM25.
+/// Callers in acta-mcp and acta-db both enforce this limit before forwarding k to index sub-searches.
 /// Duplicating the literal 1000 anywhere else in the workspace is prohibited — always import this constant.
 ///
 /// This cap is applied at the orchestration layer (acta-db) before forwarding `k`
-/// to HNSW and BM25 sub-searches. All upstream layers (acta-mcp, acta-py,
-/// acta-py) MUST reference this constant — never duplicate the literal `1000`.
+/// to vector and lexical sub-searches. All upstream layers (acta-mcp, acta-py)
+/// MUST reference this constant — never duplicate the literal `1000`.
 ///
 /// # DECISION-REF
 /// AGT-DB-003 — Boundary defence at Layer 2 against unbounded `k` from untrusted JSON-RPC.
@@ -174,7 +182,7 @@ impl Entity {
 /// Graph directed edge representation with explicit bitemporal axis separation.
 ///
 /// # Abgrenzung
-/// Dieser Typ `acta_types::Edge` ist die domänenzentrierte Hyperedge-Repräsentation in Ring 0
+/// Dieser Typ `acta_types::Edge` ist die domänenzentrierte Hyperedge-Repräsentation auf Vertragsebene
 /// mit Entitäts-IDs, Beziehungslabel, Quell-Dokumenten-ID und bitemporalen Gültigkeitsachsen
 /// (`tx_valid_from`/`tx_valid_to`, `business_valid_from`/`business_valid_to`).
 /// Im Gegensatz dazu ist `acta_graph::csr::types::Edge` (bzw. `CsrEdge`) ein speicherkompakter
@@ -312,7 +320,7 @@ pub enum MemoryType {
     Episodic,
 
     /// Semantisches Gedächtnis: Fakten, Konzepte, dauerhaftes Wissen.
-    /// Retrieval: Inhaltliche Ähnlichkeit (Vektor + BM25).
+    /// Retrieval: Inhaltliche Ähnlichkeit (Vektor + lexikalischer Text).
     /// Decay: Keine automatische Decay (Fakten bleiben gültig bis Widerspruch).
     #[default]
     #[serde(alias = "Semantic")]
@@ -370,16 +378,12 @@ impl MemoryType {
 
 /// Configuration parameters for Thresholded Local Hyper-Flow Diffusion (TL-HFD, Spec §21.1).
 ///
-/// # Ring Architecture
-/// Defined in `acta-types` (Ring 0) to avoid dependency on `acta-graph` (Ring 1).
-/// Graph algorithms in `acta-graph` map this configuration to `acta_graph::TlHfdParams`.
-///
-/// # Abgrenzung
-/// Dieser Typ `acta_types::TlHfdParams` ist die Ring-0-Konfigurationsstruktur
-/// (`sigma`, `delta`, `gamma`, `max_iterations`, `max_top_k_expansion`, `max_hyperedge_sort_size`),
-/// die über API-Parameter und JSON-Optionen übergeben wird.
-/// Im Gegensatz dazu ist `acta_graph::tl_hfd::params::TlHfdParams` die Graph-Engine-Spezifische
-/// Parameterstruktur in Ring 1 mit Ausführungs- und Diffusionsmatrix-Validierungen.
+/// # Deprecation
+/// In S-51 nach `acta-graph` migriert. Bleibt bis S-70 (INV-2).
+#[deprecated(
+    since = "0.2.0",
+    note = "Canonical owner is `acta_graph::TlHfdParams` per S-51. This re-export will be removed in S-70."
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 // ANCHOR[acta-types:MISC-TLHFD]
 pub struct TlHfdParams {
@@ -422,6 +426,7 @@ fn default_tl_hfd_max_hyperedge_sort_size() -> usize {
     64
 }
 
+#[allow(deprecated)]
 impl Default for TlHfdParams {
     fn default() -> Self {
         Self {
@@ -436,6 +441,14 @@ impl Default for TlHfdParams {
 }
 
 /// Selection of algorithm strategy for Personalized PageRank (PPR).
+///
+/// # Deprecation
+/// In S-51 nach `acta-graph` migriert. Bleibt bis S-70 (INV-2).
+#[deprecated(
+    since = "0.2.0",
+    note = "Canonical owner is `acta_graph::PprAlgorithm` per S-51. This re-export will be removed in S-70."
+)]
+#[allow(deprecated)]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 // ANCHOR[acta-types:MISC-PPRALG]
@@ -458,6 +471,14 @@ pub enum PprAlgorithm {
 }
 
 /// Configuration parameters for Personalized PageRank (PPR).
+///
+/// # Deprecation
+/// In S-51 nach `acta-graph` migriert. Bleibt bis S-70 (INV-2).
+#[deprecated(
+    since = "0.2.0",
+    note = "Canonical owner is `acta_graph::PprConfig` per S-51. This re-export will be removed in S-70."
+)]
+#[allow(deprecated)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 // ANCHOR[acta-types:MISC-PPRCFG]
 pub struct PprConfig {
@@ -482,6 +503,7 @@ fn default_warn_on_non_convergence() -> bool {
     true
 }
 
+#[allow(deprecated)]
 impl Default for PprConfig {
     fn default() -> Self {
         Self {

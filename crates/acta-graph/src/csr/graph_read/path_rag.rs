@@ -3,12 +3,21 @@
 //! # Zweck
 //! Identifiziert erklärende Pfade zwischen Entitäten für Retrieval-Augmented Generation.
 
+// FILE-CONTEXT
+// STAND: 2026-11-15T12:00:00Z
+// ZWECK: Compressed Sparse Row (CSR) Graph-Engine Kern.
+// INVARIANTEN: Bitemporale Sichtbarkeit, lock-freie Lesepfade.
+// HOTSPOTS: Keine kritischen Bottlenecks identifiziert
+// SIEHE AUCH: docs/SPEC.md, crates/acta-graph/SPEC.md
+
 use super::super::graph_write::CsrGraph;
 use ahash::AHashMap;
 use acta_types::{EntityId, Result, TxId};
 
+
+// SECTION Path Rag Core Implementation
 impl CsrGraph {
-// ANCHOR[acta-graph:SRC-CSR-GRAPH-READ-PATH-RAG-001]
+    // ANCHOR[acta-graph:SRC-CSR-GRAPH-READ-PATH-RAG-001]
     pub fn path_rag_at<'a>(
         &'a self,
         start_nodes: &'a [EntityId],
@@ -49,10 +58,7 @@ impl CsrGraph {
                 let paths = engine.find_all_paths(start);
                 let rrf_signal = engine.to_rrf_signal(&paths);
                 for (doc_id, score) in rrf_signal {
-                    #[cfg(not(feature = "docid-128"))]
-                    let entity_id = EntityId::new(doc_id.0);
-                    #[cfg(feature = "docid-128")]
-                    let entity_id = EntityId::new(doc_id.0 as u64);
+                    let entity_id = EntityId::new(doc_id.as_u64());
 
                     combined
                         .entry(entity_id)
@@ -71,3 +77,5 @@ impl CsrGraph {
         })
     }
 }
+
+// !SECTION Path Rag Core Implementation

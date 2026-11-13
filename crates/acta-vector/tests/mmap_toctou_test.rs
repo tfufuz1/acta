@@ -1,3 +1,4 @@
+#![cfg(feature = "experimental-diskann")]
 // FILE-CONTEXT
 // ZWECK: Empirische TOCTOU-Testreihen für Mmap Truncation & Unlink/Deletion Szenarien in DiskANN & HNSW.
 // INVARIANTEN: Nutzt Subprozess-Isolierung (`std::process::Command`) zur sicheren Erfassung von SIGBUS (Signal 7 / Exit-Code 135).
@@ -83,11 +84,12 @@ fn child_truncation_runner() {
 
     rt.block_on(async {
         use acta_ports::VectorIndex;
-        use acta_types::{DistanceMetric, DocId, TxId};
+        use acta_types::{DocId, TxId};
         #[cfg(feature = "experimental-diskann")]
         use acta_vector::diskann::{DiskAnnConfig, DiskAnnIndex};
         use acta_vector::hnsw::{HnswConfig, HnswIndex};
         use acta_vector::persistence::MmapIndex;
+        use acta_vector::types::DistanceMetric;
 
         let temp_dir = tempfile::tempdir().unwrap();
         #[cfg(feature = "experimental-diskann")]
@@ -131,10 +133,10 @@ fn child_truncation_runner() {
             hnsw.insert(tx, ids[i], &vectors[i]).await.unwrap();
         }
         hnsw.commit(tx).await.unwrap();
-        hnsw.save(&hnsw_path).await.unwrap();
+        hnsw.save(&hnsw_path).unwrap();
 
         let hnsw_mmap = HnswIndex::try_new(hnsw_config).unwrap();
-        hnsw_mmap.load_mmap(&hnsw_path).await.unwrap();
+        hnsw_mmap.load_mmap(&hnsw_path).unwrap();
 
         let mmap_index = MmapIndex::open(&hnsw_path).unwrap();
 
@@ -190,7 +192,7 @@ fn child_deletion_runner() {
 
     rt.block_on(async {
         use acta_ports::VectorIndex;
-        use acta_types::{DistanceMetric, DocId, TxId};
+        use acta_types::{DocId, TxId};
         #[cfg(feature = "experimental-diskann")]
         use acta_vector::diskann::{DiskAnnConfig, DiskAnnIndex};
         use acta_vector::hnsw::{HnswConfig, HnswIndex};
@@ -235,10 +237,10 @@ fn child_deletion_runner() {
             hnsw.insert(tx, ids[i], &vectors[i]).await.unwrap();
         }
         hnsw.commit(tx).await.unwrap();
-        hnsw.save(&hnsw_path).await.unwrap();
+        hnsw.save(&hnsw_path).unwrap();
 
         let hnsw_mmap = HnswIndex::try_new(hnsw_config).unwrap();
-        hnsw_mmap.load_mmap(&hnsw_path).await.unwrap();
+        hnsw_mmap.load_mmap(&hnsw_path).unwrap();
 
         println!("Deleting index files from filesystem...");
         #[cfg(feature = "experimental-diskann")]

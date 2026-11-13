@@ -3,7 +3,7 @@
 //! Prueft die automatische Kuerzung und Reparatur beschaedigter WAL-Dateien am Dateiende.
 
 use super::*;
-use acta_types::TxId;
+use acta_ids::TxId;
 use tempfile::tempdir;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;

@@ -1,3 +1,8 @@
+// FILE-CONTEXT
+// ZWECK: Robustheitstest gegen Distanz-Rekonstruktionsangriffe bei quantisierten Vektoren.
+// INVARIANTEN: Schätzung liefert keine unbeschränkten numerischen Leaks.
+// HOTSPOTS: 20-75
+// STAND: 2026-11-12
 use acta_ports::VectorIndex;
 use acta_types::{DistanceMetric, DocId, TxId};
 use acta_vector::hnsw::{GhostFreeVectorIndex, HnswConfig, HnswIndex};

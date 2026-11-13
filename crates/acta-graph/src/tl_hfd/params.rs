@@ -1,5 +1,12 @@
 //! Configuration parameters for Thresholded Local Hyper-Flow Diffusion (TL-HFD, Spec §21.1).
 
+// FILE-CONTEXT
+// STAND: 2026-11-15T12:00:00Z
+// ZWECK: Topologisches Lovász-High-Order-Diffusionsverfahren.
+// INVARIANTEN: Submodulare Optimierung, schattenmodus-fähig.
+// HOTSPOTS: Keine kritischen Bottlenecks identifiziert
+// SIEHE AUCH: docs/SPEC.md, crates/acta-graph/SPEC.md
+
 use super::error::TlHfdError;
 
 /// Configuration parameters for Thresholded Local Hyper-Flow Diffusion (TL-HFD).
@@ -8,6 +15,8 @@ use super::error::TlHfdError;
 /// Time complexity of parameter validation is $O(1)$.
 #[derive(Debug, Clone, PartialEq)]
 // ANCHOR[acta-graph:SRC-TL-HFD-PARAMS-001]
+
+// SECTION Params Core Implementation
 pub struct TlHfdParams {
     /// Regularization parameter $\sigma > 0$ controlling diffusion scale (default: 0.1).
     pub sigma: f32,
@@ -44,7 +53,7 @@ impl TlHfdParams {
     ///
     /// # Complexity
     /// Time complexity $O(1)$.
-// ANCHOR[acta-graph:SRC-TL-HFD-PARAMS-002]
+    // ANCHOR[acta-graph:SRC-TL-HFD-PARAMS-002]
     pub fn validate(&self) -> Result<(), TlHfdError> {
         if !self.sigma.is_finite() || self.sigma <= 0.0 {
             return Err(TlHfdError::InvalidParameter(format!(
@@ -90,14 +99,14 @@ impl TlHfdParams {
 mod tests {
     use super::*;
 
-// ANCHOR[acta-graph:SRC-TL-HFD-PARAMS-003]
+    // ANCHOR[acta-graph:SRC-TL-HFD-PARAMS-003]
     #[test]
     fn test_default_params_valid() {
         let params = TlHfdParams::default();
         assert!(params.validate().is_ok());
     }
 
-// ANCHOR[acta-graph:SRC-TL-HFD-PARAMS-004]
+    // ANCHOR[acta-graph:SRC-TL-HFD-PARAMS-004]
     #[test]
     fn test_invalid_params() {
         let p = TlHfdParams {
@@ -137,3 +146,5 @@ mod tests {
         assert!(p.validate().is_err());
     }
 }
+
+// !SECTION Params Core Implementation

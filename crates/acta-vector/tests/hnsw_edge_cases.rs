@@ -1,6 +1,7 @@
 use acta_ports::VectorIndex;
-use acta_types::{ActaError, DistanceMetric, DocId, TxId};
+use acta_types::{ActaError, DocId, TxId};
 use acta_vector::hnsw::{HnswConfig, HnswIndex};
+use acta_vector::types::DistanceMetric;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;

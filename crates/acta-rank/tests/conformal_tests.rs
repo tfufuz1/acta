@@ -5,13 +5,11 @@
 //! Prüft die Korrektheit, Stabilität und Invarianten der Ranking- und Kalibrierungskomponenten.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-// FILE-CONTEXT
-// STAND: 2026-09-27T19:30:00Z
 // ZWECK: Integration and invariant verification test suite for Adaptive Conformal Prediction (conformal.rs).
 // INVARIANTEN: INV-CALIBRATION-CONFORMAL-1 (marginal coverage guarantee, strict determinism, zero-panic input validation).
 
+use acta_rank::ConfigFingerprint;
 use acta_rank::{AdaptiveConformalCalibrator, ConformalCalibrator, ConformalError};
-use acta_types::ConfigFingerprint;
 
 struct SimpleLcg {
     state: u64,
@@ -38,8 +36,6 @@ impl SimpleLcg {
 // ============================================================================
 // 1. MARGINAL COVERAGE PROPERTY TEST
 // ============================================================================
-
-// ANCHOR[acta-rank:CONF-TEST-001]
 #[test]
 fn test_conformal_marginal_coverage_guarantee() {
     let alpha = 0.10f32; // Target error rate 10% -> 90% coverage target
@@ -88,7 +84,7 @@ fn test_conformal_marginal_coverage_guarantee() {
 // 2. DETERMINISM TEST
 // ============================================================================
 
-    // Testet das erwartete Verhalten und mathematische Invarianten.
+// Testet das erwartete Verhalten und mathematische Invarianten.
 #[test]
 fn test_conformal_strict_determinism() {
     let alpha = 0.15f32;
@@ -125,7 +121,7 @@ fn test_conformal_strict_determinism() {
 // 3. ZERO-PANIC & EDGE-CASE HARDENING TEST
 // ============================================================================
 
-    // Testet das erwartete Verhalten und mathematische Invarianten.
+// Testet das erwartete Verhalten und mathematische Invarianten.
 #[test]
 fn test_conformal_zero_panic_invalid_inputs() {
     let mut cal = AdaptiveConformalCalibrator::new(0.1).unwrap();
@@ -179,7 +175,7 @@ fn test_conformal_zero_panic_invalid_inputs() {
 // 4. BOUNDS & CONFIG INVALIDATION TESTS
 // ============================================================================
 
-    // Testet das erwartete Verhalten und mathematische Invarianten.
+// Testet das erwartete Verhalten und mathematische Invarianten.
 #[test]
 fn test_conformal_threshold_clamping_and_invalidation() {
     let mut cal = AdaptiveConformalCalibrator::with_params(0.1, 0.5, 0.2)

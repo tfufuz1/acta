@@ -7,34 +7,16 @@ members = [
     "crates/acta-simd",
     "crates/acta-store",
     "crates/acta-vector",
-    "crates/acta-db",
     "crates/acta-text",
     "crates/acta-checkpoint",
     "crates/acta-crypto",
-    "crates/acta-privacy",
     "crates/acta-graph",
-    "crates/acta-infer-onnx",
     "crates/acta-mcp",
-    "crates/acta-agent",
-    "crates/acta-infer-ollama",
-    "crates/acta-router",
-    "crates/acta-infer-candle",
-    "crates/acta-sandbox",
-    "crates/acta-py",
-    "crates/acta-testkit",
-    "crates/acta",
     "crates/acta-types",
     "crates/acta-ports",
     "crates/acta-mvcc",
-    "crates/acta-adapt",
-    "crates/acta-kvcache",
     "crates/acta-engine",
-    "crates/acta-cognition",
     "crates/acta-rank",
-    "crates/acta-audit-export",
-    "crates/acta-avv-generator",
-    "crates/acta-license",
-    "crates/acta-ingest",
 ]
 exclude = [
     "crates/acta-vault",
@@ -56,18 +38,8 @@ default-members = [
     "crates/acta-store",
     "crates/acta-checkpoint",
     "crates/acta-engine",
-    "crates/acta-db",
     "crates/acta-mcp",
-    "crates/acta",
-    "crates/acta-testkit",
     "crates/acta-graph",
-    "crates/acta-cognition",
-    "crates/acta-adapt",
-    "crates/acta-kvcache",
-    "crates/acta-router",
-    "crates/acta-agent",
-    "crates/acta-infer-onnx",
-    "crates/acta-infer-ollama",
 ]
 
 [workspace.package]
@@ -123,38 +95,17 @@ acta-simd = { path = "crates/acta-simd" }
 acta-store = { path = "crates/acta-store" }
 acta-vector = { path = "crates/acta-vector" }
 acta-index = { package = "acta-vector", path = "crates/acta-vector" } # <!-- crate-ref-ignore -->
-acta-db = { path = "crates/acta-db" }
 acta-text = { path = "crates/acta-text" }
 acta-checkpoint = { path = "crates/acta-checkpoint" }
 acta-crypto = { path = "crates/acta-crypto" }
-acta-privacy = { path = "crates/acta-privacy" }
 acta-graph = { path = "crates/acta-graph" }
-acta-infer-onnx = { path = "crates/acta-infer-onnx" }
-acta-embed = { package = "acta-infer-onnx", path = "crates/acta-infer-onnx" } # <!-- crate-ref-ignore -->
 acta-mcp   = { path = "crates/acta-mcp" }
-acta-agent = { path = "crates/acta-agent" }
-acta-infer-ollama = { path = "crates/acta-infer-ollama" }
-acta-ollama = { package = "acta-infer-ollama", path = "crates/acta-infer-ollama" } # <!-- crate-ref-ignore -->
-acta-router = { path = "crates/acta-router" }
-acta-infer-candle = { path = "crates/acta-infer-candle" }
-acta-candle = { package = "acta-infer-candle", path = "crates/acta-infer-candle" } # <!-- crate-ref-ignore -->
-acta-sandbox = { path = "crates/acta-sandbox" }
-acta-py = { path = "crates/acta-py" }
-acta-testkit = { path = "crates/acta-testkit" }
-acta = { path = "crates/acta" }
 acta-types = { path = "crates/acta-types" }
 acta-ports = { path = "crates/acta-ports" }
 acta-mvcc = { path = "crates/acta-mvcc" }
-acta-adapt = { path = "crates/acta-adapt" }
-acta-kvcache = { path = "crates/acta-kvcache" }
 acta-engine = { path = "crates/acta-engine" }
-acta-cognition = { path = "crates/acta-cognition" }
 acta-rank = { path = "crates/acta-rank" }
-acta-audit-export = { path = "crates/acta-audit-export" }
-acta-avv-generator = { path = "crates/acta-avv-generator" }
-acta-license = { path = "crates/acta-license" }
 acta-erasure = { path = "crates/acta-erasure" }
-acta-ingest = { path = "crates/acta-ingest" }
 
 # Ingestion dependencies
 unicode-segmentation = "1.12"

@@ -4,7 +4,8 @@
 
 use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
-use acta_types::{ActaError, TxId};
+use acta_store::StoreError as ActaError;
+use acta_types::TxId;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
@@ -129,8 +130,8 @@ async fn test_group_commit_mid_batch_fsync_failure_atomicity() {
         if let Err(err) = commit_res {
             err_count += 1;
             assert!(
-                matches!(err, ActaError::Storage(_)),
-                "Expected ActaError::Storage, got: {:?}",
+                matches!(err, acta_store::StoreError::Storage(_)),
+                "Expected acta_store::StoreError::Storage, got: {:?}",
                 err
             );
         }

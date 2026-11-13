@@ -1,3 +1,7 @@
+// =========================================================================
+// SECTION: egress_gateway
+// =========================================================================
+// ANCHOR[acta-mcp:EGRESS-GAT-001]
 // FILE-CONTEXT
 // ZWECK:       Egress Security Gateway & Classifier Enforcement for Cloud MCP Queries (Re-export from acta-privacy)
 
@@ -17,12 +21,21 @@ impl From<EgressError> for McpError {
             EgressError::SurrogateCollision { ref surrogate, .. } => {
                 McpError::internal_error(format!("Surrogate collision for {surrogate}"))
             }
+            other => McpError::internal_error(other.to_string()),
         }
     }
 }
 
-impl acta_privacy::InjectionDetector for PromptInjectionGuard {
+/// Adapter, der einen [`PromptInjectionGuard`] als [`acta_privacy::InjectionDetector`] nutzbar macht.
+///
+/// Die Orphan-Regel verbietet die direkte Implementierung, weil weder Trait noch Typ
+/// in diesem Crate definiert sind. Der Newtype ist lokal und löst das auf.
+pub struct PromptGuardDetector<'a>(pub &'a PromptInjectionGuard);
+
+impl acta_privacy::InjectionDetector for PromptGuardDetector<'_> {
     fn detect(&self, text: &str) -> Option<String> {
-        self.detect(text)
+        self.0.detect(text)
     }
 }
+
+// !SECTION: egress_gateway

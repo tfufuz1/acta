@@ -1,10 +1,24 @@
-# AGENTS.md — acta-engine
+# AGENTS.md — `acta-engine`
 
-## Scope & Purpose
-`acta-engine` is a Ring 3 crate in Acta Cognitive OS. It provides the core storage, vector/text/graph indexing, transaction orchestration (`DbTransaction`), and collection management (`Collection`, `Acta`).
+> Werkzeug/Crate-Kontext für Agenten. Der obere Teil ist generiert; manuelle Notizen unterhalb ergänzen.
 
-## Strict Invariants
-- `#![forbid(unsafe_code)]` enforced at crate root (`src/lib.rs`).
-- Thread-safe concurrent collection access.
-- Monotonic `TxId` allocation.
-- Zero-Panic-Doctrine: return `ActaError` via `?`.
+<!-- BEGIN GENERATED: crate_inventory.py -->
+
+## Inventar (generiert)
+
+- **Pfad:** `crates/acta-engine` · **Ring:** 3 · **Version:** 0.1.0
+- **Beschreibung:** Acta — Core storage, index, and transaction orchestrator engine (Deprecated Façade)
+- **src:** 1 Dateien, 7 LOC · **unsafe:** 0 Vorkommen, Policy `forbid`
+- **Interne Abhängigkeiten (normal, 1):** `acta-db`
+- **Interne Dev/Build-Abhängigkeiten (0):** –
+- **Externe Abhängigkeiten (normal, 0):** –
+- **Reverse-Abhängigkeiten (0):** –
+- **Kopplung an Hub-Crates:** ausgehend `acta-db`; eingehend –
+- **Features (12):** `adaptive-candidate-pool-sizing`, `auto-extraction-opt-out`, `background-maintenance`, `default`, `edge-reinforcement-learning`, `entity-extraction`, `exp-extraction`, `experimental-diskann`, `graph-connectivity-health`, `onnx`, `reranking`, `sandbox`
+
+### Öffentliche API (grob, aus src/)
+- pub use: `acta_db::*`
+
+Regeneriert mit `python3 tools/crate_inventory.py agents`. Manuelle Notizen stehen außerhalb dieses Blocks.
+
+<!-- END GENERATED: crate_inventory.py -->

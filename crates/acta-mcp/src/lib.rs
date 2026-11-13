@@ -12,10 +12,22 @@
 //! | `acta_explain` | `DatabaseRead` | Provenance breakdown & retrieval explanation |
 //! | `acta_insert` | `DatabaseWrite` | Store a document with auto-chunking & auto-embedding |
 //! | `acta_upsert` | `DatabaseWrite` | Insert/update document idempotently by key |
-//! | `acta_delete` | `DatabaseWrite` | Delete single document without measured deletion proof |
-//! | `acta_forget` | `DatabaseWrite` | Delete document (unverified) or drop collection (with verified proof) |
+//! | `acta_delete` | `DatabaseWrite` | Delete single document |
+//! | `acta_forget` | `DatabaseWrite` | Delete single document (Alias für acta_delete) |
 //! | `acta_create_collection` | `DatabaseWrite` | Create collection with specified DeploymentTier |
-//! | `acta_drop_collection` | `DatabaseWrite` | Delete entire collection and issue a verified DeletionProof |
+//! | `acta_drop_collection` | `DatabaseWrite` | Delete entire collection |
+
+// =========================================================================
+// SECTION: Modul-Deklaration & Sicherheits-Attribute
+// =========================================================================
+// FILE-CONTEXT
+// STAND:       2026-11-11
+// ZWECK:       stdio JSON-RPC 2.0 MCP-Server (kein HTTP! ADR-010)
+// INVARIANTEN: Transport ist ausschließlich stdin/stdout — niemals TCP/axum, bounded RPC message size
+// HOTSPOTS:    run_stdio_loop(), handle_request(), read_line_bounded()
+// SIEHE AUCH:  ADR-010, rules/async-io.md
+
+// ANCHOR[acta-mcp:MOD-001]
 
 pub mod bulk_exfiltration_detector;
 pub mod config;
@@ -24,8 +36,6 @@ pub mod egress_guard;
 pub mod explain;
 pub mod io;
 pub mod prompt_injection;
-pub mod proof_key;
-pub mod proof_key_env;
 pub mod protocol;
 pub mod routing;
 pub mod sandbox;
@@ -49,7 +59,6 @@ pub use egress_gateway::{
 };
 
 pub use explain::{ExplainRequest, ExplainResponse};
-pub use proof_key::deletion_proof_key_from_env;
 
 pub use io::{read_line_bounded, MAX_RPC_BYTES, MAX_SEARCH_QUERY_BYTES};
 
@@ -69,3 +78,5 @@ pub use validation::{is_write_allowed_by_env, validate_collection_name};
 // INVARIANTEN: Transport ist ausschließlich stdin/stdout — niemals TCP/axum, bounded RPC message size
 // HOTSPOTS:    run_stdio_loop(), handle_request(), read_line_bounded()
 // SIEHE AUCH:  ADR-010, rules/async-io.md
+
+// !SECTION: Modul-Deklaration & Sicherheits-Attribute

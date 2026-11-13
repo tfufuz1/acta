@@ -1,10 +1,19 @@
 //! F-03: Co-Occurrence- und Traversal-basierte Kantenverstärkung (Edge Weight Reinforcement Learning).
 
+// FILE-CONTEXT
+// STAND: 2026-11-15T12:00:00Z
+// ZWECK: Dynamisches Kanten-Reinforcement-Lernen.
+// INVARIANTEN: Gewichts-Updates innerhalb definierter Schranken.
+// HOTSPOTS: Keine kritischen Bottlenecks identifiziert
+// SIEHE AUCH: docs/SPEC.md, crates/acta-graph/SPEC.md
+
 use crate::csr::CsrEdge;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 // ANCHOR[acta-graph:SRC-EDGE-REINFORCEMENT-001]
+
+// SECTION Edge Reinforcement Core Implementation
 pub struct EdgeReinforcementConfig {
     pub eta: f32,
     pub delta: f32,
@@ -32,14 +41,14 @@ mod tests {
     use super::*;
     use acta_types::EntityId;
 
-// ANCHOR[acta-graph:SRC-EDGE-REINFORCEMENT-002]
+    // ANCHOR[acta-graph:SRC-EDGE-REINFORCEMENT-002]
     #[test]
     fn test_compute_edge_weight_formula() {
         let score = compute_edge_weight(0.3, 0.7, 0.5);
         assert!((score - 0.5).abs() < f32::EPSILON);
     }
 
-// ANCHOR[acta-graph:SRC-EDGE-REINFORCEMENT-003]
+    // ANCHOR[acta-graph:SRC-EDGE-REINFORCEMENT-003]
     #[test]
     fn test_cooccurrence_reinforcement_decay() {
         let mut edge = CsrEdge::new(EntityId::new(1), 1.0);
@@ -53,7 +62,7 @@ mod tests {
         assert!(edge.cooccurrence_weight >= 0.0);
     }
 
-// ANCHOR[acta-graph:SRC-EDGE-REINFORCEMENT-004]
+    // ANCHOR[acta-graph:SRC-EDGE-REINFORCEMENT-004]
     #[test]
     fn test_weight_normalization_caps_w_max() {
         let mut edges = vec![
@@ -72,7 +81,7 @@ mod tests {
         assert_eq!(edges[1].cooccurrence_weight, 5.0);
     }
 
-// ANCHOR[acta-graph:SRC-EDGE-REINFORCEMENT-005]
+    // ANCHOR[acta-graph:SRC-EDGE-REINFORCEMENT-005]
     #[test]
     fn test_traversal_reinforcement_evaporation() {
         let mut edge = CsrEdge::new(EntityId::new(1), 1.0);
@@ -86,14 +95,14 @@ mod tests {
         assert!(edge.traversal_weight >= 0.0);
     }
 
-// ANCHOR[acta-graph:SRC-EDGE-REINFORCEMENT-006]
+    // ANCHOR[acta-graph:SRC-EDGE-REINFORCEMENT-006]
     #[test]
     fn test_compute_edge_weight_extreme_alpha() {
         assert_eq!(compute_edge_weight(0.8, 0.2, 1.0), 0.8);
         assert_eq!(compute_edge_weight(0.8, 0.2, 0.0), 0.2);
     }
 
-// ANCHOR[acta-graph:SRC-EDGE-REINFORCEMENT-007]
+    // ANCHOR[acta-graph:SRC-EDGE-REINFORCEMENT-007]
     #[test]
     fn test_apply_weight_normalization_zero_and_below_max() {
         let mut edges = vec![
@@ -111,7 +120,7 @@ mod tests {
         apply_weight_normalization(&mut empty_edges, 10.0);
     }
 
-// ANCHOR[acta-graph:SRC-EDGE-REINFORCEMENT-008]
+    // ANCHOR[acta-graph:SRC-EDGE-REINFORCEMENT-008]
     #[test]
     fn test_cooccurrence_reinforcement_triggers_normalization() {
         let mut edge = CsrEdge::new(EntityId::new(1), 1.0);
@@ -168,3 +177,5 @@ pub fn apply_weight_normalization(outgoing_edges: &mut [CsrEdge], w_max: f32) {
         }
     }
 }
+
+// !SECTION Edge Reinforcement Core Implementation

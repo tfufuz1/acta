@@ -10,7 +10,6 @@
 //!
 //! Misst Durchsatz und Latenz von Checkpoint-Erstellung, Laden, Guard-Rollback und nebenläufiger Erzeugung.
 
-
 use acta_checkpoint::PersistentCheckpointStore;
 use acta_ports::{BoxFuture, StorageEngine, StorageStats};
 use acta_types::{Result, TxId};

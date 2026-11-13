@@ -13,6 +13,7 @@
 //!
 //! Prüft das Verhalten bei ungültigen Eingaben, Überläufen und Systemfehlern.
 
+use acta_checkpoint::CheckpointError;
 use acta_checkpoint::PersistentCheckpointStore;
 use acta_ports::{BoxFuture, StorageEngine, StorageStats};
 use acta_types::{ActaError, Result, TxId};
@@ -50,7 +51,7 @@ impl StorageEngine for FaultyMockStorage {
     ) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             if self.fail_put {
-                return Err(ActaError::Storage(
+                return Err(ActaError::Internal(
                     "Disk full / I/O write error".into(),
                 ));
             }
@@ -67,7 +68,7 @@ impl StorageEngine for FaultyMockStorage {
     fn commit<'a>(&'a self, _tx_id: TxId) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             if self.fail_commit {
-                return Err(ActaError::Storage(
+                return Err(ActaError::Internal(
                     "Commit failed / fsync error".into(),
                 ));
             }
@@ -147,7 +148,7 @@ impl StorageEngine for FaultyMockStorage {
     }
 }
 
-/// Test Storage Write Failure: returns `Err(ActaError::Storage)`, no panic, seq_no unpinned.
+/// Test Storage Write Failure: returns `Err(ActaError::Internal)`, no panic, seq_no unpinned.
 #[tokio::test]
 async fn test_storage_put_failure_handling() {
     let storage = Arc::new(FaultyMockStorage::new(true, false));
@@ -163,8 +164,8 @@ async fn test_storage_put_failure_handling() {
     );
     if let Err(e) = res {
         assert!(
-            matches!(e, ActaError::Storage(_)),
-            "Error variant must be ActaError::Storage"
+            matches!(e, CheckpointError::Internal(_)),
+            "Error variant must be ActaError::Internal"
         );
     }
     assert!(
@@ -173,7 +174,7 @@ async fn test_storage_put_failure_handling() {
     );
 }
 
-/// Test Storage Commit Failure: returns `Err(ActaError::Storage)`, no panic, seq_no unpinned.
+/// Test Storage Commit Failure: returns `Err(ActaError::Internal)`, no panic, seq_no unpinned.
 #[tokio::test]
 async fn test_storage_commit_failure_handling() {
     let storage = Arc::new(FaultyMockStorage::new(false, true));
@@ -199,7 +200,7 @@ async fn test_storage_commit_failure_handling() {
     );
 }
 
-/// Test Restore Nonexistent Checkpoint Name: returns `ActaError::CheckpointNotFound`.
+/// Test Restore Nonexistent Checkpoint Name: returns `acta_checkpoint::CheckpointError::CheckpointNotFound`.
 #[tokio::test]
 async fn test_restore_nonexistent_checkpoint_returns_not_found() {
     let storage = Arc::new(FaultyMockStorage::new(false, false));
@@ -207,8 +208,8 @@ async fn test_restore_nonexistent_checkpoint_returns_not_found() {
 
     let res = store.restore_checkpoint("does_not_exist").await;
     assert!(
-        matches!(res, Err(ActaError::CheckpointNotFound)),
-        "Restoring nonexistent checkpoint must return ActaError::CheckpointNotFound"
+        matches!(res, Err(acta_checkpoint::CheckpointError::CheckpointNotFound)),
+        "Restoring nonexistent checkpoint must return acta_checkpoint::CheckpointError::CheckpointNotFound"
     );
 }
 
@@ -222,32 +223,50 @@ async fn test_identifier_input_boundary_validation() {
     let res = store
         .create_checkpoint("", "col1", 1, TxId::new(1), serde_json::json!({}))
         .await;
-    assert!(matches!(res, Err(ActaError::InvalidInput(_))));
+    assert!(matches!(
+        res,
+        Err(acta_checkpoint::CheckpointError::InvalidInput(_))
+    ));
 
     // 2. Whitespace-only checkpoint name
     let res = store
         .create_checkpoint("   \t  ", "col1", 1, TxId::new(1), serde_json::json!({}))
         .await;
-    assert!(matches!(res, Err(ActaError::InvalidInput(_))));
+    assert!(matches!(
+        res,
+        Err(acta_checkpoint::CheckpointError::InvalidInput(_))
+    ));
 
     // 3. Empty collection ID
     let res = store
         .create_checkpoint("cp1", "", 1, TxId::new(1), serde_json::json!({}))
         .await;
-    assert!(matches!(res, Err(ActaError::InvalidInput(_))));
+    assert!(matches!(
+        res,
+        Err(acta_checkpoint::CheckpointError::InvalidInput(_))
+    ));
 
     // 4. Oversized checkpoint name (> 256 chars)
     let long_name = "x".repeat(257);
     let res = store
         .create_checkpoint(&long_name, "col1", 1, TxId::new(1), serde_json::json!({}))
         .await;
-    assert!(matches!(res, Err(ActaError::InvalidInput(_))));
+    assert!(matches!(
+        res,
+        Err(acta_checkpoint::CheckpointError::InvalidInput(_))
+    ));
 
     // 5. Drop checkpoint with empty name
     let res = store.drop_checkpoint("").await;
-    assert!(matches!(res, Err(ActaError::InvalidInput(_))));
+    assert!(matches!(
+        res,
+        Err(acta_checkpoint::CheckpointError::InvalidInput(_))
+    ));
 
     // 6. Get checkpoint with empty name
     let res = store.get_checkpoint("   ").await;
-    assert!(matches!(res, Err(ActaError::InvalidInput(_))));
+    assert!(matches!(
+        res,
+        Err(acta_checkpoint::CheckpointError::InvalidInput(_))
+    ));
 }

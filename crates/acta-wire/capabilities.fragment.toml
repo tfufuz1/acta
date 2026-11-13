@@ -1,0 +1,10 @@
+[crates.acta-wire]
+group = "foundation"
+level = 0
+tier = "stable"
+path = "crates/acta-wire"
+unsafe_island = true
+allowed_internal = []
+feature_closure_allowed = {}
+dev_allowed = []
+test = "cargo test -p acta-wire --locked"

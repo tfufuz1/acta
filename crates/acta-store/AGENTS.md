@@ -1,154 +1,32 @@
-# AGENTS.md — acta-store
-> Layer 1 | LSM-Tree Storage Engine mit WAL, MemTable, SSTable, Compaction | ~13100 LOC
+# AGENTS.md — `acta-store`
 
-## 1. Zweck & Architekturrolle
+> Werkzeug/Crate-Kontext für Agenten. Der obere Teil ist generiert; manuelle Notizen unterhalb ergänzen.
 
-Persistenzschicht des gesamten Systems. Implementiert einen vollständigen LSM-Tree
-mit Write-Ahead-Log, MemTable (Skip-List), SSTable (Block-basiert mit Bloom-Filter,
-CRC32, Compression), Background-Compaction und MVCC-Snapshot-Isolation.
-Einziger Implementor des `StorageEngine` Traits aus `acta-core`.
+<!-- BEGIN GENERATED: crate_inventory.py -->
 
-**Datenpfad**: Client → `TxBuffer` → WAL → MemTable → SSTable → Compaction
+## Inventar (generiert)
 
-## 2. Modul-Karte
+- **Pfad:** `crates/acta-store` · **Ring:** 1 · **Version:** 0.1.0
+- **Beschreibung:** LSM-Tree storage engine for Acta
+- **src:** 161 Dateien, 25508 LOC · **unsafe:** 0 Vorkommen, Policy `forbid`
+- **Interne Abhängigkeiten (normal, 7):** `acta-crypto`, `acta-env`, `acta-ids`, `acta-mvcc`, `acta-ports`, `acta-sys`, `acta-types`
+- **Interne Dev/Build-Abhängigkeiten (1):** `acta-testkit`
+- **Externe Abhängigkeiten (normal, 15):** `ahash`, `blake3`, `bytes`, `crc32fast`, `lru`, `memmap2`, `parking_lot`, `quick_cache`, `rand`, `serde`, `thiserror`, `tokio`, `tokio-util`, `tracing`, `uuid`
+- **Reverse-Abhängigkeiten (2):** `acta-bench`, `acta-db`
+- **Kopplung an Hub-Crates:** ausgehend `acta-ports`, `acta-types`; eingehend `acta-db`
+- **Features (10):** `block-cache-v2`, `default`, `docid-128`, `fault-injection`, `inspect`, `legacy-wal-key`, `memory-only-storage`, `sieve-cache`, `test-hooks`, `workspace`
 
-| Datei / Verzeichnis | Verantwortung |
-|---|---|
-| `lib.rs` | Modul-Deklaration, `#![deny(unsafe_code)]`, Datenpfad-Invariante |
-| `lsm.rs` | `LsmStorage` — Orchestrator: öffnet DB, koordiniert WAL/MemTable/SSTable/Compaction, implementiert `StorageEngine` Trait |
-| `wal/` | Write-Ahead-Log: Modul mit `encode.rs`, `flusher.rs`, `hmac.rs`, `io.rs`, `replay.rs`. Append-Only, HMAC-Chaining, CRC32, Flusher-Actor, Passives WAL-Shipping (`rotate_and_seal`), Bounds-Prüfung |
-| `memtable.rs` | In-Memory Skip-List mit Sequenznummern, Tombstone-Unterstützung (Ziel: Range-Sharded MemTable) |
-| `sstable.rs` | On-Disk sortierte Segmente: Block-Kompression, Bloom-Filter, Index, CRC32, Block-Cache-Integration (LRU Default / SIEVE Opt-in) |
-| `compaction.rs` | `CompactionEngine` — Hintergrund-Merge von SSTables (Tiered/Leveled) |
-| `checkpoint.rs` | `pub(crate)` — Internes MVCC-Snapshot-Pinning via injiziertem `Clock`-Port (P28, INV-CHECKPOINT-DETERMINISM-1), **NICHT** die öffentliche Checkpoint-API (die ist in `acta-checkpoint`) |
-| `manifest.rs` | Transaktionale Manifest-Verwaltung für SSTable-Generationen |
-| `tenant_codec.rs` | Tenant-spezifische Key-Präfix-Codierung und Scopes |
-| `system_pressure.rs` | Überwachung von Memory- und Disk-Pressure für Flush/Throttling |
-| `util.rs` | `pub(crate)` Hilfsfunktionen (Atomic Rename, load_or_create_integrity_key) |
+### Öffentliche API (grob, aus src/)
+- struct (62): `AdaptiveCompactionPlan`, `AsyncObserverAdapter`, `BlockBuilder`, `BlockCache`, `BloomFilter`, `CommitContext`, `CommitGuard`, `CommittedBatch`, `CompactionConfig`, `CompactionEngine`, `CostBasedAdaptivePlanner`, `FlushPurgeFence`, `InMemoryStorageEngine`, `LoomFile`, `LoomMetadata` … (+47)
+- enum (14): `CompactionStrategy`, `DurabilityConfigError`, `DurabilityMode`, `LegacyKeyStatus`, `ManifestEntry`, `PoisonCause`, `PressureLevel`, `StorageHealth`, `StoreError`, `VerifiedVia`, `WalOp`, `WalParseError`, `WalVersion`, `WriteOrigin`
+- trait (14): `AdaptiveCompactionPlanner`, `BlockCacheBackend`, `KeyMaterialSource`, `MergeOperator`, `RecordAuthenticator`, `RecordSealer`, `ReplayProgressSink`, `StorageEngineHandle`, `StoreFile`, `StoreFs`, `SystemPressureSignal`, `Vfs`, `VfsFile`, `WalObserver`
+- fn (320): `active_memtable`, `add`, `all_memtables`, `allow_legacy_fallback_for_test`, `append`, `append_batch`, `append_batch_locked`, `arm_truncate_failure_for_test`, `binary_search_entry_in_block`, `binary_search_first_index_in_block`, `binary_search_index_in_block`, `block_binary_search`, `block_cache`, `block_cache_for_test`, `block_on` … (+305)
+- type (8): `BlockCacheShard`, `File`, `MemTableEntry`, `MemTableMap`, `SequenceNumber`, `StoreResult`, `TransactionId`, `WalSeq`
+- const (47): `BLOCKING_UTIL_CRITICAL`, `BLOCKING_UTIL_ELEVATED`, `BLOCK_CACHE_SHARDS`, `BLOCK_SIZE`, `CURRENT_MANIFEST_VERSION`, `CURRENT_SSTABLE_FORMAT_VERSION`, `DEFAULT_MAX_OBSERVER_LATENCY`, `DEFAULT_ROLLOVER_THRESHOLD_BYTES`, `DEFAULT_WAL_QUEUE_CAPACITY`, `INTENT_MAGIC`, `LEGACY_TRAILER_LEN`, `MANIFEST_HEADER_MAGIC`, `MANIFEST_VERSION_V1`, `MANIFEST_VERSION_V2`, `MAX_BATCH_SIZE` … (+32)
+- static (7): `DELAY_APPEND_FOR_TX`, `DELAY_APPEND_MS`, `FAIL_APPEND_AFTER_PARTIAL_BYTES`, `FAIL_APPEND_FOR_TX`, `FAIL_APPEND_PARTIAL_ONCE`, `FAIL_SYNC_ONCE`, `FAIL_TRUNCATE_ONCE`
+- mod (74): `acl`, `adaptive`, `append`, `block_cache`, `bounded`, `budget`, `calculation`, `commit`, `compaction`, `compat`, `config`, `core`, `cost_based`, `encode`, `engine` … (+59)
+- pub use: `adapter::AsyncObserverAdapter`, `adaptive::*`, `block::BlockBuilder`, `block_cache::*`, `block_search::*`, `bloom::*`, `builder::*`, `calculation::*`, `compaction::{ adaptive::{ AdaptiveCompactionPlan, AdaptiveCompactionPlanner, CompactionStrategy, CostBasedAdaptivePlanner, WorkloadMetrics, WorkloadMetricsSnapshot, }, CompactionConfig, CompactionEngine, MergeOperator, TtlMetadata, }`, `config::*` … (+67)
 
-## 3. Kritische Invarianten
+Regeneriert mit `python3 tools/crate_inventory.py agents`. Manuelle Notizen stehen außerhalb dieses Blocks.
 
-### fsync Error Propagation (ABSOLUT)
-JEDER `sync_all()` und `sync_data()` Aufruf **MUSS** Fehler mit `?` propagieren.
-`let _ = dir.sync_all()` ist **VERBOTEN** — verschluckt WAL-Durability-Garantien.
-CI Gate 3 erzwingt dies automatisch.
-
-### last_committed_tx — Single Load Rule
-In `get_at_seq()` und `scan_prefix_at()`: `last_committed_tx` **EINMAL** am Start
-in eine lokale Variable laden. NICHT während der Iteration neu lesen — bricht
-Snapshot Isolation unter konkurrierenden Writes.
-
-### WAL HMAC Key Sourcing
-**IMMER** `load_or_create_integrity_key()` verwenden. **NIEMALS** Schlüssel hartcodieren.
-Der Key wird via HKDF aus dem Master Key abgeleitet (siehe `acta-crypto`, Cargo-Package-Name: `acta-privacy`).
-
-### TOMBSTONE_BIT-Disziplin (ADR-041)
-Bit 63 **strikt** maskieren (`seq & !TOMBSTONE_BIT`) vor allen `max_seq` Vergleichen.
-Unmaskierte Tombstone-Sequenznummern führen zu Phantom-Sichtbarkeit gelöschter Einträge.
-
-### Flush-before-Visible (ADR-043)
-`last_committed_tx` **VOR** `sstables.push()` in `LsmStorage::flush` aktualisieren.
-Umgekehrte Reihenfolge erzeugt ein Race-Window: SSTable ist sichtbar bevor
-die Transaktion als committed markiert ist.
-
-### I/O Pattern (ADR-012)
-- `tokio::fs` für Metadaten/Lifecycle (WAL-Append, Flush, Directory-Create)
-- `std::fs::File` **NUR** inside `spawn_blocking` für Block-Level Random-Access (SSTable pread)
-
-### Atomic Rename Pattern (Writes)
-`write_to_file()` MUSS tmp-file + atomic rename verwenden:
-1. Schreibe nach `path.with_extension("tmp")`
-2. `fsync` die Datei
-3. `rename(tmp, final)` — atomar auf POSIX
-4. `fsync` das Parent-Directory
-
-### pub(crate) checkpoint Sichtbarkeit
-`checkpoint.rs` ist `pub(crate)` — internes Snapshot-Pinning.
-Die öffentliche benannte Checkpoint-API lebt in `acta-checkpoint` (ADR-011).
-**NIEMALS** `acta-store::checkpoint` von außerhalb importieren.
-
-## 4. Public API Quick-Reference
-
-```rust
-// === LsmStorage (lsm.rs) — Implementiert StorageEngine ===
-pub struct LsmStorage { ... }
-impl LsmStorage {
-    pub async fn open(config: LsmConfig) -> Result<Self>;
-    pub async fn repair_on_open(&self) -> Result<()>;
-    // Alle StorageEngine Methoden (get, put, commit, flush, scan_prefix_at, ...)
-}
-
-pub struct LsmConfig {
-    pub data_dir: PathBuf,
-    pub memtable_size_limit: usize,     // Default: 4 MB
-    pub compaction: CompactionConfig,
-    pub encryption_passphrase: Option<String>,
-}
-
-// === CompactionEngine (compaction.rs) ===
-pub struct CompactionEngine { ... }
-pub struct CompactionConfig {
-    pub max_sstable_count: usize,       // Trigger-Schwelle
-    pub size_ratio: f64,                // Tiered Size Ratio
-}
-```
-
-## 5. Anti-Patterns & LLM-Fallstricke
-
-```rust
-// ❌ FALSCH — IO-Fehler verschluckt:
-let _ = file.sync_all().await;
-let _ = dir.sync_all();
-// ✅ KORREKT:
-file.sync_all().await.map_err(|e| ActaError::Storage(format!("fsync: {e}")))?;
-
-// ❌ FALSCH — Deserialisierung mit Default-Fallback:
-let entry = bincode::deserialize(&bytes).unwrap_or_default();
-// ✅ KORREKT:
-let entry = bincode::deserialize(&bytes)
-    .map_err(|e| ActaError::ParseError(format!("WAL corrupt: {e}")))?;
-
-// ❌ FALSCH — Unmaskierter Tombstone-Vergleich:
-if entry.seq > max_seq { ... }  // Bit 63 kann gesetzt sein!
-// ✅ KORREKT:
-if (entry.seq & !TOMBSTONE_BIT) > max_seq { ... }
-
-// ❌ FALSCH — std::fs direkt im async Kontext:
-let file = std::fs::File::open(&path)?;
-// ✅ KORREKT:
-let file = tokio::task::spawn_blocking(move || std::fs::File::open(&path)).await??;
-
-// ❌ FALSCH — checkpoint.rs von extern importieren:
-use acta_store::checkpoint::SnapshotPinner;
-// ✅ KORREKT — pub(crate), nutze stattdessen:
-use acta_checkpoint::CheckpointGuard;
-```
-
-## 6. Concurrency & Lock-Hierarchie
-
-| Lock | Typ | Scope | Reihenfolge |
-|---|---|---|---|
-| `write_lock` | `tokio::sync::Mutex` | WAL + MemTable Atomizität | 1. (äußerster) |
-| `memtable` | `Arc<parking_lot::RwLock>` | MemTable Read/Write | 2. |
-| `sstables` | `Arc<parking_lot::RwLock>` | SSTable-Liste | 3. |
-| `snapshot_registry` | `parking_lot::Mutex` | Snapshot Pins | 4. (innerster) |
-
-**Regel**: Niemals einen Lock in umgekehrter Reihenfolge akquirieren. Niemals einen `parking_lot` Guard über `.await`-Punkte halten.
-
-## 7. Cross-Crate-Schnittstellen & DAG-Grenzen
-
-- **Erlaubte Imports**: `acta-core` (L0), `acta-crypto` (Cargo-Package-Name: `acta-privacy`) (L1 Peer)
-- **Verbotene Imports**: `acta-db` (L2), `acta-vector` (L1 Peer — kein Peer-Import!), `acta-text` (L1 Peer)
-- **Implementiert**: `StorageEngine` Trait aus `acta-core`
-- **Genutzt von**: `acta-db`, `acta-agent`, `acta-router` (als `Arc<dyn StorageEngine>`)
-
-## 8. Relevante ADRs & Rules
-
-| ADR/Rule | Relevanz |
-|---|---|
-| ADR-012 | I/O Pattern (tokio::fs vs. spawn_blocking) |
-| ADR-041 | TOMBSTONE_BIT-Maskierung |
-| ADR-043 | Flush-before-Visible Race Fix |
-| `rules/async-io.md` | spawn_blocking Pattern für SSTable Reads |
-| `rules/wal_crypto.md` | HMAC Chaining & Key Derivation |
-| `rules/error-handling.md` | ActaError Variant Policy |
+<!-- END GENERATED: crate_inventory.py -->

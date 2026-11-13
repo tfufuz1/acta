@@ -10,7 +10,16 @@
 //! INTEGRATION: PathRAG liefert ein RRF-Signal neben Vektor- und BM25-Signal.
 //! Resultat von to_rrf_signal() wird in FusionEngine als drittes Signal eingespeist.
 
+// FILE-CONTEXT
+// STAND: 2026-11-15T12:00:00Z
+// ZWECK: Path-RAG und budgetierte K-Path Traversierung.
+// INVARIANTEN: Snapshot-Isolation bei Pfadsuche.
+// HOTSPOTS: Keine kritischen Bottlenecks identifiziert
+// SIEHE AUCH: docs/SPEC.md, crates/acta-graph/SPEC.md
+
 #[cfg(feature = "k-path-diffusion")]
+
+// SECTION Mod Core Implementation
 pub mod k_path;
 
 #[cfg(feature = "k-path-diffusion")]
@@ -197,7 +206,7 @@ pub struct PathRAGEngine<G: PathGraph> {
 }
 
 impl<G: PathGraph> PathRAGEngine<G> {
-// ANCHOR[acta-graph:SRC-PATH-RAG-MOD-008]
+    // ANCHOR[acta-graph:SRC-PATH-RAG-MOD-008]
     pub fn new(graph: G, max_hops: usize, sufficiency_threshold: f64) -> Self {
         Self::with_config(
             graph,
@@ -210,22 +219,22 @@ impl<G: PathGraph> PathRAGEngine<G> {
         )
     }
 
-// ANCHOR[acta-graph:SRC-PATH-RAG-MOD-009]
+    // ANCHOR[acta-graph:SRC-PATH-RAG-MOD-009]
     pub fn with_defaults(graph: G) -> Self {
         Self::with_config(graph, PathRAGConfig::default())
     }
 
-// ANCHOR[acta-graph:SRC-PATH-RAG-MOD-010]
+    // ANCHOR[acta-graph:SRC-PATH-RAG-MOD-010]
     pub fn with_config(graph: G, config: PathRAGConfig) -> Self {
         Self { graph, config }
     }
 
-// ANCHOR[acta-graph:SRC-PATH-RAG-MOD-011]
+    // ANCHOR[acta-graph:SRC-PATH-RAG-MOD-011]
     pub fn max_hops(&self) -> usize {
         self.config.max_hops
     }
 
-// ANCHOR[acta-graph:SRC-PATH-RAG-MOD-012]
+    // ANCHOR[acta-graph:SRC-PATH-RAG-MOD-012]
     pub fn sufficiency_threshold(&self) -> f64 {
         self.config.sufficiency_threshold
     }
@@ -275,7 +284,7 @@ impl<G: PathGraph> PathRAGEngine<G> {
     ///
     /// Gibt None zurück wenn kein Pfad innerhalb max_hops existiert
     /// oder Sufficiency-Gate fehlschlägt.
-// ANCHOR[acta-graph:SRC-PATH-RAG-MOD-013]
+    // ANCHOR[acta-graph:SRC-PATH-RAG-MOD-013]
     pub fn find_path(&self, source: EntityId, target: EntityId) -> Option<GraphPath> {
         if source == target {
             return Some(GraphPath {
@@ -407,7 +416,7 @@ impl<G: PathGraph> PathRAGEngine<G> {
     }
 
     /// Findet Pfade von einem Ankerknoten zu allen erreichbaren Knoten innerhalb von max_hops.
-// ANCHOR[acta-graph:SRC-PATH-RAG-MOD-014]
+    // ANCHOR[acta-graph:SRC-PATH-RAG-MOD-014]
     pub fn find_all_paths(&self, source: EntityId) -> Vec<GraphPath> {
         let mut targets = std::collections::HashSet::new();
         let mut queue = std::collections::VecDeque::new();
@@ -437,7 +446,7 @@ impl<G: PathGraph> PathRAGEngine<G> {
 
     /// Sufficiency-Gate: Filtert Pfade unter Konfidenz-Schwelle.
     /// Kritisch für Precision (arXiv:2506.00610).
-// ANCHOR[acta-graph:SRC-PATH-RAG-MOD-015]
+    // ANCHOR[acta-graph:SRC-PATH-RAG-MOD-015]
     pub fn sufficiency_check(&self, path: &GraphPath) -> bool {
         path.confidence >= self.config.sufficiency_threshold
     }
@@ -447,7 +456,7 @@ impl<G: PathGraph> PathRAGEngine<G> {
     ///
     /// NOTE (Type-Punning Assumption): Re-uses `EntityId` numerical value as `DocId`.
     /// See explicit confirmation in `csr.rs:5104` ("querying DocId(10) (which equals EntityId 10)").
-// ANCHOR[acta-graph:SRC-PATH-RAG-MOD-016]
+    // ANCHOR[acta-graph:SRC-PATH-RAG-MOD-016]
     pub fn to_rrf_signal(&self, paths: &[GraphPath]) -> Vec<(DocId, f32)> {
         let mut scored: HashMap<u64, f32> = HashMap::new();
 
@@ -459,16 +468,9 @@ impl<G: PathGraph> PathRAGEngine<G> {
             }
         }
 
-        #[cfg(not(feature = "docid-128"))]
         let mut result: Vec<(DocId, f32)> = scored
             .into_iter()
-            .map(|(id, score)| (DocId(id), score))
-            .collect();
-
-        #[cfg(feature = "docid-128")]
-        let mut result: Vec<(DocId, f32)> = scored
-            .into_iter()
-            .map(|(id, score)| (DocId(id as u128), score))
+            .map(|(id, score)| (DocId::from(id), score))
             .collect();
 
         result.sort_by(|a, b| b.1.total_cmp(&a.1));
@@ -478,3 +480,5 @@ impl<G: PathGraph> PathRAGEngine<G> {
 
 #[cfg(test)]
 mod tests;
+
+// !SECTION Mod Core Implementation

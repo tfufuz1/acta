@@ -1,8 +1,10 @@
-// FILE-CONTEXT
-// STAND: 2026-10-28T00:00:00Z
-// ZWECK: Platform-aware low-level durability primitives for file and directory flushes (Ring 0 / SPEC 7.7)
-// INVARIANTEN: Zero panic; typed io::Error propagation; fail-closed on unsupported targets; EINTR handling
-// SIEHE AUCH: AGENTS.md, docs/SPEC.md §7.7 (INV-DURABILITY-PRIM-1)
+// =========================================================================
+// ANCHOR[id=sys-durability-main,epic=sys-durability,seq=0] Haltbare Dateisystem-Synchronisation
+// =========================================================================
+// LINK crates/acta-sys/src/lib.rs
+// NOTE: Platform-aware low-level durability primitives for file and directory flushes (Ring 0 / E0 / docs/SPEC.md §10.1 / INV-SYS-FSYNC-1).
+// Invariante: Zero panic; typed error propagation; fail-closed on unsupported targets; EINTR retry only; Handle-Poisoning on sync failure.
+// Keine unzulässigen Garantieversprechen (SPEC §6.4).
 
 //! # Modul: Dauerhaftigkeit und physische Synchronisation (`durability`)
 //!
@@ -11,65 +13,76 @@
 //! (SSD/HDD) dauerhaft persistiert werden (Durability gemäß ACID-Kriterien).
 //!
 //! ## Ring-Zugehörigkeit und Zweck
-//! - **Ring 0 (Kern):** Kapselt direkte Betriebssystem-Aufrufe (`libc::fsync`, `libc::fdatasync`,
+//! - **Ring 0 / Ebene E0 (Kern):** Kapselt direkte Betriebssystem-Aufrufe (`libc::fsync`, `libc::fdatasync`,
 //!   `libc::fcntl(F_FULLFSYNC)`, `FlushFileBuffers`).
 //! - **Verwendung im System:** Wird von `acta-store` (Write-Ahead-Log WAL und LSM-SSTables)
 //!   sowie `acta-durable-fs` genutzt.
-//! - **Persistenz & Fehlergarantie:** Fehler bei `fsync`-Aufrufen werden niemals verschluckt, sondern
-//!   strikte als [`std::io::Error`] an den Aufrufer propagiert (Fail-Closed-Prinzip: Bricht der Flush
-//!   ab, darf keine Transaktion als erfolgreich bestätigt werden).
+//! - **Persistenz & Fehlerrichtlinie (INV-SYS-FSYNC-1):**
+//!   Schlägt ein `fsync`/`fdatasync` fehl, wird sofort ein [`crate::Error::SyncFailed`] bzw.
+//!   [`std::io::Error`] an den Aufrufer propagiert. Es gibt keinen stillen Retry auf demselben
+//!   Handle: Ein fehlerhaftes Handle wird permanent vergiftet ([`DurableFile`]) und alle
+//!   nachfolgenden Flush- oder Schreibversuche scheitern sofort fail-closed.
 //!
 //! ## Plattformunterschiede
 //! - **Linux:** Nutzt `fdatasync` (wenn keine Metadaten wie Dateigröße geändert wurden) oder `fsync`.
 //! - **macOS:** Standardmäßiges `fsync` flasht auf Apple-Dateisystemen (APFS) oft nur den Betriebssystem-Cache,
 //!   nicht jedoch den Festplattencache. Daher wird zwingend `fcntl(fd, F_FULLFSYNC, 0)` verwendet.
 //! - **Windows:** Verwendet `FlushFileBuffers`.
-//! - **Signalbehandlung:** Aufrufe werden bei Unterbrechung durch Unix-Signale (`EINTR`) automatisch wiederholt.
+//! - **Signalbehandlung:** Aufrufe werden bei Unterbrechung durch Unix-Signale (`EINTR`) automatisch wiederholt,
+//!   da `EINTR` anzeigt, dass der Syscall vor der Ausführung unterbrochen wurde.
 
 use std::fs::File;
-use std::io::{Error, ErrorKind, Result, Write};
+use std::io::{Error as IoError, ErrorKind, Result as IoResult, Write};
 use std::path::Path;
 
-// ANCHOR[acta-sys:DUR-FLUSH-FILE-001]
-/// Flasht Dateiinhalt und optional Metadaten auf den physischen Datenträger gemäß den Garantien der Zielplattform.
+use crate::error::{Error, Result};
+
+// SECTION Fault Injection Harness
+// ANCHOR[id=sys-durability-fault,epic=sys-durability,seq=1] Test-Fehlerinjektion
+#[cfg(test)]
+pub(crate) mod fault_injection {
+    use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+
+    static FAIL_FSYNC: AtomicBool = AtomicBool::new(false);
+    static INJECTED_ERRNO: AtomicI32 = AtomicI32::new(libc::EIO);
+
+    pub fn set_fail_fsync(fail: bool, errno: i32) {
+        FAIL_FSYNC.store(fail, Ordering::SeqCst);
+        INJECTED_ERRNO.store(errno, Ordering::SeqCst);
+    }
+
+    pub fn should_fail_fsync() -> Option<i32> {
+        if FAIL_FSYNC.load(Ordering::SeqCst) {
+            Some(INJECTED_ERRNO.load(Ordering::SeqCst))
+        } else {
+            None
+        }
+    }
+}
+// !SECTION Fault Injection Harness
+
+// SECTION OS Sync Primitives
+// ANCHOR[id=sys-durability-os-sync,epic=sys-durability,seq=2] raw_os_sync_file
+
+/// Führt den rohen Betriebssystem-Sync-Syscall auf einem Dateideskriptor aus.
 ///
-/// # Ablauf
-/// 1. Extrahiert den rohen Dateideskriptor bzw. das Datei-Handle (`fd` unter Unix, `HANDLE` unter Windows).
-/// 2. Führt die plattformspezifische Synchronisation aus:
-///    - **Linux:** Ruft in einer Schleife `libc::fdatasync` (falls `metadata_changed == false`) oder `libc::fsync` auf.
-///    - **macOS:** Ruft `libc::fcntl(fd, libc::F_FULLFSYNC, 0)` auf, um den Hardware-Plattencache zu leeren.
-///    - **Anderes POSIX:** Ruft `libc::fsync` auf.
-///    - **Windows:** Ruft `FlushFileBuffers` auf.
-///    - **Nicht unterstützte Plattform:** Gibt sofort einen `Unsupported`-Fehler zurück (Fail-Closed).
-/// 3. Fängt den Fehler `EINTR` (Interrupted system call) ab und wiederholt die Operation automatisch.
-///
-/// # Vorbedingungen
-/// - `file` muss eine gültige, geöffnete Datei referenzieren.
-///
-/// # Nachbedingungen
-/// - Bei Rückgabe von `Ok(())` befinden sich die Daten nachweislich auf dem persistenten Speichermedium.
-///
-/// # Fehlerfälle
-/// - Gibt bei I/O-Fehlern, Dateisystemfehlern oder Plattenfehlern einen typisierten [`std::io::Error`] zurück.
-///
-/// # Beispiel
-/// ```no_run
-/// use std::fs::File;
-/// use acta_sys::durable_flush_file;
-///
-/// # fn run() -> std::io::Result<()> {
-/// let file = File::open("wal_segment.log")?;
-/// durable_flush_file(&file, false)?;
-/// # Ok(())
-/// # }
-/// ```
-pub fn durable_flush_file(file: &File, metadata_changed: bool) -> Result<()> {
+/// # Invariante (INV-SYS-FSYNC-1)
+/// Nur `EINTR` führt zu einer Wiederholung. Jeder andere Fehlercode führt sofort
+/// zum Abbruch und Rückgabe von `Error::SyncFailed(errno)`.
+#[cfg(unix)]
+fn raw_os_sync_file(file: &File, metadata_changed: bool) -> Result<()> {
+    #[cfg(test)]
+    if let Some(injected_errno) = fault_injection::should_fail_fsync() {
+        return Err(Error::SyncFailed(injected_errno));
+    }
+
+    use std::os::unix::io::AsRawFd;
+    let fd = file.as_raw_fd();
+
     #[cfg(target_os = "linux")]
     {
-        use std::os::unix::io::AsRawFd;
-        let fd = file.as_raw_fd();
         loop {
-            // SAFETY: `fd` ist ein gültiger, offener Dateideskriptor, der direkt aus `std::fs::File::as_raw_fd()` bezogen wurde.
+            // SAFETY: `fd` ist ein gültiger, offener Dateideskriptor aus `std::fs::File::as_raw_fd()`.
             let res = unsafe {
                 if metadata_changed {
                     libc::fsync(fd)
@@ -80,35 +93,35 @@ pub fn durable_flush_file(file: &File, metadata_changed: bool) -> Result<()> {
             if res == 0 {
                 return Ok(());
             }
-            let err = Error::last_os_error();
-            if err.kind() != ErrorKind::Interrupted {
-                return Err(err);
+            let err = IoError::last_os_error();
+            if err.kind() == ErrorKind::Interrupted {
+                continue;
             }
+            let errno = err.raw_os_error().unwrap_or(libc::EIO);
+            return Err(Error::SyncFailed(errno));
         }
     }
 
     #[cfg(target_os = "macos")]
     {
-        use std::os::unix::io::AsRawFd;
-        let fd = file.as_raw_fd();
         let _ = metadata_changed;
         loop {
-            // SAFETY: `fd` ist ein gültiger Dateideskriptor aus `std::fs::File`. `F_FULLFSYNC` erzwingt auf macOS das Leeren aller physischen Caches.
+            // SAFETY: `fd` ist ein gültiger Dateideskriptor aus `std::fs::File`. F_FULLFSYNC leert physische APFS-Caches.
             let res = unsafe { libc::fcntl(fd, libc::F_FULLFSYNC, 0) };
             if res != -1 {
                 return Ok(());
             }
-            let err = Error::last_os_error();
-            if err.kind() != ErrorKind::Interrupted {
-                return Err(err);
+            let err = IoError::last_os_error();
+            if err.kind() == ErrorKind::Interrupted {
+                continue;
             }
+            let errno = err.raw_os_error().unwrap_or(libc::EIO);
+            return Err(Error::SyncFailed(errno));
         }
     }
 
     #[cfg(all(unix, not(target_os = "linux"), not(target_os = "macos")))]
     {
-        use std::os::unix::io::AsRawFd;
-        let fd = file.as_raw_fd();
         let _ = metadata_changed;
         loop {
             // SAFETY: `fd` ist ein gültiger offener Dateideskriptor aus `std::fs::File`.
@@ -116,53 +129,54 @@ pub fn durable_flush_file(file: &File, metadata_changed: bool) -> Result<()> {
             if res == 0 {
                 return Ok(());
             }
-            let err = Error::last_os_error();
-            if err.kind() != ErrorKind::Interrupted {
-                return Err(err);
+            let err = IoError::last_os_error();
+            if err.kind() == ErrorKind::Interrupted {
+                continue;
             }
+            let errno = err.raw_os_error().unwrap_or(libc::EIO);
+            return Err(Error::SyncFailed(errno));
         }
-    }
-
-    #[cfg(windows)]
-    {
-        use std::os::windows::io::AsRawHandle;
-        let handle = file.as_raw_handle() as windows_sys::Win32::Foundation::HANDLE;
-        let _ = metadata_changed;
-        // SAFETY: `handle` ist ein gültiges OS-Datei-Handle aus `std::fs::File::as_raw_handle()`.
-        let res = unsafe { windows_sys::Win32::Storage::FileSystem::FlushFileBuffers(handle) };
-        if res != 0 {
-            Ok(())
-        } else {
-            Err(Error::last_os_error())
-        }
-    }
-
-    #[cfg(not(any(unix, windows)))]
-    {
-        let _ = (file, metadata_changed);
-        Err(Error::new(
-            ErrorKind::Unsupported,
-            "durable_flush_file is not supported on this target architecture (fail-closed)",
-        ))
     }
 }
 
-// ANCHOR[acta-sys:DUR-FLUSH-DIR-001]
+#[cfg(windows)]
+fn raw_os_sync_file(file: &File, _metadata_changed: bool) -> Result<()> {
+    #[cfg(test)]
+    if let Some(injected_errno) = fault_injection::should_fail_fsync() {
+        return Err(Error::SyncFailed(injected_errno));
+    }
+
+    use std::os::windows::io::AsRawHandle;
+    let handle = file.as_raw_handle() as windows_sys::Win32::Foundation::HANDLE;
+    // SAFETY: `handle` ist ein gültiges OS-Datei-Handle aus `std::fs::File::as_raw_handle()`.
+    let res = unsafe { windows_sys::Win32::Storage::FileSystem::FlushFileBuffers(handle) };
+    if res != 0 {
+        Ok(())
+    } else {
+        let err = IoError::last_os_error();
+        let code = err.raw_os_error().unwrap_or(-1);
+        Err(Error::SyncFailed(code))
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn raw_os_sync_file(_file: &File, _metadata_changed: bool) -> Result<()> {
+    Err(Error::Unsupported(
+        "durable_flush_file is not supported on this target architecture (fail-closed)",
+    ))
+}
+// !SECTION OS Sync Primitives
+
+// SECTION High-level Flush Functions
+// ANCHOR[id=sys-durability-flush,epic=sys-durability,seq=3] durable_flush_file & durable_flush_dir
+
+/// Flasht Dateiinhalt und optional Metadaten auf den physischen Datenträger gemäß den Eigenschaften der Zielplattform.
+pub fn durable_flush_file(file: &File, metadata_changed: bool) -> IoResult<()> {
+    raw_os_sync_file(file, metadata_changed).map_err(Into::into)
+}
+
 /// Flasht den Verzeichniseintrag (übergeordnetes Verzeichnis) einer neu erstellten oder umbenannten Datei.
-///
-/// # Warum ein Directory Flush notwendig ist
-/// Unter Unix-Dateisystemen (wie ext4 oder XFS) reicht ein `fsync` auf eine neu erstellte Datei nicht aus,
-/// um zu garantieren, dass die Datei nach einem Stromausfall auffindbar ist: Der Verzeichniseintrag (Inode-Link)
-/// liegt im übergeordneten Verzeichnis und muss separat geflasht werden.
-///
-/// # Ablauf
-/// 1. **Unix:** Öffnet das Verzeichnis schreibgeschützt als [`File`] und ruft [`durable_flush_file`] mit `metadata_changed = true` auf.
-/// 2. **Windows:** Verzeichnis-Handles unterstützen kein `FlushFileBuffers`; Änderungen werden über Dateisystem-Semantiken verwaltet (Best Effort, `Ok(())`).
-/// 3. **Nicht unterstützt:** Gibt `ErrorKind::Unsupported` zurück (Fail-Closed).
-///
-/// # Fehlerfälle
-/// Gibt einen [`std::io::Error`] zurück, wenn das Verzeichnis nicht geöffnet oder nicht synchronisiert werden kann.
-pub fn durable_flush_dir(path: &Path) -> Result<()> {
+pub fn durable_flush_dir(path: &Path) -> IoResult<()> {
     #[cfg(unix)]
     {
         let dir = File::open(path)?;
@@ -172,39 +186,27 @@ pub fn durable_flush_dir(path: &Path) -> Result<()> {
     #[cfg(windows)]
     {
         let _ = path;
-        // Windows directory handles do not support FlushFileBuffers; changes are managed via filesystem semantics (Best Effort).
         Ok(())
     }
 
     #[cfg(not(any(unix, windows)))]
     {
         let _ = path;
-        Err(Error::new(
+        Err(IoError::new(
             ErrorKind::Unsupported,
             "durable_flush_dir is not supported on this target architecture (fail-closed)",
         ))
     }
 }
 
-// ANCHOR[acta-sys:DUR-WRITE-ALL-001]
+// ANCHOR[id=sys-durability-write,epic=sys-durability,seq=4] write_all_durable
+
 /// Schreibt die gesamten Bytes aus `buf` zuverlässig in `file`, unter robuster Behandlung partieller Schreibvorgänge und Signal-Unterbrechungen.
-///
-/// # Ablauf
-/// 1. Führt eine Schleife aus, solange noch ungelesene Bytes in `buf` verbleiben.
-/// 2. Ruft `file.write(buf)` auf.
-/// 3. Behandelt die Rückgabewerte:
-///    - `Ok(0)`: Unerwartetes Dateiende / keine Bytes geschrieben -> Abbruch mit `ErrorKind::WriteZero`.
-///    - `Ok(n)`: Rückt den Pufferzeiger um `n` geschriebene Bytes vor.
-///    - `Err(EINTR)`: Wiederholt den Schreibaufruf ohne Datenverlust.
-///    - Sonstiger Fehler: Gibt den I/O-Fehler sofort an den Aufrufer zurück.
-///
-/// # Fehlerfälle
-/// Gibt einen [`std::io::Error`] zurück, wenn das Zielmedium voll ist (`WriteZero`) oder ein Hardware-Fehler auftritt.
-pub fn write_all_durable(file: &mut File, mut buf: &[u8]) -> Result<()> {
+pub fn write_all_durable(file: &mut File, mut buf: &[u8]) -> IoResult<()> {
     while !buf.is_empty() {
         match file.write(buf) {
             Ok(0) => {
-                return Err(Error::new(
+                return Err(IoError::new(
                     ErrorKind::WriteZero,
                     "failed to write whole buffer: write returned 0 bytes",
                 ));
@@ -220,18 +222,91 @@ pub fn write_all_durable(file: &mut File, mut buf: &[u8]) -> Result<()> {
     }
     Ok(())
 }
+// !SECTION High-level Flush Functions
 
-// ANCHOR[acta-sys:DUR-TESTS-001]
+// SECTION Durable File Wrapper
+// ANCHOR[id=sys-durability-durable-file,epic=sys-durability,seq=5] DurableFile (Handle-Poisoning)
+
+/// Ein sicherer RAII-Wrapper um [`std::fs::File`], der die Invariante **INV-SYS-FSYNC-1** erzwingt:
+/// Sobald ein `fsync`/`fdatasync` oder Flush-Aufruf fehlschlägt, wird das Handle dauerhaft vergiftet (`is_poisoned() == true`).
+/// Alle nachfolgenden Schreib- und Synchronisationsaufrufe auf dieser Instanz schlagen sofort mit [`Error::HandlePoisoned`] fehl.
+#[derive(Debug)]
+pub struct DurableFile {
+    file: File,
+    poisoned: bool,
+}
+
+impl DurableFile {
+    /// Kapselt eine geöffnete [`File`] in einem gesunden, unvergifteten Zustand.
+    pub fn new(file: File) -> Self {
+        Self {
+            file,
+            poisoned: false,
+        }
+    }
+
+    /// Gibt `true` zurück, wenn das Datei-Handle infolge eines früheren Flush-Fehlers vergiftet ist.
+    pub fn is_poisoned(&self) -> bool {
+        self.poisoned
+    }
+
+    /// Gibt eine Referenz auf die innere [`File`] zurück, sofern das Handle nicht vergiftet ist.
+    pub fn get_ref(&self) -> Result<&File> {
+        if self.poisoned {
+            Err(Error::HandlePoisoned)
+        } else {
+            Ok(&self.file)
+        }
+    }
+
+    /// Schreibt Daten dauerhaft in die Datei. Schlägt sofort fehl, wenn das Handle vergiftet ist.
+    pub fn write_all(&mut self, buf: &[u8]) -> Result<()> {
+        if self.poisoned {
+            return Err(Error::HandlePoisoned);
+        }
+        write_all_durable(&mut self.file, buf).map_err(Error::Io)
+    }
+
+    /// Flasht Dateiinhalt und Metadaten auf das physische Speichermedium.
+    pub fn sync_all(&mut self) -> Result<()> {
+        if self.poisoned {
+            return Err(Error::HandlePoisoned);
+        }
+        match raw_os_sync_file(&self.file, true) {
+            Ok(()) => Ok(()),
+            Err(err) => {
+                self.poisoned = true;
+                Err(err)
+            }
+        }
+    }
+
+    /// Flasht den Dateiinhalt (ohne Metadaten, z. B. via `fdatasync` unter Linux).
+    pub fn sync_data(&mut self) -> Result<()> {
+        if self.poisoned {
+            return Err(Error::HandlePoisoned);
+        }
+        match raw_os_sync_file(&self.file, false) {
+            Ok(()) => Ok(()),
+            Err(err) => {
+                self.poisoned = true;
+                Err(err)
+            }
+        }
+    }
+}
+// !SECTION Durable File Wrapper
+
+// SECTION Unit Tests
+// ANCHOR[id=sys-durability-tests,epic=sys-durability,seq=6] Durability-Modultests
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs::OpenOptions;
     use std::io::Read;
 
-    // ANCHOR[acta-sys:DUR-TEST-WRITE-FLUSH-001]
-    // Prüft das Zusammenspiel von `write_all_durable` und nachfolgendem `durable_flush_file` mit Daten- und Metadaten-Flush.
     #[test]
-    fn test_write_all_durable_and_flush_file() -> std::io::Result<()> {
+    fn test_write_all_durable_and_flush_file() -> IoResult<()> {
         let temp_dir = std::env::temp_dir();
         let file_path = temp_dir.join(format!(
             "acta_sys_durability_test_{}.bin",
@@ -261,10 +336,8 @@ mod tests {
         Ok(())
     }
 
-    // ANCHOR[acta-sys:DUR-TEST-META-VAR-001]
-    // Prüft das Flashen von Dateien bei Variation des `metadata_changed`-Flags (fdatasync vs. fsync).
     #[test]
-    fn test_durable_flush_file_metadata_variations() -> std::io::Result<()> {
+    fn test_durable_flush_file_metadata_variations() -> IoResult<()> {
         let temp_dir = std::env::temp_dir();
         let file_path = temp_dir.join(format!(
             "acta_sys_durability_meta_{}.bin",
@@ -285,10 +358,8 @@ mod tests {
         Ok(())
     }
 
-    // ANCHOR[acta-sys:DUR-TEST-DIR-001]
-    // Prüft die Verzeichnissynchronisation (`durable_flush_dir`) nach dem Erstellen einer Datei in einem Unterverzeichnis.
     #[test]
-    fn test_durable_flush_dir() -> std::io::Result<()> {
+    fn test_durable_flush_dir() -> IoResult<()> {
         let temp_dir = std::env::temp_dir();
         let test_subdir = temp_dir.join(format!(
             "acta_sys_durability_dir_{}",
@@ -310,10 +381,8 @@ mod tests {
         Ok(())
     }
 
-    // ANCHOR[acta-sys:DUR-TEST-EMPTY-001]
-    // Prüft, dass das haltbare Schreiben eines leeren Puffers ohne Fehler erfolgreich beendet wird.
     #[test]
-    fn test_write_all_durable_empty_buffer() -> std::io::Result<()> {
+    fn test_write_all_durable_empty_buffer() -> IoResult<()> {
         let temp_dir = std::env::temp_dir();
         let file_path = temp_dir.join(format!(
             "acta_sys_empty_test_{}.bin",
@@ -328,10 +397,8 @@ mod tests {
         Ok(())
     }
 
-    // ANCHOR[acta-sys:DUR-TEST-CHUNKED-001]
-    // Prüft das Schreiben größerer Datenmengen (64 KiB), um blockweises Schreiben zu testen.
     #[test]
-    fn test_write_all_durable_chunked() -> std::io::Result<()> {
+    fn test_write_all_durable_chunked() -> IoResult<()> {
         let temp_dir = std::env::temp_dir();
         let file_path = temp_dir.join(format!(
             "acta_sys_chunk_test_{}.bin",
@@ -347,8 +414,6 @@ mod tests {
         Ok(())
     }
 
-    // ANCHOR[acta-sys:DUR-TEST-NONEXISTENT-DIR-001]
-    // Prüft das Fehlerverhalten beim Flashen eines nicht existierenden Verzeichnisses.
     #[test]
     fn test_durable_flush_dir_nonexistent_path() {
         let nonexistent = std::path::Path::new("/nonexistent_path_acta_sys_test_12345");
@@ -356,7 +421,7 @@ mod tests {
         {
             assert_eq!(
                 durable_flush_dir(nonexistent).err().map(|e| e.kind()),
-                Some(std::io::ErrorKind::NotFound)
+                Some(ErrorKind::NotFound)
             );
         }
         #[cfg(windows)]
@@ -365,4 +430,58 @@ mod tests {
             assert!(res.is_ok());
         }
     }
+
+    /// Prüft INV-SYS-FSYNC-1: Ein fehlgeschlagener Flush vergiftet das Handle dauerhaft.
+    #[test]
+    fn test_inv_sys_fsync_1_poisoning() -> Result<()> {
+        let temp_dir = std::env::temp_dir();
+        let file_path = temp_dir.join(format!(
+            "acta_sys_poison_test_{}.bin",
+            std::process::id()
+        ));
+
+        let raw_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&file_path)
+            .map_err(Error::Io)?;
+
+        let mut durable_file = DurableFile::new(raw_file);
+        assert!(!durable_file.is_poisoned());
+
+        durable_file.write_all(b"initial healthy write")?;
+        durable_file.sync_data()?;
+        assert!(!durable_file.is_poisoned());
+
+        fault_injection::set_fail_fsync(true, libc::EIO);
+
+        let sync_res = durable_file.sync_all();
+        assert!(sync_res.is_err());
+        assert!(
+            matches!(sync_res, Err(Error::SyncFailed(code)) if code == libc::EIO),
+            "expected SyncFailed(EIO)"
+        );
+
+        assert!(durable_file.is_poisoned());
+
+        fault_injection::set_fail_fsync(false, 0);
+
+        let follow_up_sync = durable_file.sync_all();
+        assert!(matches!(follow_up_sync, Err(Error::HandlePoisoned)));
+
+        let follow_up_write = durable_file.write_all(b"must fail");
+        assert!(matches!(follow_up_write, Err(Error::HandlePoisoned)));
+
+        let follow_up_data = durable_file.sync_data();
+        assert!(matches!(follow_up_data, Err(Error::HandlePoisoned)));
+
+        let get_ref = durable_file.get_ref();
+        assert!(matches!(get_ref, Err(Error::HandlePoisoned)));
+
+        let _ = std::fs::remove_file(file_path);
+        Ok(())
+    }
 }
+// !SECTION Unit Tests

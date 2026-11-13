@@ -1,5 +1,16 @@
-//! License and activation gate port trait definitions (§14.6, §15).
+//! # License & Feature Gate Port (Ring 0 / Class B)
+//!
+//! LINK crates/acta-ports/src/lib.rs
+//! LINK crates/acta-ports/src/policy.rs
+//!
+//! // ANCHOR[acta-ports:LICENSE-001]
+//! // SECTION license-gate-contracts
+//! // NOTE: Autorisierungsverträge für Feature-Ringe (`Fast`, `Sovereign`, `Compliance`).
+//! // Invarianten:
+//! // 1. INV-LIC-TOKEN: `AuthorizedRing` besitzt private Felder und kann nur durch `LicenseGate` gemintet werden.
+//! // 2. Fail-Closed bei abgelaufener oder fehlender Signatur.
 
+// ANCHOR[acta-ports:VEC-DEL-MODE-001]
 /// Vector deletion mode for vector index maintenance (§15).
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -28,6 +39,7 @@ pub enum FeatureRing {
     Compliance,
 }
 
+// ANCHOR[acta-ports:AUTH-RING-001]
 /// Token representing an authorized feature ring granting access to engine features (§15).
 ///
 /// `AuthorizedRing` cannot be directly instantiated outside of the `acta-ports` crate or
@@ -64,19 +76,31 @@ pub enum LicenseError {
     Expired(i64),
 }
 
+// ANCHOR[acta-ports:LICENSE-GATE-001]
 /// Dyn-kompatibler Port (P27) für Lizenzprüfung — Implementierung (Lizenzserver-Anbindung,
-/// Ed25519-Signaturprüfung analog zum Löschbeweis-Pfad §14.1) ist NICHT Teil dieses Tickets
+/// Ed25519-Signaturprüfung analog zum Signaturprüfpfad §14.1) ist NICHT Teil dieses Tickets
 /// und folgt in einem eigenen, separat zu beauftragenden Schritt.
 pub trait LicenseGate: Send + Sync {
     /// Checks if the requested feature ring is activated and accessible.
+    ///
+    /// # Fehler
+    /// Liefert `LicenseError::NotActivated`, `LicenseError::InvalidSignature` oder `LicenseError::Expired`.
+    /// # Crash
+    /// Reiner Lesevorgang von Lizenz-Zertifikaten oder RAM-Zustand; keine Seiteneffekte.
     fn check_ring(&self, ring: FeatureRing) -> Result<(), LicenseError>;
 
     /// Authorizes the requested feature ring and yields an [`AuthorizedRing`] token on success.
+    ///
+    /// # Fehler
+    /// Liefert `LicenseError` falls die Autorisierungsprüfung fehlschlägt.
+    /// # Crash
+    /// Reiner Statusabruf und Token-Ausstellung ohne persistente Mutation.
     fn authorize(&self, requested: FeatureRing) -> Result<AuthorizedRing, LicenseError> {
         self.check_ring(requested)?;
         Ok(AuthorizedRing::new(requested))
     }
 }
+// !SECTION license-gate-contracts
 
 /// Default open activation gate allowing `Fast` ring features without restriction.
 #[derive(Debug, Default, Clone, Copy)]

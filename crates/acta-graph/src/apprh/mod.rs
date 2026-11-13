@@ -1,5 +1,14 @@
 //! Averaging-based Personalized PageRank for Hypergraphs (APPRH).
 
+// FILE-CONTEXT
+// STAND: 2026-11-15T12:00:00Z
+// ZWECK: Adaptiver PageRank mit Hyperkanten-Expansion (APPRH).
+// INVARIANTEN: Deterministische Diffusion, budgetierte Iterationen.
+// HOTSPOTS: Keine kritischen Bottlenecks identifiziert
+// SIEHE AUCH: docs/SPEC.md, crates/acta-graph/SPEC.md
+
+
+// SECTION Mod Core Implementation
 pub mod diffusion;
 pub mod error;
 pub mod gate_monitor;
@@ -78,7 +87,7 @@ impl CsrGraph {
     ///
     /// # Invariants
     /// Runs exclusively in shadow mode unless feature-flag activated. Bit-identical determinism.
-// ANCHOR[acta-graph:SRC-APPRH-MOD-003]
+    // ANCHOR[acta-graph:SRC-APPRH-MOD-003]
     pub fn apprh_diffusion(
         &self,
         seeds: &[EntityId],
@@ -88,7 +97,7 @@ impl CsrGraph {
     }
 
     /// Computes shadow comparison between Forward-Push PPR and APPRH on CsrGraph.
-// ANCHOR[acta-graph:SRC-APPRH-MOD-004]
+    // ANCHOR[acta-graph:SRC-APPRH-MOD-004]
     pub fn apprh_shadow_compare(
         &self,
         seeds: &[EntityId],
@@ -106,7 +115,7 @@ mod tests {
     use crate::csr::CsrGraph;
     use acta_types::Entity;
 
-// ANCHOR[acta-graph:SRC-APPRH-MOD-005]
+    // ANCHOR[acta-graph:SRC-APPRH-MOD-005]
     #[tokio::test]
     async fn test_apprh_diffusion_and_shadow_compare_diagnostic_paths() {
         let graph = std::sync::Arc::new(CsrGraph::new());
@@ -147,3 +156,5 @@ mod tests {
         assert!(comparison.top_k_overlap >= 0.0 && comparison.top_k_overlap <= 1.0);
     }
 }
+
+// !SECTION Mod Core Implementation

@@ -13,7 +13,7 @@
 //!
 //! **Architektur und Invarianten:**
 //! - Nur aktiv unter `#[cfg(target_arch = "aarch64")]`.
-//! - Alle Kernel sind `unsafe fn`, da der Aufrufer sicherstellen muss, dass die NEON-Erweiterung
+//! - Alle Kernel sind `unsichere Funktionen`, da der Aufrufer sicherstellen muss, dass die NEON-Erweiterung
 //!   vorhanden ist und die Vektorlängen übereinstimmen.
 //! - Schleifen werden in 4-Element-Schritten durchlaufen (`i + 4 <= len`), der verbleibende Rest
 //!   wird in einer skalaren Nachschleife (`while i < len`) abgearbeitet.
@@ -21,6 +21,7 @@
 #[cfg(target_arch = "aarch64")]
 use std::arch::aarch64::*;
 
+// SECTION NEON-F32-KERNELS
 // ANCHOR[acta-simd:NEON-COSINE-F32]
 /// Computes the cosine distance between two `f32` slices using ARM NEON intrinsics.
 ///
@@ -30,6 +31,7 @@ use std::arch::aarch64::*;
 /// - Slices `a` and `b` must have equal lengths (`a.len() == b.len()`).
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
+// SAFETY: Preconditions (target feature availability, buffer bounds) verified by caller.
 pub(crate) unsafe fn cosine_distance_neon(a: &[f32], b: &[f32]) -> f32 {
     let len = a.len();
     let mut i = 0;
@@ -92,6 +94,7 @@ pub(crate) unsafe fn cosine_distance_neon(a: &[f32], b: &[f32]) -> f32 {
 /// - Slices `a` and `b` must have equal lengths (`a.len() == b.len()`).
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
+// SAFETY: Preconditions (target feature availability, buffer bounds) verified by caller.
 pub(crate) unsafe fn euclidean_distance_neon(a: &[f32], b: &[f32]) -> f32 {
     let len = a.len();
     let mut i = 0;
@@ -137,6 +140,7 @@ pub(crate) unsafe fn euclidean_distance_neon(a: &[f32], b: &[f32]) -> f32 {
 /// - Slices `a` and `b` must have equal lengths (`a.len() == b.len()`).
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
+// SAFETY: Preconditions (target feature availability, buffer bounds) verified by caller.
 pub(crate) unsafe fn dot_product_neon(a: &[f32], b: &[f32]) -> f32 {
     let len = a.len();
     let mut i = 0;
@@ -169,3 +173,4 @@ pub(crate) unsafe fn dot_product_neon(a: &[f32], b: &[f32]) -> f32 {
 
     -dot
 }
+// !SECTION NEON-F32-KERNELS

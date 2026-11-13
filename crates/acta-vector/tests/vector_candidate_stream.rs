@@ -1,6 +1,7 @@
 use acta_ports::{VectorIndex, VectorIndexStats};
-use acta_types::{ActaError, DistanceMetric, DocId, Result, ScoredDocument, TxId};
+use acta_types::{ActaError, DocId, Result, ScoredDocument, TxId};
 use acta_vector::hnsw::{HnswConfig, HnswIndex};
+use acta_vector::types::DistanceMetric;
 use acta_vector::{VectorCandidateStream, DEFAULT_VECTOR_STREAM_BATCH_SIZE};
 use rand::Rng;
 use std::collections::HashSet;
@@ -15,7 +16,7 @@ fn create_hnsw_index(dim: usize, max_elements: usize) -> Result<HnswIndex> {
         distance_metric: DistanceMetric::Cosine,
         ..Default::default()
     };
-    HnswIndex::try_new(config)
+    Ok(HnswIndex::try_new(config)?)
 }
 
 fn generate_random_vector(dim: usize, rng: &mut impl Rng) -> Vec<f32> {
@@ -219,8 +220,8 @@ async fn test_seq_no_snapshot() -> Result<()> {
     let mut stream_mock = VectorCandidateStream::new(&mock_index, vec![1.0; dim], Some(1));
     let res = stream_mock.next_batch().await;
     match res {
-        Err(ActaError::CapabilityUnsupported { capability, .. }) => {
-            assert_eq!(capability, "snapshot_read_at");
+        Err(acta_vector::error::VectorError::Unsupported(reason)) => {
+            assert!(reason.contains("snapshot_read_at") || reason.contains("search_at"));
         }
         _ => {
             return Err(ActaError::Index(

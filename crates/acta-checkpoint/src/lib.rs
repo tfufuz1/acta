@@ -1,3 +1,4 @@
+#![deny(missing_docs)]
 #![deny(dead_code)]
 //! # Checkpoint-Registry für Time-Travel und MVCC-basiertes Snapshotting
 //!
@@ -10,7 +11,7 @@
 //!
 //! ## Öffentliche Checkpoint-Subsystem Architecture (gemäß ADR-011)
 //! `acta-checkpoint` ist der **einzige öffentlich sichtbare Einstiegspunkt** für das Checkpoint-Konzept.
-//! Es stellt den Trait [`acta_ports::CheckpointCoordinator`], die Registry [`PersistentCheckpointStore`]
+//! Es stellt den Trait `CheckpointCoordinator` (unter `compat`), die Registry [`PersistentCheckpointStore`]
 //! sowie den RAII-Guard [`CheckpointGuard`] für automatisches Rollback bei Fehlern bereit.
 //!
 //! **Hinweis zur Abgrenzung:**
@@ -19,7 +20,7 @@
 //! des Store-Crates verwendet werden.
 //!
 //! ## Architektur & Crash-Safety
-//! `PersistentCheckpointStore` delegiert Persistenz an ein [`acta_ports::StorageEngine`]-Objekt
+//! `PersistentCheckpointStore` delegiert Persistenz an ein [`SnapshotSource`]-Objekt
 //! und cacht aktive Checkpoints in einem thread-sicheren In-Memory-Store (`parking_lot::RwLock`).
 //!
 //! **Drop-Semantik & Non-Blocking-I/O:**
@@ -28,34 +29,37 @@
 //! über Piggyback-Flushes (z.B. bei commit/rollback/unpin) sowie explizite Lifecycle-Flushes (`shutdown()`, `close()`).
 //!
 //! ## Einbindung & Abhängigkeiten
-//! - **Abhängigkeiten (normal):** `acta-types`, `acta-ports`, `acta-mvcc`, `bytes`, `tokio`, `tracing`, `serde`, `serde_json`, `parking_lot`, `blake3`, `futures-executor`, `dirs`.
-//! - **Abhängigkeiten (dev):** `acta-testkit`, `acta-store`, `tempfile`, `proptest`, `criterion`.
+//! - **Abhängigkeiten (normal):** `acta-types`, `acta-ports`, `bytes`, `tokio`, `tracing`, `serde`, `serde_json`, `parking_lot`, `blake3`, `thiserror`.
+//! - **Abhängigkeiten (dev):** `acta-testkit`, `tempfile`, `proptest`, `criterion`.
 //! - **Wird eingebunden von:** `acta-agent`, `acta-db`, `acta-engine`.
 
 #![forbid(unsafe_code)]
 
-// FILE-CONTEXT
-// STAND:       2026-09-15T15:09:43Z (SESSION: 2e382e86)
-// ZWECK:       RAII CheckpointGuard + persistente Snapshot-Verwaltung (Re-Exports)
-// INVARIANTEN: All public items must be re-exported from lib.rs for zero-breakage external imports.
-// SIEHE AUCH:  ADR-011
-// REVIEW-PASS[1/2] (TS: 2026-09-15T15:09:43Z) (SESSION: 2e382e86) PRÜFER-KONTEXT: FRESH
-// REVIEW-PASS[2/2] (TS: 2026-09-16T16:23:23Z) (SESSION: 8d62c439) PRÜFER-KONTEXT: FRESH
-
-// ANCHOR[acta-checkpoint:MOD-001]
-// NOTE: Die Aufteilung in Untermodule kapselt Guards, Cloner, Manifest, Metadaten, Orphan-Reaping und Store.
+#[cfg(feature = "workspace")]
+pub mod compat;
+pub mod contract;
+mod error;
+mod fs_seam;
 mod guard;
 mod hardlink_cloner;
 mod manifest;
 mod meta;
 mod orphan;
+mod snapshot_source;
 mod store;
+mod vfs;
+
+pub use vfs::CheckpointVfs;
 
 // Öffentliche Re-Exports für bequemen Zugriff von außen ohne tiefe Pfade
+pub use error::{CheckpointError, CheckpointResult};
+pub use fs_seam::{FsSeam, StdFsSeam};
 pub use guard::{CheckpointGuard, PinGuard};
-pub use hardlink_cloner::{CheckpointHardlinkCloner, DefaultHardlinkCloner, HardlinkCloneResult};
+pub use hardlink_cloner::{
+    CheckpointHardlinkCloner, DefaultHardlinkCloner, HardlinkCloneResult, SnapshotPinner,
+};
 pub use manifest::CheckpointManifest;
-pub use meta::{CheckpointMeta, StateCheckpoint};
+pub use meta::{CheckpointMeta, StateCheckpoint, CURRENT_ID_WIDTH_BITS};
 #[allow(deprecated)]
 pub use orphan::{
     await_pending_rollbacks, clear_all_orphaned_checkpoints, clear_orphaned_checkpoint,
@@ -64,4 +68,5 @@ pub use orphan::{
     pending_rollback_count, register_orphaned_checkpoint, register_pinned_seq_no_orphan,
     InstanceOrphanRegistry, OrphanRegistry, OrphanState, PinId, PinnedSeqNoOrphan, RecoveryReport,
 };
+pub use snapshot_source::{BoxFuture as LocalBoxFuture, SnapshotSource};
 pub use store::{CheckpointRegistry, PersistentCheckpointStore};

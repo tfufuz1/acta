@@ -3,6 +3,13 @@
 //! # Zweck
 //! Sichert die Einhaltung der Schnittstellenvereinbarungen gegen funktionale Regressionen ab.
 
+// FILE-CONTEXT
+// STAND: 2026-11-15T12:00:00Z
+// ZWECK: Compressed Sparse Row (CSR) Graph-Engine Kern.
+// INVARIANTEN: Bitemporale Sichtbarkeit, lock-freie Lesepfade.
+// HOTSPOTS: Keine kritischen Bottlenecks identifiziert
+// SIEHE AUCH: docs/SPEC.md, crates/acta-graph/SPEC.md
+
 use super::super::*;
 use super::basic_tests::setup_test_graph;
 use crate::csr::types::{CsrGraphConfig, PersistedEdgePayload, MAX_VISITED_NODES};
@@ -13,18 +20,12 @@ use std::sync::Arc;
 // ANCHOR[acta-graph:SRC-CSR-TESTS-GRAPH-INDEX-TESTS-001]
 #[tokio::test]
 #[allow(non_snake_case)]
-async fn set_storage_and_with_config_and_storage_CASE_initialization() {
-    use acta_store::{LsmConfig, LsmStorage};
 
-    let dir = tempfile::tempdir().unwrap(); // unwrap allowed
-    let storage: Arc<dyn StorageEngine> = Arc::new(
-        LsmStorage::new(LsmConfig {
-            path: dir.path().to_path_buf(),
-            ..Default::default()
-        })
-        .await
-        .unwrap(), // unwrap allowed
-    );
+// SECTION Graph Index Tests Core Implementation
+async fn test_set_storage_and_with_config_and_storage_CASE_initialization() {
+    use crate::test_doubles::InMemoryStorageEngine;
+
+    let storage: Arc<dyn StorageEngine> = Arc::new(InMemoryStorageEngine::new());
 
     let config = CsrGraphConfig {
         rebuild_threshold: 50,
@@ -34,15 +35,7 @@ async fn set_storage_and_with_config_and_storage_CASE_initialization() {
     assert!(graph.storage.is_some());
 
     // Replace storage via set_storage
-    let dir2 = tempfile::tempdir().unwrap(); // unwrap allowed
-    let storage2: Arc<dyn StorageEngine> = Arc::new(
-        LsmStorage::new(LsmConfig {
-            path: dir2.path().to_path_buf(),
-            ..Default::default()
-        })
-        .await
-        .unwrap(), // unwrap allowed
-    );
+    let storage2: Arc<dyn StorageEngine> = Arc::new(InMemoryStorageEngine::new());
 
     graph.set_storage(storage2);
     assert!(graph.storage.is_some());
@@ -51,7 +44,7 @@ async fn set_storage_and_with_config_and_storage_CASE_initialization() {
 // ANCHOR[acta-graph:SRC-CSR-TESTS-GRAPH-INDEX-TESTS-002]
 #[tokio::test]
 #[allow(non_snake_case)]
-async fn insert_entity_direct_and_edge_direct_CASE_and_boundaries() {
+async fn test_insert_entity_direct_and_edge_direct_CASE_and_boundaries() {
     let graph = Arc::new(CsrGraph::new());
 
     let id1 = EntityId::new(10);
@@ -80,16 +73,10 @@ async fn insert_entity_direct_and_edge_direct_CASE_and_boundaries() {
 // ANCHOR[acta-graph:SRC-CSR-TESTS-GRAPH-INDEX-TESTS-003]
 #[tokio::test]
 #[allow(non_snake_case)]
-async fn persist_entity_edge_delete_persistence_CASE_direct_calls() {
-    use acta_store::{LsmConfig, LsmStorage};
+async fn test_persist_entity_edge_delete_persistence_CASE_direct_calls() {
+    use crate::test_doubles::InMemoryStorageEngine;
 
-    let dir = tempfile::tempdir().unwrap(); // unwrap allowed
-    let storage = LsmStorage::new(LsmConfig {
-        path: dir.path().to_path_buf(),
-        ..Default::default()
-    })
-    .await
-    .unwrap(); // unwrap allowed
+    let storage = InMemoryStorageEngine::new(); // unwrap allowed
 
     let graph = CsrGraph::new();
     let tx = TxId::new(10);
@@ -125,16 +112,10 @@ async fn persist_entity_edge_delete_persistence_CASE_direct_calls() {
 // ANCHOR[acta-graph:SRC-CSR-TESTS-GRAPH-INDEX-TESTS-004]
 #[tokio::test]
 #[allow(non_snake_case)]
-async fn load_from_storage_CASE_legacy_f32_weight_and_invalid_key() {
-    use acta_store::{LsmConfig, LsmStorage};
+async fn test_load_from_storage_CASE_legacy_f32_weight_and_invalid_key() {
+    use crate::test_doubles::InMemoryStorageEngine;
 
-    let dir = tempfile::tempdir().unwrap(); // unwrap allowed
-    let storage = LsmStorage::new(LsmConfig {
-        path: dir.path().to_path_buf(),
-        ..Default::default()
-    })
-    .await
-    .unwrap(); // unwrap allowed
+    let storage = InMemoryStorageEngine::new(); // unwrap allowed
 
     let tx = TxId::new(1);
 
@@ -215,7 +196,7 @@ async fn test_traverse_max_hops_exceeded_emits_warning() {
 // ANCHOR[acta-graph:SRC-CSR-TESTS-GRAPH-INDEX-TESTS-006]
 #[tokio::test]
 #[allow(non_snake_case)]
-async fn traverse_at_time_CASE_saturating_max_hops() {
+async fn test_traverse_at_time_CASE_saturating_max_hops() {
     let graph = setup_test_graph().await;
 
     // Traverse with max_hops 100 (should saturate safely to MAX_TRAVERSAL_HOPS=3 without panic/OOM)
@@ -231,7 +212,7 @@ async fn traverse_at_time_CASE_saturating_max_hops() {
 // ANCHOR[acta-graph:SRC-CSR-TESTS-GRAPH-INDEX-TESTS-007]
 #[tokio::test]
 #[allow(non_snake_case)]
-async fn traverse_CASE_exceeds_max_hops_returns_invalid_input() {
+async fn test_traverse_CASE_exceeds_max_hops_returns_invalid_input() {
     let graph = setup_test_graph().await;
 
     let err = graph.traverse(EntityId::new(1), 101).await.unwrap_err();
@@ -247,7 +228,7 @@ async fn traverse_CASE_exceeds_max_hops_returns_invalid_input() {
 // ANCHOR[acta-graph:SRC-CSR-TESTS-GRAPH-INDEX-TESTS-008]
 #[tokio::test]
 #[allow(non_snake_case)]
-async fn pagerank_CASE_empty_graph_and_isolated_node() {
+async fn test_pagerank_CASE_empty_graph_and_isolated_node() {
     let empty_graph = CsrGraph::new();
     let ranks_empty = empty_graph.pagerank(0.85, 100, 1e-6).await;
     assert!(ranks_empty.is_empty());
@@ -266,7 +247,7 @@ async fn pagerank_CASE_empty_graph_and_isolated_node() {
 // ANCHOR[acta-graph:SRC-CSR-TESTS-GRAPH-INDEX-TESTS-009]
 #[test]
 #[allow(non_snake_case)]
-fn serialization_roundtrip_CASE_persisted_edge_payload() {
+fn test_serialization_roundtrip_CASE_persisted_edge_payload() {
     let payload = PersistedEdgePayload {
         weight: 0.825,
         tx_valid_from: Some(TxId::new(10)),
@@ -292,7 +273,7 @@ fn serialization_roundtrip_CASE_persisted_edge_payload() {
 proptest::proptest! {
 // ANCHOR[acta-graph:SRC-CSR-TESTS-GRAPH-INDEX-TESTS-010]
     #[test]
-    fn prop_csr_offset_array_structural_consistency(
+    fn test_prop_csr_offset_array_structural_consistency(
         node_count in 1..=30usize,
         edge_pairs in proptest::collection::vec((0..30usize, 0..30usize, 0.1f32..2.0f32), 1..100)
     ) {
@@ -640,17 +621,9 @@ async fn test_default_csr_graph_no_consistency_check() {
 // ANCHOR[acta-graph:SRC-CSR-TESTS-GRAPH-INDEX-TESTS-016]
 #[tokio::test]
 async fn test_csr_is_entity_deleted_returns_false_for_live_entity() {
-    use acta_store::{LsmConfig, LsmStorage};
+    use crate::test_doubles::InMemoryStorageEngine;
 
-    let dir = tempfile::tempdir().unwrap();
-    let storage = Arc::new(
-        LsmStorage::new(LsmConfig {
-            path: dir.path().to_path_buf(),
-            ..Default::default()
-        })
-        .await
-        .unwrap(),
-    );
+    let storage = Arc::new(InMemoryStorageEngine::new());
     let graph = CsrGraph::with_storage(storage.clone());
     let entity_live = EntityId::new(10);
     let entity_deleted = EntityId::new(20);
@@ -719,3 +692,5 @@ fn test_edge_store_invalidated_after_compact() {
             "edge_store must be cleared by compact() so deleted/tombstoned edges are no longer returned"
         );
 }
+
+// !SECTION Graph Index Tests Core Implementation

@@ -16,9 +16,15 @@
 //!
 //! Schützt gegen unbemerkte WAL-Truncation-Angriffe und partielle Log-Dateitrunkierungen.
 
+// SECTION [epic=crypto-wal,seq=1] Imports
 use crate::error::CryptoError;
 use subtle::ConstantTimeEq;
 
+// !SECTION
+
+// SECTION [epic=crypto-wal,seq=2] WAL-Vollständigkeitsprüfung
+// ANCHOR[acta-crypto:WAL-002] Verifikation des WAL-Tails gegen High-Water-Mark
+// NOTE: Erkennt Truncation-Angriffe und partielle Dateikorrumpierung (TS:2026-11-11)
 /// Verifiziert, dass der WAL-Tail nicht abgeschnitten wurde, indem der
 /// letzte bekannte WAL-HMAC mit der im Checkpoint-Manifest persistierten
 /// High-Water-Mark verglichen wird.
@@ -34,14 +40,6 @@ use subtle::ConstantTimeEq;
 ///
 /// # Fehler
 /// `CryptoError::WalTruncationDetected` wenn `wal_tail_hmac != manifest_high_water_mark`.
-///
-/// # Sicherheitshinweis
-/// Diese Funktion bietet keine Garantie gegen einen Angreifer, der sowohl den
-/// WAL als auch das Checkpoint-Manifest kontrolliert. Sie schützt gegen
-/// teilweise Dateitrunkierungen durch Dateisystem- oder Hardware-Fehler sowie
-/// gegen Angreifer, die nur WAL-Schreibzugriff, aber keinen Manifest-Zugriff haben.
-// ANCHOR[acta-crypto:WAL-002]
-/// Validiert die Vollständigkeit einer WAL-HMAC-Kette über ein gesamtes Segment.
 pub fn verify_wal_chain_completeness(
     wal_tail_hmac: &[u8; 32],
     manifest_high_water_mark: &[u8; 32],
@@ -53,6 +51,9 @@ pub fn verify_wal_chain_completeness(
     }
 }
 
+// !SECTION
+
+// SECTION [epic=crypto-wal,seq=3] Tests
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -73,3 +74,4 @@ mod tests {
         assert!(matches!(res, Err(CryptoError::WalTruncationDetected)));
     }
 }
+// !SECTION

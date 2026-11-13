@@ -18,6 +18,8 @@ use crate::path_rag::PathGraph;
 
 /// Snapshot-isolated wrapper around `GraphInner` at a specific transaction sequence number (`as_of_tx`).
 // ANCHOR[acta-graph:SRC-PATH-RAG-SNAPSHOT-001]
+
+// SECTION Snapshot Core Implementation
 pub struct SnapshotPathGraph<'a> {
     inner: &'a GraphInner,
     as_of_tx: TxId,
@@ -25,7 +27,7 @@ pub struct SnapshotPathGraph<'a> {
 
 impl<'a> SnapshotPathGraph<'a> {
     /// Creates a new `SnapshotPathGraph` borrowing `inner` at transaction `as_of_tx`.
-// ANCHOR[acta-graph:SRC-PATH-RAG-SNAPSHOT-002]
+    // ANCHOR[acta-graph:SRC-PATH-RAG-SNAPSHOT-002]
     pub fn new(inner: &'a GraphInner, as_of_tx: TxId) -> Self {
         Self { inner, as_of_tx }
     }
@@ -221,3 +223,5 @@ impl<'a> PathGraph for SnapshotPathGraph<'a> {
         }
     }
 }
+
+// !SECTION Snapshot Core Implementation

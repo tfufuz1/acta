@@ -3,12 +3,21 @@
 //! # Zweck
 //! Führt Kantenaktualisierungen durch und pflegt Adjazenzvektoren sowie Inverted Lists.
 
+// FILE-CONTEXT
+// STAND: 2026-11-15T12:00:00Z
+// ZWECK: Compressed Sparse Row (CSR) Graph-Engine Kern.
+// INVARIANTEN: Bitemporale Sichtbarkeit, lock-freie Lesepfade.
+// HOTSPOTS: Keine kritischen Bottlenecks identifiziert
+// SIEHE AUCH: docs/SPEC.md, crates/acta-graph/SPEC.md
+
 use super::super::types::EdgePayload;
 use super::CsrGraph;
 use crate::consistency_enforcement::EdgeAssertion;
 use acta_types::{ActaError, DocId, EntityId, Result, TxId};
 use std::sync::Arc;
 
+
+// SECTION Edge Mutation Core Implementation
 impl CsrGraph {
     fn check_consistency_before_insert(
         &self,
@@ -167,7 +176,7 @@ impl CsrGraph {
     }
 
     #[allow(clippy::too_many_arguments)]
-// ANCHOR[acta-graph:SRC-CSR-GRAPH-WRITE-EDGE-MUTATION-001]
+    // ANCHOR[acta-graph:SRC-CSR-GRAPH-WRITE-EDGE-MUTATION-001]
     pub fn load_edge_direct(
         &self,
         from: EntityId,
@@ -213,3 +222,5 @@ impl CsrGraph {
         Ok(())
     }
 }
+
+// !SECTION Edge Mutation Core Implementation

@@ -1,0 +1,14 @@
+[crates.acta-store]
+group = "storage"
+level = 1
+tier = "beta"
+path = "crates/acta-store"
+unsafe_island = false
+allowed_internal = ["acta-ids", "acta-env", "acta-sys", "acta-mvcc", "acta-crypto"]
+
+[crates.acta-store.feature_closure_allowed]
+workspace = ["acta-types", "acta-ports"]
+
+[crates.acta-store.dev_allowed]
+testkit = ["acta-testkit"]
+test = "cargo test -p acta-store --locked"

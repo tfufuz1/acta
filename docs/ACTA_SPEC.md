@@ -7,7 +7,7 @@
 | Status | Entwurf zur Freigabe (Architekturentscheidung) |
 | Zielort im Repo | `acta/docs/SPEC.md` |
 | Sprache / Toolchain | Rust, Edition 2021, MSRV 1.89 (Workspace bereits so gepinnt) |
-| Quellen | Repos `tfufuz1/contextra`, `tfufuz1/acta`; die vier Löschvarianten aus *Crypto-Shredding_RAG_Rechts-und-Architektursynthese.md* |
+| Quellen | Repos `tfufuz1/acta`, `tfufuz1/acta`; die vier Löschvarianten aus *Crypto-Shredding_RAG_Rechts-und-Architektursynthese.md* |
 | Normative Wörter | **MUSS**, **DARF NICHT**, **SOLL**, **KANN** (im Sinne von RFC 2119) |
 | Rechtlicher Vorbehalt | Die DSGVO-Bezüge sind technische Auslegung, keine Rechtsberatung. Vor Produktivbetrieb ist eine juristische Prüfung der Aufbewahrungs- und Nachweislogik nötig (siehe §21). |
 
@@ -16,7 +16,7 @@
 ## Inhaltsverzeichnis
 
 1. Zielbild und Designprinzipien
-2. Lessons Learned aus Contextra
+2. Lessons Learned aus Acta
 3. Synthese der vier Löschvarianten
 4. Kernkonzept: drei Ebenen und eine Brücke
 5. Verantwortungsgrenze: was Acta löscht und was nicht
@@ -79,11 +79,11 @@ Details: §4.
 
 ---
 
-## 2. Lessons Learned aus Contextra
+## 2. Lessons Learned aus Acta
 
-Aus Struktur, `docs/decoupling/REPORT.md` und `FINDINGS.md` in Contextra sowie der Analyse der vier Löschvarianten:
+Aus Struktur, `docs/decoupling/REPORT.md` und `FINDINGS.md` in Acta sowie der Analyse der vier Löschvarianten:
 
-| # | Befund in Contextra | Ursache | Gegenmaßnahme in Acta |
+| # | Befund in Acta | Ursache | Gegenmaßnahme in Acta |
 |---|---|---|---|
 | L1 | Fünf bis sechs getrennte Löschpfade (`Collection::delete`, `execute_forget_pipeline`, `DpiPurgeDriver`, Inline-Löschung in `collections.rs`, MCP-Handler) mit unterschiedlicher Semantik | Löschung wurde pro Feature nachgerüstet | **Ein** Einstiegspunkt `erase()` (§13). Der rohe Store-Delete ist `pub(crate)`. Lint verbietet andere Löschaufrufe. |
 | L2 | `ErasureLedger`, WAL-Retire, `PurgeOrchestrator::resume` ohne Produktionsaufrufer oder als No-Op | Komponenten gebaut, aber nie verdrahtet | **Wiring Contract** (§6.5): Pflicht-Ports als nicht-optionale Felder, Dead-Port-Gate, Boot-Selbsttest mit Kanarien-Löschung |
@@ -177,7 +177,7 @@ Ein Eingabedokument wird in **Einheiten (Units)** zerlegt. Jede Einheit hat gena
 
 ## 5. Verantwortungsgrenze: was Acta löscht und was nicht
 
-Die Frage „nur Daten in Contextra selbst oder auch Kopien und Dateien“ wird als **Custody Boundary** beantwortet. Es gibt sechs Zonen mit je eigenem Versprechen und eigener Nachweisklasse.
+Die Frage „nur Daten in Acta selbst oder auch Kopien und Dateien“ wird als **Custody Boundary** beantwortet. Es gibt sechs Zonen mit je eigenem Versprechen und eigener Nachweisklasse.
 
 | Zone | Ort | Besitzer | Mechanismus | Versprechen / Nachweis |
 |---|---|---|---|---|
@@ -330,7 +330,7 @@ Zusätzliche Absicherungen:
 | `acta-env::{Clock,Rng,IdGen,ManualClock}` | Determinismus in Tests | unverändert. Kern-Crates nutzen ausschließlich dies. |
 | `acta-store::tests/tenant_scoped_storage.rs` u. a. | vorhandene Tests | bleiben als Regressionsbasis |
 
-**Wichtig:** `acta-store` bekommt **kein** Konzept „Erasure“. Es bietet generische Fähigkeiten (gefilterter Rewrite, Barrier gegen Compaction, WAL-Scrub, Rohscan-Hilfen). Die Löschsemantik lebt außerhalb. Das verhindert die Rückkehr zur Contextra-Verdrahtung.
+**Wichtig:** `acta-store` bekommt **kein** Konzept „Erasure“. Es bietet generische Fähigkeiten (gefilterter Rewrite, Barrier gegen Compaction, WAL-Scrub, Rohscan-Hilfen). Die Löschsemantik lebt außerhalb. Das verhindert die Rückkehr zur Acta-Verdrahtung.
 
 ---
 

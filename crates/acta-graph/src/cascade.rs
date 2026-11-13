@@ -1,7 +1,7 @@
-//! Kaskadierende Invalidierung und Bereinigung von Hyperkanten bei Dokumentenlöschung.
+//! Kaskadierende Invalidierung und Bereinigung von Hyperkanten bei Dokumenten-Invalidierung.
 //!
 //! # Zweck
-//! Wenn ein Quelldokument gelöscht oder aktualisiert wird, invalidiert dieses Modul
+//! Wenn ein Quelldokument invalidiert oder aktualisiert wird, invalidiert dieses Modul
 //! alle daraus abgeleiteten Kanten und Hyperkanten atomar und kaskadierend (Fail-Closed).
 
 // FILE-CONTEXT
@@ -15,6 +15,8 @@ use acta_types::{DocId, EntityId, Result, TxId};
 /// Maximum number of hyperedges processed synchronously per cascade invalidation run
 /// to bound latency spikes. Any remaining hyperedges are returned in `deferred`.
 // ANCHOR[acta-graph:SRC-CASCADE-001]
+
+// SECTION Cascade Core Implementation
 pub const MAX_HYPEREDGE_CASCADE_FANOUT: usize = 1_000;
 
 /// Default fan-out limit for hyperedge cascade invalidation per document (§6.8).
@@ -98,11 +100,6 @@ pub struct CascadeDeletionRecord {
     pub tombstoned_count: usize,
     pub wal_seq: u64,
 }
-
-/// Deprecated alias for [`CascadeDeletionRecord`] to maintain backward compatibility.
-#[deprecated(note = "Use CascadeDeletionRecord instead")]
-// ANCHOR[acta-graph:SRC-CASCADE-007]
-pub type DeletionProof = CascadeDeletionRecord;
 
 /// Ticket tracking persistent cascade invalidation status (§6.8).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -447,7 +444,7 @@ mod tests {
     use acta_ports::GraphIndex;
     use acta_types::{Edge, Entity};
 
-// ANCHOR[acta-graph:SRC-CASCADE-014]
+    // ANCHOR[acta-graph:SRC-CASCADE-014]
     #[tokio::test]
     async fn test_cascade_invalidation_tombstones_edges_of_superseded_doc() {
         let graph = std::sync::Arc::new(CsrGraph::new());
@@ -512,7 +509,7 @@ mod tests {
         assert_eq!(graph.neighbors(node2).await.unwrap().len(), 1);
     }
 
-// ANCHOR[acta-graph:SRC-CASCADE-015]
+    // ANCHOR[acta-graph:SRC-CASCADE-015]
     #[tokio::test]
     async fn test_cascade_invalidation_is_idempotent() {
         let graph = std::sync::Arc::new(CsrGraph::new());
@@ -557,7 +554,7 @@ mod tests {
         assert!(report2.affected_node_ids.is_empty());
     }
 
-// ANCHOR[acta-graph:SRC-CASCADE-016]
+    // ANCHOR[acta-graph:SRC-CASCADE-016]
     #[tokio::test]
     async fn test_pathrag_sufficiency_excludes_cascaded_tombstones() {
         let graph = std::sync::Arc::new(CsrGraph::new());
@@ -604,7 +601,7 @@ mod tests {
         assert!(paths_after.is_empty());
     }
 
-// ANCHOR[acta-graph:SRC-CASCADE-017]
+    // ANCHOR[acta-graph:SRC-CASCADE-017]
     #[tokio::test]
     async fn test_cascade_invalidation_nonexistent_doc_returns_zero_count() {
         let graph = std::sync::Arc::new(CsrGraph::new());
@@ -618,7 +615,7 @@ mod tests {
         assert!(report.affected_node_ids.is_empty());
     }
 
-// ANCHOR[acta-graph:SRC-CASCADE-018]
+    // ANCHOR[acta-graph:SRC-CASCADE-018]
     #[tokio::test]
     async fn test_cascade_invalidation_max_wal_seq() {
         let graph = std::sync::Arc::new(CsrGraph::new());
@@ -657,7 +654,7 @@ mod tests {
         assert_eq!(report.affected_node_ids.len(), 2);
     }
 
-// ANCHOR[acta-graph:SRC-CASCADE-019]
+    // ANCHOR[acta-graph:SRC-CASCADE-019]
     #[tokio::test]
     async fn test_cascade_invalidation_multiple_edges_same_doc() {
         let graph = std::sync::Arc::new(CsrGraph::new());
@@ -696,7 +693,7 @@ mod tests {
         assert!(report.affected_node_ids.contains(&n3));
     }
 
-// ANCHOR[acta-graph:SRC-CASCADE-020]
+    // ANCHOR[acta-graph:SRC-CASCADE-020]
     #[tokio::test]
     async fn test_cascade_invalidate_hyperedges_normal() {
         let graph = CsrGraph::new();
@@ -728,7 +725,7 @@ mod tests {
         }
     }
 
-// ANCHOR[acta-graph:SRC-CASCADE-021]
+    // ANCHOR[acta-graph:SRC-CASCADE-021]
     #[tokio::test]
     async fn test_cascade_invalidate_hyperedges_high_fanout() {
         let graph = CsrGraph::new();
@@ -769,7 +766,7 @@ mod tests {
         assert_eq!(remaining.len(), report.deferred.len());
     }
 
-// ANCHOR[acta-graph:SRC-CASCADE-022]
+    // ANCHOR[acta-graph:SRC-CASCADE-022]
     #[tokio::test]
     async fn test_cascade_invalidate_hyperedges_idempotency() {
         let graph = CsrGraph::new();
@@ -800,7 +797,7 @@ mod tests {
         assert!(report2.deferred.is_empty());
     }
 
-// ANCHOR[acta-graph:SRC-CASCADE-023]
+    // ANCHOR[acta-graph:SRC-CASCADE-023]
     #[tokio::test]
     async fn test_cascade_invalidate_hyperedges_atomic_role_bindings() {
         let graph = CsrGraph::new();
@@ -845,7 +842,7 @@ mod tests {
         }
     }
 
-// ANCHOR[acta-graph:SRC-CASCADE-024]
+    // ANCHOR[acta-graph:SRC-CASCADE-024]
     #[tokio::test]
     async fn test_cascade_invalidate_hyperedges_nonexistent_doc() {
         let graph = CsrGraph::new();
@@ -859,7 +856,7 @@ mod tests {
         assert!(report.deferred.is_empty());
     }
 
-// ANCHOR[acta-graph:SRC-CASCADE-025]
+    // ANCHOR[acta-graph:SRC-CASCADE-025]
     #[tokio::test]
     async fn test_cascade_invalidate_hyperedges_mixed_docs() {
         let graph = CsrGraph::new();
@@ -911,7 +908,7 @@ mod tests {
         assert_eq!(graph.hyperedges_for_doc(doc_b), vec![id_b1]);
     }
 
-// ANCHOR[acta-graph:SRC-CASCADE-026]
+    // ANCHOR[acta-graph:SRC-CASCADE-026]
     #[tokio::test]
     async fn test_sweep_orphans_sweeps_degenerated_hyperedges() {
         let graph = CsrGraph::new();
@@ -975,7 +972,7 @@ mod tests {
         assert!(graph.get_hyperedge(HyperEdgeId::new(3)).is_none());
     }
 
-// ANCHOR[acta-graph:SRC-CASCADE-027]
+    // ANCHOR[acta-graph:SRC-CASCADE-027]
     #[tokio::test]
     async fn test_verify_deletion_completeness_multilevel_chain() {
         let graph = CsrGraph::new();
@@ -1048,7 +1045,7 @@ mod tests {
         );
     }
 
-// ANCHOR[acta-graph:SRC-CASCADE-028]
+    // ANCHOR[acta-graph:SRC-CASCADE-028]
     #[test]
     fn test_verify_deletion_completeness_cycle_termination() {
         let graph = CsrGraph::new();
@@ -1095,3 +1092,5 @@ mod tests {
         );
     }
 }
+
+// !SECTION Cascade Core Implementation

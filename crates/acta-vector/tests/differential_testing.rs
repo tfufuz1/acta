@@ -1,6 +1,7 @@
 use acta_ports::VectorIndex;
-use acta_types::{DistanceMetric, DocId, TxId};
+use acta_types::{DocId, TxId};
 use acta_vector::hnsw::{HnswConfig, HnswIndex};
+use acta_vector::types::DistanceMetric;
 use rand::Rng;
 use std::collections::HashSet;
 

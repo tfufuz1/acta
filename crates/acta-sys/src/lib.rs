@@ -1,46 +1,104 @@
+// =========================================================================
+// ANCHOR[id=sys-lib-main,epic=sys-core,seq=0] Crate-Wurzel und Baukasten-Export
+// =========================================================================
+// LINK crates/acta-sys/Cargo.toml
+// LINK crates/acta-sys/SPEC.md
+// LINK crates/acta-sys/PLAN.md
+// NOTE: Low-level unsafe system abstractions and FFI island for Acta (E0 / Ring 0).
+// Invariante: Autarkes Crate (0 interne Abhängigkeiten).
+// Keine unzulässigen Garantieversprechen (SPEC §6.4). Zero panic in Produktion.
+
 #![allow(unsafe_code)]
 #![deny(unsafe_op_in_unsafe_fn)]
-#![warn(missing_docs)]
-#![doc = "Acta Unsafe System Abstraction Crate (Ring 0 - Unsafe-Insel)"]
+#![deny(missing_docs)]
+#![doc = "Acta Unsafe System Abstraction Crate (Ring 0 / E0 - Unsafe-Insel)"]
 
-//! # Acta-Sys: Low-Level-Systemabstraktionen und Unsafe-Insel (Ring 0)
+//! # Acta-Sys: Low-Level-Systemabstraktionen und Unsafe-Insel (E0 / Ring 0)
 //!
-//! Dieses Modul bildet die hardware- und betriebssystemnahe Basis (Ring 0) für das Acta-System.
+//! Dieses Modul bildet die hardware- und betriebssystemnahe Basis (Ring 0, Ebene E0) für das Acta-System
+//! und externe Konsumenten im Baustein-Ökosystem.
 //! Es kapselt alle systemweiten Zugriffe, die betriebssystemspezifische FFI-Aufrufe (Foreign Function Interface,
 //! Schnittstelle zu betriebssystemeigenem C-Code) oder `unsafe`-Code erfordern, in sicheren, typisierten Rust-Schnittstellen.
 //!
-//! ## Ring-Zugehörigkeit und Architektur
-//! - **Ring 0 (Kern / Unsafe-Insel):** Darf von höheren Ringen eingebunden werden, hängt selbst von keinen anderen
-//!   Acta-Crates ab.
+//! ## Baukasten-Einordnung und Architektur
+//! - **Ebene E0 (Kern / Unsafe-Insel):** Darf von höheren Schichten eingebunden werden, hängt selbst von keinen anderen
+//!   Acta-Crates ab (autarker Baustein).
 //! - **Abhängigkeiten (ausgehend):** Keine internen Workspace-Abhängigkeiten. Externe Crates: `libc` (POSIX),
-//!   `windows-sys` (Win32), `memmap2`, `tracing`.
-//! - **Eingehende Abhängigkeiten (wer nutzt acta-sys):**
-//!   - `acta-db` (Transaktions- und Datenbankverwaltung)
-//!   - `acta-durable-fs` (Dauerhafte Dateisystem-Abstraktionen)
-//!   - `acta-engine` (Such- und Indexierungs-Engine)
+//!   `windows-sys` (Win32), `memmap2`, `thiserror`, `tracing`.
+//! - **Eingehende Abhängigkeiten (Beispiel-Konsumenten):**
+//!   - `acta-vault` (RAII-Tresorpuffer aufbauend auf `sys::vault`)
 //!   - `acta-store` (LSM-Speicher und WAL = Write-Ahead-Log)
 //!   - `acta-vector` (Vektorindex und DiskANN-Speicherabbildung)
+//!   - Hinweis: `acta-durable-fs` ist eine eigenständige Dateisystem-Abstraktion (SPEC v3 S-03R / §6.4).
 //!
 //! ## Kernkomponenten
 //! 1. [`acl_win32`]: Plattformspezifische Zugriffsbeschränkungen (DACL unter Windows, chmod `0600` und UID-Prüfung unter Unix).
-//! 2. [`durability`]: Haltbare Dateisystem-Synchronisation (WAL/LSM fsync, fdatasync, F_FULLFSYNC, FlushFileBuffers).
-//! 3. [`mlock`]: Festpinnen sensibler Speicherseiten im RAM (Verhinderung von Paging/Swapping auf die Festplatte).
-//! 4. [`mmap`]: Sichere Nur-Lese-Speicherabbildung (`mmap_readonly`) für Vektordaten und SSTables.
-//! 5. [`posix`]: POSIX-Ressourcenlimits (`rlimit` für Dateideskriptoren) und Deskriptorumleitungen (`dup2`).
-//! 6. [`vault`]: RAII-Sicherheitsverwaltung ([`LockedRegions`]) für sensible Schlüsselpuffer inklusive sicherem Nullsetzen (Zeroize).
+//! 2. [`contract`]: Minimale Umwelt-Traits ([`MemoryLocker`]) und I/O-freie Referenzimplementierungen ([`NoopMemoryLocker`]).
+//! 3. [`durability`]: Haltbare Dateisystem-Synchronisation (WAL/LSM fsync, fdatasync, F_FULLFSYNC, FlushFileBuffers, Handle-Poisoning).
+//! 4. [`error`]: Strukturiertes Fehlermodell (`thiserror`, `#[non_exhaustive]`) mit maschinenlesbarem OS-Errno.
+//! 5. [`mlock`]: Festpinnen sensibler Speicherseiten im RAM (`mlock`, `VirtualLock`, `MADV_DONTDUMP`).
+//! 6. [`mmap`]: Sichere Nur-Lese-Speicherabbildung (`mmap_readonly`, `SealedFile`, `SealedMap`) für Vektordaten und SSTables.
+//! 7. [`posix`]: POSIX-Ressourcenlimits (`rlimit` für Dateideskriptoren) und Deskriptorumleitungen (`dup2`).
+//! 8. [`vault`]: RAII-Sicherheitsverwaltung ([`LockedRegions`], [`VaultBuffer`]) für sensible Schlüsselpuffer inklusive sicherem Nullsetzen (Zeroize).
 
+// SECTION Submodule
+// ANCHOR[id=sys-submodules,epic=sys-core,seq=1] Deklaration der internen Module
+// LINK crates/acta-sys/src/acl_win32.rs
 pub mod acl_win32;
+// LINK crates/acta-sys/src/contract.rs
+pub mod contract;
+// LINK crates/acta-sys/src/durability.rs
 pub mod durability;
+// LINK crates/acta-sys/src/error.rs
+pub mod error;
+// LINK crates/acta-sys/src/mlock.rs
 pub mod mlock;
+// LINK crates/acta-sys/src/mmap.rs
 pub mod mmap;
+// LINK crates/acta-sys/src/posix.rs
 pub mod posix;
+// LINK crates/acta-sys/src/vault.rs
 pub mod vault;
+// !SECTION Submodule
 
-// ANCHOR[acta-sys:LIB-REEXPORT-001]
-// Öffentliche Re-Exports für ergonomischen Direktzugriff durch übergeordnete Ringe (z. B. acta-store, acta-engine).
+// SECTION Baukasten-Zielmodule
+// ANCHOR[id=sys-building-blocks,epic=sys-core,seq=2] Modulare Baukasten-Namespaces
+
+/// Baukasten-Zielmodul `mem`: Kapselt Memory-Locking, Vault-Speicher und Zeroization.
+// LINK crates/acta-sys/src/mlock.rs
+// LINK crates/acta-sys/src/vault.rs
+pub mod mem {
+    pub use crate::contract::{MemoryLocker, NoopMemoryLocker, OsMemoryLocker};
+    pub use crate::mlock::{
+        apply_dont_dump, mem_lock, mem_lock_typed, mem_lock_with_policy, mem_unlock, MemLockPolicy,
+    };
+    pub use crate::vault::{LockedRegions, VaultBuffer};
+}
+
+/// Baukasten-Zielmodul `fsmeta`: Plattformspezifische Datei-ACLs und Eigentümerprüfungen.
+// LINK crates/acta-sys/src/acl_win32.rs
+pub mod fsmeta {
+    pub use crate::acl_win32::{set_restrictive_file_acl, verify_file_acl_owner_only};
+}
+
+/// Baukasten-Zielmodul `map`: Sichere Speicherabbildung (INV-IO-1 / INV-ENCRYPT-REST-2).
+// LINK crates/acta-sys/src/mmap.rs
+pub mod map {
+    pub use crate::mmap::{mmap_readonly, SealedFile, SealedMap, SealedReadOnly, Unsealed};
+}
+// !SECTION Baukasten-Zielmodule
+
+// SECTION Public Re-exports
+// ANCHOR[id=sys-reexports,epic=sys-core,seq=3] Ergonomische Direktzugriffe
+// NOTE: Re-Exports für ergonomischen Direktzugriff durch übergeordnete Ringe (z. B. acta-store, acta-vector, acta-vault).
 pub use acl_win32::{set_restrictive_file_acl, verify_file_acl_owner_only};
-pub use durability::{durable_flush_dir, durable_flush_file, write_all_durable};
-pub use mlock::{mem_lock, mem_lock_with_policy, mem_unlock, MemLockPolicy};
-pub use mmap::mmap_readonly;
+pub use contract::{MemoryLocker, NoopMemoryLocker, OsMemoryLocker};
+pub use durability::{durable_flush_dir, durable_flush_file, write_all_durable, DurableFile};
+pub use error::{Error, Result, SysError};
+pub use mlock::{
+    apply_dont_dump, mem_lock, mem_lock_typed, mem_lock_with_policy, mem_unlock, MemLockPolicy,
+};
+pub use mmap::{mmap_readonly, SealedFile, SealedMap, SealedReadOnly, Unsealed};
 pub use posix::{ensure_fd_limit, reopen_and_dup2, set_fd_limit};
-pub use vault::LockedRegions;
+pub use vault::{LockedRegions, VaultBuffer};
+// !SECTION Public Re-exports

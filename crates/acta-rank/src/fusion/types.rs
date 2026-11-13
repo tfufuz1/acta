@@ -5,16 +5,19 @@
 //! Enthält grundlegende Datenstrukturen für Retrieval-Ergebnisse, aggregierte Fusionsergebnisse,
 //! Herkunftsnachweise (Provenance) und Fehlerrichtlinien bei Signalausfällen.
 
+use crate::local_types::DocId;
+pub use crate::local_types::SignalFailurePolicy;
 use ahash::AHashMap;
-use acta_types::{ContextChunk, ActaError, DocId, MemoryLink};
 use serde::{Deserialize, Serialize};
 
-fn map_is_empty<K, V, S>(m: &ahash::AHashMap<K, V, S>) -> bool {
+pub fn map_is_empty<K, V, S>(m: &ahash::AHashMap<K, V, S>) -> bool {
     m.is_empty()
 }
 
 // ADR-098 (Token-Schätzung für ContextChunk: f64 -> usize Konvertierung)
+#[cfg(feature = "workspace")]
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#[allow(dead_code)]
 pub(super) fn estimate_tokens(text: &str) -> usize {
     if text.is_empty() {
         return 0;
@@ -29,43 +32,8 @@ pub(super) fn estimate_tokens(text: &str) -> usize {
     }
 }
 
-// ANCHOR[acta-rank:TYPE-001]
-impl TryFrom<SearchResult> for ContextChunk {
-    type Error = ActaError;
-
-    fn try_from(r: SearchResult) -> std::result::Result<Self, Self::Error> {
-        let doc_id = DocId::from_key(&r.id).map_err(|e| {
-            ActaError::InvalidInput(format!("SearchResult-ID '{}' ungültig: {e}", r.id))
-        })?;
-        let content = r
-            .metadata
-            .as_ref()
-            .and_then(|m| m.get("text").or_else(|| m.get("content")))
-            .and_then(|t| t.as_str())
-            .unwrap_or("")
-            .to_string();
-        let token_count = estimate_tokens(&content);
-        let links: Vec<MemoryLink> = r
-            .metadata
-            .as_ref()
-            .and_then(|m| m.get("links"))
-            .and_then(|v| serde_json::from_value(v.clone()).ok())
-            .unwrap_or_default();
-        Ok(ContextChunk {
-            doc_id,
-            content,
-            relevance: r.score,
-            token_count,
-            metadata: r.metadata,
-            contextual_prefix: None,
-            links,
-        })
-    }
-}
-
 /// Provenance record for fused search result.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
-// ANCHOR[acta-rank:TYPE-004]
 /// Auditierbarer Herkunftsnachweis (Provenance) über alle beteiligten Retrieval-Kanäle.
 pub struct ProvenanceRecord {
     /// Distance score from vector search signal.
@@ -107,7 +75,7 @@ pub struct ProvenanceRecord {
 
 impl ProvenanceRecord {
     /// Constructs a `ProvenanceRecord` synthesized from source document IDs.
-    pub fn synthesized_from(source_doc_ids: &[acta_types::DocId]) -> Self {
+    pub fn synthesized_from(source_doc_ids: &[DocId]) -> Self {
         let mut signal_ranks = AHashMap::new();
         for (idx, id) in source_doc_ids.iter().enumerate() {
             let rank_u32 = u32::try_from(idx.saturating_add(1)).unwrap_or(u32::MAX);
@@ -119,11 +87,11 @@ impl ProvenanceRecord {
             ..Default::default()
         }
     }
+
 }
 
 /// Signal contribution details.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-// ANCHOR[acta-rank:TYPE-005]
 /// Beitrag eines einzelnen Signals zum aggregierten RRF-Score.
 pub struct SignalContribution {
     /// Raw score before normalization/fusion.
@@ -134,9 +102,59 @@ pub struct SignalContribution {
     pub rrf_contribution: f32,
 }
 
+/// Crate-lokaler Typ für gerankte/fusionierte Elemente.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ScoredItem {
+    /// Eindeutiger Dokument- oder Elementbezeichner.
+    pub id: String,
+    /// Punktwert / Ähnlichkeitswert / Fusionswert.
+    pub score: f32,
+    /// Optionaler strukturierter Herkunftsnachweis.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<ProvenanceRecord>,
+}
+
+impl ScoredItem {
+    /// Erzeugt ein neues `ScoredItem` ohne Provenienz.
+    pub fn new(id: impl Into<String>, score: f32) -> Self {
+        Self {
+            id: id.into(),
+            score,
+            provenance: None,
+        }
+    }
+
+    /// Fügt dem Element Provenienzinformationen hinzu.
+    pub fn with_provenance(mut self, provenance: ProvenanceRecord) -> Self {
+        self.provenance = Some(provenance);
+        self
+    }
+}
+
+impl From<SearchResult> for ScoredItem {
+    fn from(r: SearchResult) -> Self {
+        Self {
+            id: r.id,
+            score: r.score,
+            provenance: r.provenance,
+        }
+    }
+}
+
+impl From<ScoredItem> for SearchResult {
+    fn from(item: ScoredItem) -> Self {
+        Self {
+            id: item.id,
+            score: item.score,
+            metadata: None,
+            matched_signals: Vec::new(),
+            provenance: item.provenance,
+        }
+    }
+}
+
 /// Individual search result candidate for fusion.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-// ANCHOR[acta-rank:TYPE-002]
 /// Standard-Suchergebnis eines einzelnen Retrieval-Signals oder einer Fusionsstufe.
 pub struct SearchResult {
     /// Document or memory entry identifier.
@@ -154,7 +172,6 @@ pub struct SearchResult {
 }
 
 /// Type alias for fused score output item.
-// ANCHOR[acta-rank:TYPE-003]
 /// Aggregierter Fusionswert eines Dokuments (Typ-Alias auf SearchResult).
 pub type FusedScore = SearchResult;
 
@@ -163,10 +180,9 @@ pub type FusedScore = SearchResult;
 /// # Abgrenzung
 /// Dieser Typ (`acta_rank::fusion::Signal`) bezeichnet die spezifische Suchsignal-Art
 /// (z. B. `Vector`, `Text`, `Graph`) innerhalb von Suchberichten (`SearchReport`) der Fusion.
-/// Er unterscheidet sich von `acta_types::Signal`, welches temporale bzw. System-Signale
+/// Er unterscheidet sich von `Signal`, welches temporale bzw. System-Signale
 /// repräsentiert.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-// ANCHOR[acta-rank:TYPE-006]
 /// Kennzeichnung der Signalherkunft.
 pub enum Signal {
     /// Dense vector similarity signal.
@@ -187,14 +203,8 @@ impl std::fmt::Display for Signal {
     }
 }
 
-/// Policy governing multi-signal retrieval error handling semantics.
-// ANCHOR[acta-rank:TYPE-007]
-/// Richtlinie für den Umgang mit Signalfehlern während der Fusionsberechnung.
-pub use acta_types::OnSignalFailure as SignalFailurePolicy;
-
 /// Execution report for search query execution.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-// ANCHOR[acta-rank:TYPE-008]
 /// Detaillierter Audit-Report über den Fusions- und Suchablauf.
 pub struct SearchReport {
     /// List of signals that failed during query execution when using Degrade policy.

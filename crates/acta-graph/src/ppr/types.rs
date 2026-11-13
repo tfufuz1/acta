@@ -3,10 +3,19 @@
 //! # Zweck
 //! Definiert `PprContext` und `DeletedView` zur effizienten Wiederverwendung von Arbeitsvektoren.
 
+// FILE-CONTEXT
+// STAND: 2026-11-15T12:00:00Z
+// ZWECK: Personalized PageRank (Forward-Push und dichte Matrix-Berechnung).
+// INVARIANTEN: Massenerhaltung der Residuen, Konvergenzgarantie.
+// HOTSPOTS: Keine kritischen Bottlenecks identifiziert
+// SIEHE AUCH: docs/SPEC.md, crates/acta-graph/SPEC.md
+
 use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
 // ANCHOR[acta-graph:SRC-PPR-TYPES-001]
+
+// SECTION Types Core Implementation
 pub struct DeletedView {
     deleted_nodes: HashSet<usize>,
 }
@@ -24,19 +33,19 @@ impl DeletedView {
     }
 
     #[inline]
-// ANCHOR[acta-graph:SRC-PPR-TYPES-002]
+    // ANCHOR[acta-graph:SRC-PPR-TYPES-002]
     pub fn contains(&self, idx: usize) -> bool {
         self.deleted_nodes.contains(&idx)
     }
 
     #[inline]
-// ANCHOR[acta-graph:SRC-PPR-TYPES-003]
+    // ANCHOR[acta-graph:SRC-PPR-TYPES-003]
     pub fn len(&self) -> usize {
         self.deleted_nodes.len()
     }
 
     #[inline]
-// ANCHOR[acta-graph:SRC-PPR-TYPES-004]
+    // ANCHOR[acta-graph:SRC-PPR-TYPES-004]
     pub fn is_empty(&self) -> bool {
         self.deleted_nodes.is_empty()
     }
@@ -52,7 +61,7 @@ pub struct PprContext {
 }
 
 impl PprContext {
-// ANCHOR[acta-graph:SRC-PPR-TYPES-006]
+    // ANCHOR[acta-graph:SRC-PPR-TYPES-006]
     pub fn new() -> Self {
         Self::default()
     }
@@ -76,3 +85,5 @@ impl PprContext {
         }
     }
 }
+
+// !SECTION Types Core Implementation

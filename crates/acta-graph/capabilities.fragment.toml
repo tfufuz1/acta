@@ -1,0 +1,15 @@
+[crates.acta-graph]
+group = "retrieval"
+level = 1
+tier = "experimental"
+path = "crates/acta-graph"
+unsafe_island = false
+allowed_internal = []
+transitional = ["workspace", "types-compat", "ports-compat"]
+
+[crates.acta-graph.feature_closure_allowed]
+workspace = ["acta-types", "acta-ports"]
+
+[crates.acta-graph.dev_allowed]
+testkit = ["acta-testkit"]
+test = "cargo test -p acta-graph --locked"

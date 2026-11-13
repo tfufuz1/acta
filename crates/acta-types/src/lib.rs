@@ -1,10 +1,10 @@
 #![deny(dead_code)]
 //! `Acta` Types — Kanonische Domänenmodelle, Identifikatoren, Budgets, Filter und Fehlertypen.
 //!
-//! # Architektur-Rolle: Ring 0 (Typen-Kern)
+//! # Architektur-Rolle: Gruppe contracts (Ebene 2, Typen-Fundament)
 //!
 //! Dieses Crate definiert das fundamentale Typfundament für das gesamte Acta-System.
-//! Gemäß der Ring-0-Architektur (reiner Rechenkern):
+//! Gemäß der Baukasten-Architektur (reiner Rechenkern):
 //! - Keine asynchronen Laufzeiten (kein `tokio`).
 //! - Keine direkten I/O- oder Dateisystemabhängigkeiten.
 //! - Kein `unsafe` (`#![forbid(unsafe_code)]`).
@@ -12,20 +12,15 @@
 //!
 //! # Einbindung im Workspace
 //!
-//! `acta-types` ist ein fundamentales Ring-0-Workspace-Mitglied.
+//! `acta-types` ist das zentrale Vertrags- und Typenpaket.
 //!
 //! **Abhängigkeiten (ausgehend):**
 //! - Reines Rust mit Basis-Bibliotheken: `serde`, `serde_json`, `bincode`, `ahash`, `blake3`, `sha2`, `bytes`, `thiserror`.
-//! - Keine Abhängigkeiten zu anderen Acta-Crates.
+//! - Interne Abhängigkeiten: `acta-ids`.
 //!
-//! **Wird eingebunden von (eingehend, 30 Crates):**
-//! - `acta`, `acta-adapt`, `acta-agent`, `acta-audit-export`, `acta-avv-generator`,
-//!   `acta-checkpoint`, `acta-cognition`, `acta-core`, `acta-crypto`, `acta-db`,
-//!   `acta-engine`, `acta-graph`, `acta-infer-candle`, `acta-infer-ollama`,
-//!   `acta-infer-onnx`, `acta-ingest`, `acta-kvcache`, `acta-license`, `acta-mcp`,
-//!   `acta-mvcc`, `acta-ports`, `acta-privacy`, `acta-py`, `acta-rank`,
-//!   `acta-router`, `acta-simd`, `acta-store`, `acta-testkit`, `acta-text`,
-//!   `acta-vector`.
+//! **Einbindung im Workspace (eingehend):**
+//! - Siehe `capabilities.toml` (Gruppe `contracts`, Ebene 2); dient als typisiertes Fundament
+//!   für Speicher-, Abfrage- und Integrationsbausteine im Gesamtsystem.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -57,8 +52,18 @@ pub mod tombstone;
 pub mod types;
 // ANCHOR[acta-types:MOD-WIT]
 /// Audit-Trails, Zeugnisse (Witnesses) und Saga-Transaktionsaufzeichnungen.
+pub mod erasure;
+pub mod ids;
+pub mod refs;
 pub mod witness;
 
+#[allow(deprecated)]
+pub use erasure::*;
+#[allow(deprecated)]
+pub use ids::{ErasureId, FileId, GateId, Seq, StoreId, Timestamp};
+pub use refs::{CollectionRef, DocKey, OperatorRef, SubjectRef, TenantRef, MAX_REF_LEN};
+
+#[allow(deprecated)]
 pub use error::{ActaError, HnswDeletionError, Result};
 pub use error_dto::ActaErrorDto;
 pub use model_fingerprint::ModelFingerprint;
@@ -67,4 +72,5 @@ pub use schema::{DocIdWidth, ManifestSchemaVersion};
 pub use tenant_scope::{TenantScopeViolation, TenantScoped};
 pub use tombstone::{SeqBitTombstone, TombstoneSemanticsCheck};
 pub use types::*;
+#[allow(deprecated)]
 pub use witness::{RequestContext, SagaRecord, ScanMethod};
