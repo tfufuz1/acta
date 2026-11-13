@@ -1,82 +1,29 @@
 #![deny(dead_code)]
 #![forbid(unsafe_code)]
-//! Layer-7-Rand-Crate ohne jegliche unsafe-Toleranz — verarbeitet direkt untrusted stdio-Input, siehe ADR-010.
+//! stdio JSON-RPC 2.0 Protokollschicht des Acta-MCP (ADR-010).
 //!
-//! ## MCP Tool Category Mapping
+//! Verbleibender Umfang: Protokoll-Typen, begrenzter stdio-I/O, Embedding-Provider-Auflösung
+//! und Eingabevalidierung.
 //!
-//! | Tool Name | ToolCategory | Description |
-//! |---|---|---|
-//! | `acta_search` | `DatabaseRead` | Hybrid semantic search over stored documents |
-//! | `acta_get` | `DatabaseRead` | Retrieve a document by ID |
-//! | `acta_collections` | `DatabaseRead` | List all collections |
-//! | `acta_explain` | `DatabaseRead` | Provenance breakdown & retrieval explanation |
-//! | `acta_insert` | `DatabaseWrite` | Store a document with auto-chunking & auto-embedding |
-//! | `acta_upsert` | `DatabaseWrite` | Insert/update document idempotently by key |
-//! | `acta_delete` | `DatabaseWrite` | Delete single document |
-//! | `acta_forget` | `DatabaseWrite` | Delete single document (Alias für acta_delete) |
-//! | `acta_create_collection` | `DatabaseWrite` | Create collection with specified DeploymentTier |
-//! | `acta_drop_collection` | `DatabaseWrite` | Delete entire collection |
+//! Entfernt: Server-Dispatch, Tool-Implementierungen, Sandbox, Routing sowie Egress- und
+//! Prompt-Guard-Schicht. Diese benötigten die Crates `acta`, `acta-privacy`, `acta-prompt-guard`,
+//! `acta-router` und die Infer-Backends, die nicht im Repository existieren.
 
 // =========================================================================
-// SECTION: Modul-Deklaration & Sicherheits-Attribute
+// SECTION: Modul-Deklaration
 // =========================================================================
 // FILE-CONTEXT
-// STAND:       2026-11-11
-// ZWECK:       stdio JSON-RPC 2.0 MCP-Server (kein HTTP! ADR-010)
-// INVARIANTEN: Transport ist ausschließlich stdin/stdout — niemals TCP/axum, bounded RPC message size
-// HOTSPOTS:    run_stdio_loop(), handle_request(), read_line_bounded()
-// SIEHE AUCH:  ADR-010, rules/async-io.md
+// ZWECK:       stdio JSON-RPC 2.0 Protokollschicht (kein HTTP, ADR-010)
+// INVARIANTEN: Transport ausschließlich stdin/stdout; bounded RPC message size
+// SIEHE AUCH:  ADR-010
 
-// ANCHOR[acta-mcp:MOD-001]
-
-pub mod bulk_exfiltration_detector;
 pub mod config;
-pub mod egress_gateway;
-pub mod egress_guard;
-pub mod explain;
 pub mod io;
-pub mod prompt_injection;
 pub mod protocol;
-pub mod routing;
-pub mod sandbox;
-pub mod server;
-pub mod server_dispatch;
-pub mod server_tools;
-pub mod tools_crud;
 pub mod validation;
 
-#[cfg(test)]
-mod tests;
-
-pub use bulk_exfiltration_detector::{
-    BulkExfiltrationDetector, BulkExfiltrationOutcome, SessionId,
-};
 pub use config::*;
-
-pub use egress_gateway::{
-    CloudQueryRequest, CloudQueryResponse, DefaultEgressClassifier, EgressClassification,
-    EgressClassifier,
-};
-
-pub use explain::{ExplainRequest, ExplainResponse};
-
 pub use io::{read_line_bounded, MAX_RPC_BYTES, MAX_SEARCH_QUERY_BYTES};
-
-pub use prompt_injection::{
-    PromptInjectionConfig, PromptInjectionGuard, QuarantinePolicy, SecurityAuditLogger,
-    SecurityAuditRecord, DEFAULT_REDACTION_PLACEHOLDER,
-};
-
-pub use routing::{setup_routing, RoutingHandle};
-
-pub use server::McpServer;
 pub use validation::{is_write_allowed_by_env, validate_collection_name};
 
-// FILE-CONTEXT
-// STAND:       2026-09-10T19:25:24Z (SESSION: ae8c2fb9)
-// ZWECK:       stdio JSON-RPC 2.0 MCP-Server (kein HTTP! ADR-010)
-// INVARIANTEN: Transport ist ausschließlich stdin/stdout — niemals TCP/axum, bounded RPC message size
-// HOTSPOTS:    run_stdio_loop(), handle_request(), read_line_bounded()
-// SIEHE AUCH:  ADR-010, rules/async-io.md
-
-// !SECTION: Modul-Deklaration & Sicherheits-Attribute
+// !SECTION: Modul-Deklaration

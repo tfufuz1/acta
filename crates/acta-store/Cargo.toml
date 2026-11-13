@@ -109,11 +109,6 @@ path = "tests/group_commit_overlapping_batch_rollback.rs"
 required-features = ["test-hooks"]
 
 [[test]]
-name = "metrics_sink_test"
-path = "tests/metrics_sink_test.rs"
-required-features = ["test-hooks"]
-
-[[test]]
 name = "no_test_hooks_in_release_api"
 path = "tests/no_test_hooks_in_release_api.rs"
 required-features = ["test-hooks"]

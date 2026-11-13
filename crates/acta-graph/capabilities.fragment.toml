@@ -11,5 +11,4 @@ transitional = ["workspace", "types-compat", "ports-compat"]
 workspace = ["acta-types", "acta-ports"]
 
 [crates.acta-graph.dev_allowed]
-testkit = ["acta-testkit"]
 test = "cargo test -p acta-graph --locked"

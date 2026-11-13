@@ -10,5 +10,4 @@ allowed_internal = ["acta-ids", "acta-env", "acta-sys", "acta-mvcc", "acta-crypt
 workspace = ["acta-types", "acta-ports"]
 
 [crates.acta-store.dev_allowed]
-testkit = ["acta-testkit"]
 test = "cargo test -p acta-store --locked"

@@ -30,7 +30,7 @@
 //!
 //! ## Einbindung & Abhängigkeiten
 //! - **Abhängigkeiten (normal):** `acta-types`, `acta-ports`, `bytes`, `tokio`, `tracing`, `serde`, `serde_json`, `parking_lot`, `blake3`, `thiserror`.
-//! - **Abhängigkeiten (dev):** `acta-testkit`, `tempfile`, `proptest`, `criterion`.
+//! - **Abhängigkeiten (dev):** `tempfile`, `proptest`, `criterion`.
 //! - **Wird eingebunden von:** `acta-agent`, `acta-db`, `acta-engine`.
 
 #![forbid(unsafe_code)]

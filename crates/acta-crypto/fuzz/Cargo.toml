@@ -18,7 +18,6 @@ arbitrary = { version = "1.4", features = ["derive"] }
 bincode = "1.3"
 acta-types = { path = "../../acta-types" }
 acta-ports = { path = "../../acta-ports" }
-acta-testkit = { path = "../../acta-testkit" }
 acta-crypto = { path = ".." }
 
 [[bin]]

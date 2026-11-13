@@ -19,12 +19,6 @@ serde_json = "1"
 acta-mcp = { path = ".." }
 
 [[bin]]
-name = "fuzz_prompt_injection_guard"
-path = "fuzz_targets/fuzz_prompt_injection_guard.rs"
-test = false
-doc = false
-
-[[bin]]
 name = "fuzz_jsonrpc_parsing"
 path = "fuzz_targets/fuzz_jsonrpc_parsing.rs"
 test = false
