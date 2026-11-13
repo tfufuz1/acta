@@ -13,7 +13,7 @@ fn run_child_process(test_type: &str) -> (ExitStatus, String, String) {
         .arg("--exact")
         .arg("run_subcommand_target")
         .arg("--nocapture")
-        .env("CONTEXTRA_TOCTOU_CHILD", test_type)
+        .env("ACTA_TOCTOU_CHILD", test_type)
         .output()
         .expect("failed to execute child process");
 
@@ -25,7 +25,7 @@ fn run_child_process(test_type: &str) -> (ExitStatus, String, String) {
 
 #[test]
 fn run_subcommand_target() {
-    if let Ok(child_mode) = env::var("CONTEXTRA_TOCTOU_CHILD") {
+    if let Ok(child_mode) = env::var("ACTA_TOCTOU_CHILD") {
         if child_mode == "truncation" {
             child_truncation_runner();
         } else if child_mode == "deletion" {
@@ -36,7 +36,7 @@ fn run_subcommand_target() {
 
 #[tokio::test]
 async fn test_mmap_toctou_truncation_causes_sigbus() {
-    if env::var("CONTEXTRA_TOCTOU_CHILD").is_ok() {
+    if env::var("ACTA_TOCTOU_CHILD").is_ok() {
         return;
     }
 
@@ -59,7 +59,7 @@ async fn test_mmap_toctou_truncation_causes_sigbus() {
 
 #[tokio::test]
 async fn test_mmap_toctou_deletion_succeeds_safely() {
-    if env::var("CONTEXTRA_TOCTOU_CHILD").is_ok() {
+    if env::var("ACTA_TOCTOU_CHILD").is_ok() {
         return;
     }
 

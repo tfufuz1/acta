@@ -48,7 +48,7 @@ def get_target_triple() -> Tuple[str, str]:
 
     raise RuntimeError(
         f"Unsupported platform '{sys_name} ({machine})'.\n"
-        "Please set the CONTEXTRA_MCP_BINARY environment variable pointing to a precompiled "
+        "Please set the ACTA_MCP_BINARY environment variable pointing to a precompiled "
         "`acta-mcp-server` executable."
     )
 

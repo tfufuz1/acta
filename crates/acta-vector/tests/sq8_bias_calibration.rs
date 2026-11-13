@@ -1,4 +1,4 @@
-// Testpflicht AK-12 (docs/specs/CONTEXTRA_SPEC_v2.md / Spec §15.2)
+// Testpflicht AK-12 (docs/specs/ACTA_SPEC_v2.md / Spec §15.2)
 
 use acta_types::DistanceMetric;
 use acta_vector::hnsw::Sq8Bias;

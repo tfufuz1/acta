@@ -60,7 +60,7 @@ pub use bindings::*;
 /// 1. **Sub-Interpreter Prüfung:** Stellt sicher, dass das Modul im Haupt-Interpreter oder
 ///    in einer kompatiblen Umgebung geladen wird (`check_subinterpreter_guard`).
 /// 2. **Metadaten:** Setzt die Modulversion `__version__`.
-/// 3. **Worker-Threads ermitteln:** Liest optional `CONTEXTRA_WORKER_THREADS` aus der Umgebung.
+/// 3. **Worker-Threads ermitteln:** Liest optional `ACTA_WORKER_THREADS` aus der Umgebung.
 /// 4. **Tokio Runtime erstellen:** Erzeugt eine dedizierte Multi-Thread Tokio-Runtime
 ///    (`acta-py-worker`), die asynchrone Rust-Operationen synchron kapselt.
 /// 5. **Runtime-State binden:** Speichert die Runtime in `_runtime_state` im Python-Modulobjekt,

@@ -101,7 +101,7 @@ fn test_bloom_filter_fpr_100k() -> (usize, usize, usize, f64, f64) {
 #[ignore = "long-running benchmark"]
 async fn run_amplification_benchmark() {
     println!("============================================================");
-    println!("CONTEXTRA-STORE WRITE & READ AMPLIFICATION BENCHMARK SUITE");
+    println!("ACTA-STORE WRITE & READ AMPLIFICATION BENCHMARK SUITE");
     println!("============================================================");
 
     // STEP 1 & 2: Bloom Filter FPR Measurement

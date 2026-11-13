@@ -104,7 +104,7 @@ impl McpServer {
         let mut stdout = tokio::io::stdout();
         let mut reader = BufReader::new(stdin);
         let mut line_buf = String::new();
-        let timeout_secs = std::env::var("CONTEXTRA_MCP_IDLE_TIMEOUT_SECS")
+        let timeout_secs = std::env::var("ACTA_MCP_IDLE_TIMEOUT_SECS")
             .ok()
             .and_then(|s| s.trim().parse::<u64>().ok())
             .unwrap_or(30);

@@ -46,7 +46,7 @@ async fn main() {
     let mut rng = rand::thread_rng();
 
     println!("===============================================================================");
-    println!("                   CONTEXTRA-INDEX EMPIRICAL AUDIT BENCHMARKS                   ");
+    println!("                   ACTA-INDEX EMPIRICAL AUDIT BENCHMARKS                   ");
     println!("===============================================================================");
 
     // 1. Distance Metric Throughput & Speedup (SIMD vs Scalar)

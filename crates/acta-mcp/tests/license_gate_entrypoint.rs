@@ -1,7 +1,7 @@
 // INVARIANT: The MCP server entry point defaults to opening the database in Fast-Ring mode
 // via Acta::open() with OpenFastGate license enforcement. Without a valid signed
 // license gate (SignedLicenseGate in acta-license), no configuration or environment
-// variable (CONTEXTRA_*) can activate a higher feature ring (Sovereign or Compliance).
+// variable (ACTA_*) can activate a higher feature ring (Sovereign or Compliance).
 // Furthermore, DeletionProof active mode is strictly disabled in Fast-Ring.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
@@ -82,10 +82,10 @@ async fn test_mcp_entrypoint_without_license_reports_fast_ring_only() {
 
 #[tokio::test]
 async fn test_mcp_entrypoint_env_vars_cannot_bypass_license_gate() {
-    // Set various CONTEXTRA_* environment variables attempting to force Sovereign/Compliance ring
-    std::env::set_var("CONTEXTRA_RING", "Sovereign");
-    std::env::set_var("CONTEXTRA_FEATURE_RING", "Compliance");
-    std::env::set_var("CONTEXTRA_LICENSE_GATE", "Sovereign");
+    // Set various ACTA_* environment variables attempting to force Sovereign/Compliance ring
+    std::env::set_var("ACTA_RING", "Sovereign");
+    std::env::set_var("ACTA_FEATURE_RING", "Compliance");
+    std::env::set_var("ACTA_LICENSE_GATE", "Sovereign");
 
     let (server, _tmp) = setup_server().await;
 
@@ -108,9 +108,9 @@ async fn test_mcp_entrypoint_env_vars_cannot_bypass_license_gate() {
     assert_ne!(active_ring, "Compliance");
 
     // Clean up test environment variables
-    std::env::remove_var("CONTEXTRA_RING");
-    std::env::remove_var("CONTEXTRA_FEATURE_RING");
-    std::env::remove_var("CONTEXTRA_LICENSE_GATE");
+    std::env::remove_var("ACTA_RING");
+    std::env::remove_var("ACTA_FEATURE_RING");
+    std::env::remove_var("ACTA_LICENSE_GATE");
 }
 
 #[tokio::test]

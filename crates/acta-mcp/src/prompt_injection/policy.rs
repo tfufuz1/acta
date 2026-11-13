@@ -31,7 +31,7 @@ pub enum QuarantinePolicy {
 
 impl QuarantinePolicy {
     pub fn from_env() -> Self {
-        if let Ok(val) = std::env::var("CONTEXTRA_MCP_QUARANTINE_POLICY") {
+        if let Ok(val) = std::env::var("ACTA_MCP_QUARANTINE_POLICY") {
             match val.trim().to_lowercase().as_str() {
                 "flag_only" | "flagonly" | "flag" => QuarantinePolicy::FlagOnly,
                 "escalate" => QuarantinePolicy::Escalate,

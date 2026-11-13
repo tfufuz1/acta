@@ -229,7 +229,7 @@ impl SignedActivation {
 ///    - Existiert die Datei nicht, wird eine neue ID (`inst-<hex-hash-des-pfads>`) generiert,
 ///      in die Datei geschrieben und ihr Hash zurückgegeben.
 /// 2. Falls kein Pfad angegeben ist:
-///    - Nutzt einen festen Fallback-Seed (`b"CONTEXTRA_DEFAULT_LOCAL_INSTALLATION_ID_v1"`),
+///    - Nutzt einen festen Fallback-Seed (`b"ACTA_DEFAULT_LOCAL_INSTALLATION_ID_v1"`),
 ///      um einen deterministischen Hash abzuleiten.
 ///
 /// **Nebenwirkungen:** Dateisystem-I/O (Lesen/Schreiben), falls ein Pfad angegeben ist.
@@ -252,7 +252,7 @@ pub fn derive_local_installation_id_hash(storage_path: Option<&std::path::Path>)
         return *blake3::hash(generated.as_bytes()).as_bytes();
     }
 
-    const FALLBACK_SEED: &[u8] = b"CONTEXTRA_DEFAULT_LOCAL_INSTALLATION_ID_v1";
+    const FALLBACK_SEED: &[u8] = b"ACTA_DEFAULT_LOCAL_INSTALLATION_ID_v1";
     *blake3::hash(FALLBACK_SEED).as_bytes()
 }
 

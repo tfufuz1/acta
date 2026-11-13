@@ -17,27 +17,27 @@ except ImportError:
 
 
 def test_worker_threads_per_initialization(tmp_path):
-    """Verifies that CONTEXTRA_WORKER_THREADS is evaluated per module/interpreter initialization,
+    """Verifies that ACTA_WORKER_THREADS is evaluated per module/interpreter initialization,
     allowing different process initializations to configure their worker thread count independently.
     """
     db_path1 = str(tmp_path / "worker_test_db1")
     db_path2 = str(tmp_path / "worker_test_db2")
 
-    # Run Python process 1 with CONTEXTRA_WORKER_THREADS=2
+    # Run Python process 1 with ACTA_WORKER_THREADS=2
     code_1 = f"""import os, sys, acta
 db = acta.open({db_path1!r}, dimension=16)
 assert db.worker_threads == 2, f"Expected 2 worker threads, got {{db.worker_threads}}"
 """
-    env1 = dict(os.environ, CONTEXTRA_WORKER_THREADS="2")
+    env1 = dict(os.environ, ACTA_WORKER_THREADS="2")
     res1 = subprocess.run([sys.executable, "-c", code_1], env=env1, capture_output=True, text=True)
     assert res1.returncode == 0, f"Process 1 failed: {res1.stderr}"
 
-    # Run Python process 2 with CONTEXTRA_WORKER_THREADS=6
+    # Run Python process 2 with ACTA_WORKER_THREADS=6
     code_2 = f"""import os, sys, acta
 db = acta.open({db_path2!r}, dimension=16)
 assert db.worker_threads == 6, f"Expected 6 worker threads, got {{db.worker_threads}}"
 """
-    env2 = dict(os.environ, CONTEXTRA_WORKER_THREADS="6")
+    env2 = dict(os.environ, ACTA_WORKER_THREADS="6")
     res2 = subprocess.run([sys.executable, "-c", code_2], env=env2, capture_output=True, text=True)
     assert res2.returncode == 0, f"Process 2 failed: {res2.stderr}"
 
@@ -56,7 +56,7 @@ def test_subinterpreter_per_interpreter_runtime_isolation(tmp_path):
 
     code1 = f"""import sys, os
 sys.path.extend({sys.path!r})
-os.environ["CONTEXTRA_WORKER_THREADS"] = "3"
+os.environ["ACTA_WORKER_THREADS"] = "3"
 try:
     import acta
     db = acta.open({db_path1!r}, dimension=16)
@@ -72,7 +72,7 @@ except ImportError as e:
 
     code2 = f"""import sys, os
 sys.path.extend({sys.path!r})
-os.environ["CONTEXTRA_WORKER_THREADS"] = "5"
+os.environ["ACTA_WORKER_THREADS"] = "5"
 try:
     import acta
     db = acta.open({db_path2!r}, dimension=16)

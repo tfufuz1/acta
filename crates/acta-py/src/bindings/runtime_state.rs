@@ -18,7 +18,7 @@ use tokio::runtime::Runtime;
 use crate::bindings::common::{MAX_WORKER_THREADS, MIN_WORKER_THREADS};
 
 // ANCHOR[acta-py:RNT-001]
-/// Liest und begrenzt die Umgebungsvariable `CONTEXTRA_WORKER_THREADS` auf den Bereich `[MIN_WORKER_THREADS, MAX_WORKER_THREADS]`.
+/// Liest und begrenzt die Umgebungsvariable `ACTA_WORKER_THREADS` auf den Bereich `[MIN_WORKER_THREADS, MAX_WORKER_THREADS]`.
 ///
 /// # Zweck
 /// Bestimmt die Anzahl der Hintergrund-Worker-Threads für die Tokio-Laufzeitumgebung.
@@ -26,7 +26,7 @@ use crate::bindings::common::{MAX_WORKER_THREADS, MIN_WORKER_THREADS};
 /// # Ablauf
 /// 1. Standardwert ermitteln: Halbe Anzahl verfügbarer CPU-Kerne (`available_parallelism`),
 ///    mindestens jedoch auf `[MIN_WORKER_THREADS, MAX_WORKER_THREADS]` begrenzt (z. B. 2 bis 32).
-/// 2. Liest die Umgebungsvariable `CONTEXTRA_WORKER_THREADS`.
+/// 2. Liest die Umgebungsvariable `ACTA_WORKER_THREADS`.
 /// 3. Parst den String zu `usize` und klemmt den Wert in die Schranken `MIN_WORKER_THREADS..=MAX_WORKER_THREADS`.
 /// 4. Liefert bei Fehlern oder fehlendem Eintrag den berechneten Standardwert zurück.
 ///
@@ -39,7 +39,7 @@ pub fn parse_worker_threads_env() -> usize {
         / 2)
     .clamp(MIN_WORKER_THREADS, MAX_WORKER_THREADS);
 
-    std::env::var("CONTEXTRA_WORKER_THREADS")
+    std::env::var("ACTA_WORKER_THREADS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .map(|val| val.clamp(MIN_WORKER_THREADS, MAX_WORKER_THREADS))

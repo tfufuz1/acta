@@ -3,7 +3,7 @@
 //! # Zweck des Beispiels
 //! Dieses Beispiel demonstriert die **externe Verifizierbarkeit** von DSGVO-Art.-17-Löschnachweisen
 //! ([`DeletionProof`]) durch unbeteiligte Dritte (Third-Party Verifiers) gemäß
-//! `CONTEXTRA_SPEC_2_.md` §2.5.1 ("Sovereign Ring vs. Third-Party Attestation") und §15.6.
+//! `ACTA_SPEC_2_.md` §2.5.1 ("Sovereign Ring vs. Third-Party Attestation") und §15.6.
 //!
 //! ## Kernkonzept
 //! Ein Löschbeweis, den niemand außer dem Hersteller lesen oder verifizieren kann, ist eine bloße
@@ -215,8 +215,8 @@ fn run_external_verifier_role(
 #[tokio::main]
 async fn main() -> acta_types::Result<()> {
     println!("=========================================================================");
-    println!("  CONTEXTRA — EXTERNE VERIFIZIERBARKEIT VON LÖSCHNACHWEISEN (AK-20)");
-    println!("  Referenz: CONTEXTRA_SPEC_2_.md §2.5.1 & §15.6");
+    println!("  ACTA — EXTERNE VERIFIZIERBARKEIT VON LÖSCHNACHWEISEN (AK-20)");
+    println!("  Referenz: ACTA_SPEC_2_.md §2.5.1 & §15.6");
     println!("=========================================================================\n");
 
     let temp_dir = TempDir::new().expect("Failed to create temp exchange dir");

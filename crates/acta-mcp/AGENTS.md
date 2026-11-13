@@ -30,7 +30,7 @@ Ein Einbau von `axum` oder `hyper` ist ein Security-Blocker!
 ### Sandbox-Defaults
 Die `SandboxPolicy` definiert harte Grenzen:
 - `allow_db_reads`: true
-- `allow_db_writes`: false (muss explizit opt-in via Env-Var `CONTEXTRA_MCP_WRITE_ALLOW`)
+- `allow_db_writes`: false (muss explizit opt-in via Env-Var `ACTA_MCP_WRITE_ALLOW`)
 - `allow_code_execution`: false (strikt verboten by default)
 - `allow_cloud_egress`: false (Cloud-Egress strikt verboten by default; erfordert explizites Opt-in)
 Schreibende Operationen (Write-Authorization, ADR-044) sowie Cloud-Egress-Aufrufe werden vor Ausführung blockiert, wenn deaktiviert.

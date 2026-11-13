@@ -99,7 +99,7 @@ class TestLauncher(unittest.TestCase):
         with patch("platform.system", return_value="FreeBSD"), patch("platform.machine", return_value="amd64"):
             with self.assertRaises(RuntimeError) as ctx:
                 get_target_triple()
-            self.assertIn("CONTEXTRA_MCP_BINARY", str(ctx.exception))
+            self.assertIn("ACTA_MCP_BINARY", str(ctx.exception))
 
     def test_validate_archive_member_path_traversal(self):
         # Valid names
@@ -116,7 +116,7 @@ class TestLauncher(unittest.TestCase):
         dummy_bin.write_bytes(b"#!binary\n")
         dummy_bin.chmod(0o755)
 
-        with patch.dict(os.environ, {"CONTEXTRA_MCP_BINARY": str(dummy_bin)}):
+        with patch.dict(os.environ, {"ACTA_MCP_BINARY": str(dummy_bin)}):
             selected = find_mcp_binary()
             self.assertEqual(selected, str(dummy_bin))
 
@@ -222,7 +222,7 @@ class TestLauncher(unittest.TestCase):
              patch("acta_mcp.server.download_release_binary", side_effect=RuntimeError("Download disabled")):
             with self.assertRaises(FileNotFoundError) as ctx:
                 find_mcp_binary()
-            self.assertIn("CONTEXTRA_MCP_ALLOW_REPO_BUILD=1", str(ctx.exception))
+            self.assertIn("ACTA_MCP_ALLOW_REPO_BUILD=1", str(ctx.exception))
 
     def test_cargo_build_with_opt_in(self):
         repo_bin = Path(self.tmp_dir.name) / "target" / "release" / "acta-mcp-server"
@@ -233,7 +233,7 @@ class TestLauncher(unittest.TestCase):
         env = {
             "XDG_CACHE_HOME": self.tmp_dir.name,
             "LOCALAPPDATA": self.tmp_dir.name,
-            "CONTEXTRA_MCP_ALLOW_REPO_BUILD": "1",
+            "ACTA_MCP_ALLOW_REPO_BUILD": "1",
         }
         with patch.dict(os.environ, env, clear=True), \
              patch("shutil.which", return_value=None), \

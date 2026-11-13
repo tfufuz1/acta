@@ -1,8 +1,8 @@
 use crate::protocol::McpError;
 
-/// Checks whether database write access is explicitly enabled via environment variable `CONTEXTRA_MCP_ALLOW_WRITE`.
+/// Checks whether database write access is explicitly enabled via environment variable `ACTA_MCP_ALLOW_WRITE`.
 pub fn is_write_allowed_by_env() -> bool {
-    std::env::var("CONTEXTRA_MCP_ALLOW_WRITE")
+    std::env::var("ACTA_MCP_ALLOW_WRITE")
         .map(|v| {
             let s = v.trim().to_lowercase();
             s == "1" || s == "true" || s == "yes"

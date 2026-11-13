@@ -5,7 +5,7 @@
 
 // ANCHOR[acta-router:IT-IPS-001]
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-// Testpflicht AK-15 (docs/specs/CONTEXTRA_SPEC_v2.md)
+// Testpflicht AK-15 (docs/specs/ACTA_SPEC_v2.md)
 
 use acta_router::OffPolicyEvaluator;
 

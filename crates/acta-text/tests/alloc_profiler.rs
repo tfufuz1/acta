@@ -239,7 +239,7 @@ fn generate_english_doc(doc_idx: usize) -> String {
 #[ignore = "manuelles Profiling-Harness, 10k Dokumente, nicht Teil des Gates"]
 async fn run_profile_10k_documents() {
     println!("\n================================================================================");
-    println!("CONTEXTRA-TEXT ALLOCATION PROFILE & BENCHMARK HARNESS (10,000 DOCS)");
+    println!("ACTA-TEXT ALLOCATION PROFILE & BENCHMARK HARNESS (10,000 DOCS)");
     println!("================================================================================");
 
     const NUM_DOCS: usize = 10_000;

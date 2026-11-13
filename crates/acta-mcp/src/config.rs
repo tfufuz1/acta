@@ -40,7 +40,7 @@ fn no_provider_error() -> ActaError {
     };
     ActaError::InvalidInput(format!(
         "Kein Embedding-Provider konfiguriert / No embedding provider configured. \
-         Bitte CONTEXTRA_EMBEDDING_PROVIDER setzen (z.B. CONTEXTRA_EMBEDDING_PROVIDER=ollama). \
+         Bitte ACTA_EMBEDDING_PROVIDER setzen (z.B. ACTA_EMBEDDING_PROVIDER=ollama). \
          Einkompilierte Provider / Available compiled providers: [{avail_str}]."
     ))
 }
@@ -202,31 +202,31 @@ impl Default for EmbeddingConfig {
 impl EmbeddingConfig {
     /// Loads configuration from environment variables with fallbacks.
     pub fn from_env() -> Self {
-        let prefixed = std::env::var("CONTEXTRA_EMBEDDING_PROVIDER").ok();
+        let prefixed = std::env::var("ACTA_EMBEDDING_PROVIDER").ok();
         let unprefixed = std::env::var("EMBEDDING_PROVIDER").ok();
         let resolved = resolve_provider_setting(prefixed.as_deref(), unprefixed.as_deref());
 
         if resolved.used_unprefixed_fallback {
             EMBEDDING_PROVIDER_DEPRECATION_WARN_ONCE.call_once(|| {
                 tracing::warn!(
-                    "Ungeprefixte Variable EMBEDDING_PROVIDER ist deprecated, bitte CONTEXTRA_EMBEDDING_PROVIDER verwenden."
+                    "Ungeprefixte Variable EMBEDDING_PROVIDER ist deprecated, bitte ACTA_EMBEDDING_PROVIDER verwenden."
                 );
             });
         }
 
         let provider = resolved.value;
 
-        let ollama_url = std::env::var("CONTEXTRA_OLLAMA_URL")
+        let ollama_url = std::env::var("ACTA_OLLAMA_URL")
             .unwrap_or_else(|_| "http://localhost:11434".to_string());
 
-        let embed_model = std::env::var("CONTEXTRA_EMBED_MODEL")
+        let embed_model = std::env::var("ACTA_EMBED_MODEL")
             .unwrap_or_else(|_| "nomic-embed-text".to_string());
 
-        let onnx_model_path = std::env::var("CONTEXTRA_ONNX_MODEL_PATH")
+        let onnx_model_path = std::env::var("ACTA_ONNX_MODEL_PATH")
             .ok()
             .map(PathBuf::from);
 
-        let candle_model_dir = std::env::var("CONTEXTRA_CANDLE_MODEL_DIR")
+        let candle_model_dir = std::env::var("ACTA_CANDLE_MODEL_DIR")
             .ok()
             .map(PathBuf::from);
 
@@ -366,27 +366,27 @@ impl Default for LlmConfig {
 impl LlmConfig {
     /// Loads configuration from environment variables with fallbacks.
     pub fn from_env() -> Self {
-        let prefixed = std::env::var("CONTEXTRA_LLM_PROVIDER").ok();
+        let prefixed = std::env::var("ACTA_LLM_PROVIDER").ok();
         let unprefixed = std::env::var("LLM_PROVIDER").ok();
         let resolved = resolve_provider_setting(prefixed.as_deref(), unprefixed.as_deref());
 
         if resolved.used_unprefixed_fallback {
             LLM_PROVIDER_DEPRECATION_WARN_ONCE.call_once(|| {
                 tracing::warn!(
-                    "Ungeprefixte Variable LLM_PROVIDER ist deprecated, bitte CONTEXTRA_LLM_PROVIDER verwenden."
+                    "Ungeprefixte Variable LLM_PROVIDER ist deprecated, bitte ACTA_LLM_PROVIDER verwenden."
                 );
             });
         }
 
         let provider = resolved.value;
 
-        let ollama_url = std::env::var("CONTEXTRA_OLLAMA_URL")
+        let ollama_url = std::env::var("ACTA_OLLAMA_URL")
             .unwrap_or_else(|_| "http://localhost:11434".to_string());
 
         let llm_model =
-            std::env::var("CONTEXTRA_LLM_MODEL").unwrap_or_else(|_| "llama3.2:3b".to_string());
+            std::env::var("ACTA_LLM_MODEL").unwrap_or_else(|_| "llama3.2:3b".to_string());
 
-        let candle_model_dir = std::env::var("CONTEXTRA_CANDLE_MODEL_DIR")
+        let candle_model_dir = std::env::var("ACTA_CANDLE_MODEL_DIR")
             .ok()
             .map(PathBuf::from);
 
@@ -494,11 +494,11 @@ pub struct RouterConfig {
 impl RouterConfig {
     /// Loads configuration from environment variables with fallbacks.
     pub fn from_env() -> Self {
-        let profiles_path = std::env::var("CONTEXTRA_ROUTER_PROFILES_PATH")
+        let profiles_path = std::env::var("ACTA_ROUTER_PROFILES_PATH")
             .ok()
             .map(PathBuf::from);
 
-        let calibration_store_path = std::env::var("CONTEXTRA_ROUTER_CALIBRATION_PATH")
+        let calibration_store_path = std::env::var("ACTA_ROUTER_CALIBRATION_PATH")
             .ok()
             .map(PathBuf::from);
 
@@ -511,7 +511,7 @@ impl RouterConfig {
                     profiles = loaded;
                 }
             }
-        } else if let Ok(json_str) = std::env::var("CONTEXTRA_ROUTER_PROFILES_JSON") {
+        } else if let Ok(json_str) = std::env::var("ACTA_ROUTER_PROFILES_JSON") {
             if let Ok(loaded) = serde_json::from_str::<Vec<acta_router::SlmProfile>>(&json_str)
             {
                 profiles = loaded;

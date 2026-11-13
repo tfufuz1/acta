@@ -2,7 +2,7 @@
 //!
 //! Prüft die Untergrenzen-Klammerung und das strikte Verwerfen ungültiger Propensity-Werte.
 
-// Testpflicht AK-15 (docs/specs/CONTEXTRA_SPEC_v2.md / Spec §15.2)
+// Testpflicht AK-15 (docs/specs/ACTA_SPEC_v2.md / Spec §15.2)
 
 use acta_adapt::OffPolicyEvaluator;
 

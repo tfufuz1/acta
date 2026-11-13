@@ -77,12 +77,12 @@ def test_subprocess_uncaught_panic_exit_code():
 
 
 def test_worker_threads_clamped_on_zero():
-    """Verifies that CONTEXTRA_WORKER_THREADS=0 does not cause Tokio runtime panic
+    """Verifies that ACTA_WORKER_THREADS=0 does not cause Tokio runtime panic
     and instead gets clamped to minimum 1 worker thread.
     """
     code = (
         "import os\n"
-        "os.environ['CONTEXTRA_WORKER_THREADS'] = '0'\n"
+        "os.environ['ACTA_WORKER_THREADS'] = '0'\n"
         "import tempfile, numpy as np, acta\n"
         "with tempfile.TemporaryDirectory() as tmp:\n"
         "    db = acta.open(tmp, dimension=128)\n"

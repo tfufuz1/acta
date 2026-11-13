@@ -1,15 +1,15 @@
 //! Modul zur Handhabung und Validierung von DeletionProof-Schlüsseln.
 //!
 //! # Vorrangregeln
-//! - `CONTEXTRA_DELETION_PROOF_KEY` ist der kanonische Schlüssel.
-//! - `CONTEXTRA_PROOF_KEY` ist ein veralteter (deprecated) Alias.
-//! - Sind beide Variablen gesetzt und enthalten unterschiedliche Werte, gewinnt `CONTEXTRA_DELETION_PROOF_KEY`
+//! - `ACTA_DELETION_PROOF_KEY` ist der kanonische Schlüssel.
+//! - `ACTA_PROOF_KEY` ist ein veralteter (deprecated) Alias.
+//! - Sind beide Variablen gesetzt und enthalten unterschiedliche Werte, gewinnt `ACTA_DELETION_PROOF_KEY`
 //!   und ein Konflikt-Warning wird ausgegeben.
 
 // FILE-CONTEXT
 // STAND:       2026-09-30
 // ZWECK:       Lösen und Validieren des DeletionProof Schlüssel-Materials aus Umgebungsvariablen.
-// INVARIANTEN: CONTEXTRA_DELETION_PROOF_KEY ist kanonisch; CONTEXTRA_PROOF_KEY ist ein deprecated Alias.
+// INVARIANTEN: ACTA_DELETION_PROOF_KEY ist kanonisch; ACTA_PROOF_KEY ist ein deprecated Alias.
 //              Schlüsselwerte werden NIEMALS geloggt. Zero-Panic im Produktionspfad.
 
 use crate::protocol::McpError;
@@ -21,7 +21,7 @@ use zeroize::Zeroizing;
 pub(crate) struct ResolvedProofKey {
     /// Das aufgelöste Schlüsselmaterial als zeroizendes String-Wrapper.
     pub key: Zeroizing<String>,
-    /// Gibt an, ob der deprecated Alias `CONTEXTRA_PROOF_KEY` verwendet wurde.
+    /// Gibt an, ob der deprecated Alias `ACTA_PROOF_KEY` verwendet wurde.
     pub used_deprecated_alias: bool,
     /// Gibt an, ob sowohl der primäre Schlüssel als auch der Alias mit unterschiedlichen Werten gesetzt waren.
     pub has_conflict: bool,
@@ -38,8 +38,8 @@ pub(crate) enum ProofKeyError {
 /// Reine Hilfsfunktion zur Auflösung des DeletionProof-Schlüssels ohne Zugriff auf die Prozess-Umgebung.
 ///
 /// # Vorrangregeln
-/// - `primary` (`CONTEXTRA_DELETION_PROOF_KEY`) ist der kanonische Schlüssel.
-/// - `alias` (`CONTEXTRA_PROOF_KEY`) ist ein veralteter (deprecated) Alias.
+/// - `primary` (`ACTA_DELETION_PROOF_KEY`) ist der kanonische Schlüssel.
+/// - `alias` (`ACTA_PROOF_KEY`) ist ein veralteter (deprecated) Alias.
 /// - Wenn beide gesetzt und unterschiedlich sind, gewinnt `primary`, und `has_conflict` wird auf `true` gesetzt.
 /// - Leere Strings oder Strings, die nur Whitespace enthalten, zählen als nicht gesetzt.
 #[allow(dead_code)]
@@ -81,7 +81,7 @@ pub(crate) fn resolve_deletion_proof_key(
 }
 
 /// Liest den DeletionProof-Schlüssel aus den Prozess-Umgebungsvariablen
-/// (`CONTEXTRA_DELETION_PROOF_KEY` und `CONTEXTRA_PROOF_KEY`), ruft die reine Auflösungsfunktion auf
+/// (`ACTA_DELETION_PROOF_KEY` und `ACTA_PROOF_KEY`), ruft die reine Auflösungsfunktion auf
 /// und gibt bei Warnzuständen einmalige `tracing::warn!`-Meldungen aus.
 pub fn deletion_proof_key_from_env() -> Result<Zeroizing<String>, McpError> {
     let res = crate::proof_key_env::resolve_proof_key_from_env();

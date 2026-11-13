@@ -78,7 +78,7 @@ async fn test_multi_instance_orphan_registry_physical_path_and_gc_isolation() {
     assert_eq!(reg2.get_orphaned_checkpoints(), vec![cp_orphan2]);
 }
 
-// ANCHOR[acta-db:TEST-INSTANCE_ORPHAN_REGISTRY_TEST-02-TEST_CONTEXTRA_OPEN_DOES_NOT_TOUCH_GLOBAL_ORPHAN_REGISTRY]
+// ANCHOR[acta-db:TEST-INSTANCE_ORPHAN_REGISTRY_TEST-02-TEST_ACTA_OPEN_DOES_NOT_TOUCH_GLOBAL_ORPHAN_REGISTRY]
 // Testet die Funktionalität von `test_acta_open_does_not_touch_global_orphan_registry`.
 #[tokio::test]
 async fn test_acta_open_does_not_touch_global_orphan_registry() {

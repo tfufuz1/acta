@@ -1,7 +1,7 @@
 //! # Unit- und Integrationstests für PyO3-Bindings (`tests`)
 //!
 //! Dieses Modul enthält automatisierte Tests zur Verifikation aller Kernfunktionen der Python-Bindings:
-//! - Parsen und Begrenzen von Umgebungsvariablen (`CONTEXTRA_WORKER_THREADS`).
+//! - Parsen und Begrenzen von Umgebungsvariablen (`ACTA_WORKER_THREADS`).
 //! - Validierung von IDs, Collection-Namen, Beziehungs-Labels, Pfaden, Abfragetexten und Vektoren.
 //! - Mapping von `ActaError` auf Python-spezifische Exception-Typen.
 //! - Absicherung der FFI-Grenze gegen unkontrollierte Rust-Panics (`catch_unwind` und Engine-Poisoning).
@@ -19,24 +19,24 @@ mod tests {
 
     // ─── Worker Threads Env Parsing ─────────────────────────────────────────────
 
-    // Prüft, ob CONTEXTRA_WORKER_THREADS=0 auf das Minimum (1) geklemmt wird.
+    // Prüft, ob ACTA_WORKER_THREADS=0 auf das Minimum (1) geklemmt wird.
     #[test]
     fn test_parse_worker_threads_env_clamping_low() {
-        std::env::set_var("CONTEXTRA_WORKER_THREADS", "0");
+        std::env::set_var("ACTA_WORKER_THREADS", "0");
         assert_eq!(parse_worker_threads_env(), 1);
     }
 
-    // Prüft, ob CONTEXTRA_WORKER_THREADS=1000 auf das Maximum (256) geklemmt wird.
+    // Prüft, ob ACTA_WORKER_THREADS=1000 auf das Maximum (256) geklemmt wird.
     #[test]
     fn test_parse_worker_threads_env_clamping_high() {
-        std::env::set_var("CONTEXTRA_WORKER_THREADS", "1000");
+        std::env::set_var("ACTA_WORKER_THREADS", "1000");
         assert_eq!(parse_worker_threads_env(), 256);
     }
 
     // Prüft, ob bei ungültigen String-Werten der Fallback auf einen gültigen Thread-Bereich greift.
     #[test]
     fn test_parse_worker_threads_env_invalid_fallback() {
-        std::env::set_var("CONTEXTRA_WORKER_THREADS", "not_a_number");
+        std::env::set_var("ACTA_WORKER_THREADS", "not_a_number");
         let val = parse_worker_threads_env();
         assert!((1..=256).contains(&val));
     }
@@ -44,7 +44,7 @@ mod tests {
     // Prüft, ob ein gültiger Thread-Wert exakt übernommen wird.
     #[test]
     fn test_parse_worker_threads_env_valid_value() {
-        std::env::set_var("CONTEXTRA_WORKER_THREADS", "8");
+        std::env::set_var("ACTA_WORKER_THREADS", "8");
         assert_eq!(parse_worker_threads_env(), 8);
     }
 

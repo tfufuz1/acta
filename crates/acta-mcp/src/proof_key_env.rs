@@ -1,7 +1,7 @@
 // FILE-CONTEXT
 // STAND:       2026-10-01
-// ZWECK:       Einziger Resolver für DeletionProof-Schlüssel (CONTEXTRA_DELETION_PROOF_KEY / CONTEXTRA_PROOF_KEY)
-// INVARIANTEN: Bevorzugt CONTEXTRA_DELETION_PROOF_KEY; Loggt Schlüsselmaterial NIEMALS.
+// ZWECK:       Einziger Resolver für DeletionProof-Schlüssel (ACTA_DELETION_PROOF_KEY / ACTA_PROOF_KEY)
+// INVARIANTEN: Bevorzugt ACTA_DELETION_PROOF_KEY; Loggt Schlüsselmaterial NIEMALS.
 
 use std::fmt;
 use std::sync::Once;
@@ -88,18 +88,18 @@ pub fn resolve_proof_key(primary: Option<String>, legacy: Option<String>) -> Pro
     }
 }
 
-/// Liest beide Umgebungsvariablen (`CONTEXTRA_DELETION_PROOF_KEY` und `CONTEXTRA_PROOF_KEY`),
+/// Liest beide Umgebungsvariablen (`ACTA_DELETION_PROOF_KEY` und `ACTA_PROOF_KEY`),
 /// löst den Schlüssel per `resolve_proof_key` auf und emittiert einmalig Warnungen bei Deprecation oder Konflikt.
 pub fn resolve_proof_key_from_env() -> ProofKeyResolution {
-    let primary = std::env::var("CONTEXTRA_DELETION_PROOF_KEY").ok();
-    let legacy = std::env::var("CONTEXTRA_PROOF_KEY").ok();
+    let primary = std::env::var("ACTA_DELETION_PROOF_KEY").ok();
+    let legacy = std::env::var("ACTA_PROOF_KEY").ok();
 
     let res = resolve_proof_key(primary, legacy);
 
     if res.used_legacy {
         DEPRECATION_WARN_ONCE.call_once(|| {
             tracing::warn!(
-                "CONTEXTRA_PROOF_KEY ist veraltet (deprecated). Bitte CONTEXTRA_DELETION_PROOF_KEY verwenden."
+                "ACTA_PROOF_KEY ist veraltet (deprecated). Bitte ACTA_DELETION_PROOF_KEY verwenden."
             );
         });
     }
@@ -107,7 +107,7 @@ pub fn resolve_proof_key_from_env() -> ProofKeyResolution {
     if res.has_conflict {
         CONFLICT_WARN_ONCE.call_once(|| {
             tracing::warn!(
-                "Konflikt: Sowohl CONTEXTRA_DELETION_PROOF_KEY als auch CONTEXTRA_PROOF_KEY sind mit unterschiedlichen Werten gesetzt. CONTEXTRA_DELETION_PROOF_KEY wird bevorzugt."
+                "Konflikt: Sowohl ACTA_DELETION_PROOF_KEY als auch ACTA_PROOF_KEY sind mit unterschiedlichen Werten gesetzt. ACTA_DELETION_PROOF_KEY wird bevorzugt."
             );
         });
     }

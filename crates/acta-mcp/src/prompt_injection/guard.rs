@@ -217,19 +217,19 @@ impl PromptInjectionGuard {
     /// Erstellt eine Instanz basierend auf Umgebungsvariablen.
     pub fn from_env() -> Self {
         let policy = QuarantinePolicy::from_env();
-        let log_path = std::env::var("CONTEXTRA_MCP_SECURITY_LOG")
+        let log_path = std::env::var("ACTA_MCP_SECURITY_LOG")
             .ok()
             .map(PathBuf::from);
         let audit_logger = SecurityAuditLogger::new(log_path);
 
-        if let Ok(config_file) = std::env::var("CONTEXTRA_MCP_INJECTION_CONFIG") {
+        if let Ok(config_file) = std::env::var("ACTA_MCP_INJECTION_CONFIG") {
             if let Ok(guard) = Self::load_from_file(config_file) {
                 return guard;
             }
         }
 
         let mut patterns = Self::default_patterns();
-        if let Ok(patterns_file) = std::env::var("CONTEXTRA_MCP_PATTERNS_FILE") {
+        if let Ok(patterns_file) = std::env::var("ACTA_MCP_PATTERNS_FILE") {
             if let Ok(content) = std::fs::read_to_string(&patterns_file) {
                 if let Ok(custom_list) = serde_json::from_str::<Vec<String>>(&content) {
                     for pat in custom_list {

@@ -28,20 +28,20 @@ def is_executable(path: Path) -> bool:
 def find_mcp_binary() -> str:
     """
     Locate or download the acta-mcp-server binary following strict priority:
-    1. CONTEXTRA_MCP_BINARY environment variable (explicit binary path).
+    1. ACTA_MCP_BINARY environment variable (explicit binary path).
     2. acta-mcp-server in system PATH.
     3. Cached release binary (~/.cache/acta-mcp/<version>/ or %LOCALAPPDATA%).
     4. Download GitHub release binary (SHA256 verified).
-    5. Repo tree & Cargo build fallback (ONLY if CONTEXTRA_MCP_ALLOW_REPO_BUILD=1).
+    5. Repo tree & Cargo build fallback (ONLY if ACTA_MCP_ALLOW_REPO_BUILD=1).
     """
     # 1. Check explicit environment override
-    env_bin = os.environ.get("CONTEXTRA_MCP_BINARY")
+    env_bin = os.environ.get("ACTA_MCP_BINARY")
     if env_bin:
         env_path = Path(env_bin)
         if is_executable(env_path):
             return str(env_path)
         sys.stderr.write(
-            f"[acta-mcp] Warning: CONTEXTRA_MCP_BINARY set to '{env_bin}', but file is missing or not executable.\n"
+            f"[acta-mcp] Warning: ACTA_MCP_BINARY set to '{env_bin}', but file is missing or not executable.\n"
         )
         sys.stderr.flush()
 
@@ -64,8 +64,8 @@ def find_mcp_binary() -> str:
         sys.stderr.write(f"[acta-mcp] Automatic binary download failed: {exc}\n")
         sys.stderr.flush()
 
-    # 5. Repo tree / Cargo build fallback ONLY IF CONTEXTRA_MCP_ALLOW_REPO_BUILD=1
-    if os.environ.get("CONTEXTRA_MCP_ALLOW_REPO_BUILD") == "1":
+    # 5. Repo tree / Cargo build fallback ONLY IF ACTA_MCP_ALLOW_REPO_BUILD=1
+    if os.environ.get("ACTA_MCP_ALLOW_REPO_BUILD") == "1":
         repo_root = find_repo_root()
         candidates = [
             repo_root / "target" / "release" / "acta-mcp-server",
@@ -80,7 +80,7 @@ def find_mcp_binary() -> str:
 
         if (repo_root / "Cargo.toml").exists():
             sys.stderr.write(
-                "[acta-mcp] CONTEXTRA_MCP_ALLOW_REPO_BUILD=1 is set. Building release binary via Cargo...\n"
+                "[acta-mcp] ACTA_MCP_ALLOW_REPO_BUILD=1 is set. Building release binary via Cargo...\n"
             )
             sys.stderr.flush()
             cmd = ["cargo", "build", "--release", "-p", "acta-mcp", "--bin", "acta-mcp-server"]
@@ -93,9 +93,9 @@ def find_mcp_binary() -> str:
     raise FileNotFoundError(
         "Could not locate or download `acta-mcp-server` executable.\n"
         "Options to resolve:\n"
-        "1. Set CONTEXTRA_MCP_BINARY environment variable pointing to the precompiled binary.\n"
+        "1. Set ACTA_MCP_BINARY environment variable pointing to the precompiled binary.\n"
         "2. Ensure acta-mcp-server is available in your system PATH.\n"
-        "3. Set CONTEXTRA_MCP_ALLOW_REPO_BUILD=1 to allow building from source via Cargo in developer repositories."
+        "3. Set ACTA_MCP_ALLOW_REPO_BUILD=1 to allow building from source via Cargo in developer repositories."
     )
 
 def main():

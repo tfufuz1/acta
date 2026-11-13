@@ -314,8 +314,8 @@ async fn test_acta_forget_collection_with_proof() {
     assert!(resp.error.is_none());
 
     // 1. Without proof key configured -> fails
-    std::env::remove_var("CONTEXTRA_DELETION_PROOF_KEY");
-    std::env::remove_var("CONTEXTRA_PROOF_KEY");
+    std::env::remove_var("ACTA_DELETION_PROOF_KEY");
+    std::env::remove_var("ACTA_PROOF_KEY");
     let forget_req_nokey = make_request(
         "tools/call",
         json!({
@@ -334,7 +334,7 @@ async fn test_acta_forget_collection_with_proof() {
 
     // 2. With proof key configured -> succeeds and generates DeletionProof
     let test_key = "test_deletion_proof_key_32_bytes!";
-    std::env::set_var("CONTEXTRA_DELETION_PROOF_KEY", test_key);
+    std::env::set_var("ACTA_DELETION_PROOF_KEY", test_key);
 
     let forget_req = make_request(
         "tools/call",
@@ -363,7 +363,7 @@ async fn test_acta_forget_collection_with_proof() {
         serde_json::from_value(proof_val.clone()).unwrap();
     assert!(proof.verify(test_key.as_bytes()).unwrap());
 
-    std::env::remove_var("CONTEXTRA_DELETION_PROOF_KEY");
+    std::env::remove_var("ACTA_DELETION_PROOF_KEY");
 }
 
 #[tokio::test]
@@ -597,7 +597,7 @@ async fn test_search_validates_empty_or_oversized_query() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_acta_delete_single_doc_fields() {
     std::env::set_var(
-        "CONTEXTRA_DELETION_PROOF_KEY",
+        "ACTA_DELETION_PROOF_KEY",
         "test_deletion_proof_key_32_bytes!",
     );
     let (server, _tmp) = create_mock_server_with_write(true).await;
