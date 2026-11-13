@@ -1,0 +1,26 @@
+[lints]
+workspace = true
+
+[package]
+name = "acta-license"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "License and activation enforcement gate layer for Acta feature rings"
+
+[package.metadata.acta]
+ring = "4"
+
+[dependencies]
+thiserror = { workspace = true }
+serde = { workspace = true }
+bincode = { workspace = true }
+blake3 = { workspace = true }
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+tracing = { workspace = true }
+acta-types = { workspace = true }
+acta-ports = { workspace = true }
+
+[dev-dependencies]
+rand = { workspace = true }

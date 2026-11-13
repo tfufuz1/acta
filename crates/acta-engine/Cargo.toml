@@ -1,0 +1,68 @@
+[lints]
+workspace = true
+
+[package]
+name = "acta-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Acta — Core storage, index, and transaction orchestrator engine"
+
+[package.metadata.acta]
+ring = "3"
+
+[dependencies]
+acta-sys = { workspace = true }
+acta-types = { workspace = true }
+acta-ports = { workspace = true }
+acta-mvcc = { workspace = true }
+bytes = { workspace = true }
+acta-crypto = { workspace = true }
+acta-sandbox = { workspace = true, optional = true }
+acta-infer-onnx = { workspace = true, optional = true }
+acta-adapt = { workspace = true, optional = true }
+acta-store = { workspace = true }
+blake3 = { workspace = true }
+acta-vector = { workspace = true }
+acta-text = { workspace = true }
+acta-checkpoint = { workspace = true }
+acta-rank = { workspace = true }
+acta-graph = { workspace = true }
+ahash = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
+tokio-util = { version = "0.7.18", features = ["rt"] }
+zeroize = { version = "1", features = ["derive", "zeroize_derive"] }
+thiserror = { workspace = true }
+bincode = { workspace = true }
+hmac = "0.12"
+sha2 = "0.10"
+
+[target.'cfg(loom)'.dependencies]
+loom = "0.7"
+
+[dev-dependencies]
+acta-testkit = { workspace = true }
+tokio = { workspace = true, features = ["full", "test-util"] }
+tempfile = { workspace = true }
+proptest = "1.4"
+loom = "0.7"
+wat = "1"
+acta-vector = { workspace = true, features = ["experimental-diskann"] }
+
+[features]
+default = []
+onnx = ["dep:acta-infer-onnx", "acta-infer-onnx/onnx"]
+reranking = []
+sandbox = ["dep:acta-sandbox"]
+experimental-diskann = ["acta-vector/experimental-diskann"]
+background-maintenance = []
+graph-connectivity-health = ["acta-graph/graph-connectivity-health"]
+edge-reinforcement-learning = []
+adaptive-candidate-pool-sizing = ["dep:acta-adapt"]
+entity-extraction = []
+auto-extraction-opt-out = []

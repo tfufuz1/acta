@@ -1,0 +1,42 @@
+[lints]
+workspace = true
+
+[package]
+name = "acta-cognition"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Acta — Memory consolidation, compaction, and context management"
+
+[package.metadata.acta]
+ring = "3"
+
+[dependencies]
+acta-engine = { workspace = true }
+acta-types = { workspace = true }
+acta-ports = { workspace = true }
+acta-store = { workspace = true }
+acta-vector = { workspace = true }
+acta-graph = { workspace = true }
+bytes = { workspace = true }
+ahash = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
+tokio-util = { version = "0.7.18", features = ["rt"] }
+thiserror = { workspace = true }
+blake3 = { workspace = true }
+
+[features]
+default = []
+graph-connectivity-health = ["acta-graph/physio-percolation", "acta-engine/graph-connectivity-health"]
+edge-reinforcement-learning = ["acta-graph/edge-reinforcement-learning", "acta-engine/edge-reinforcement-learning"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+tempfile = { workspace = true }
+acta-infer-candle = { workspace = true }
+acta-testkit = { workspace = true }

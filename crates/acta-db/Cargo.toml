@@ -1,0 +1,81 @@
+[lints]
+workspace = true
+
+[package]
+name = "acta-db"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Acta — Embedded hybrid-search for AI agents"
+
+[package.metadata.acta]
+ring = "3"
+
+[dependencies]
+acta-engine = { workspace = true }
+acta-cognition = { workspace = true }
+acta-sys = { workspace = true }
+acta-types = { workspace = true }
+acta-ports = { workspace = true }
+bytes = { workspace = true }
+acta-crypto = { workspace = true }
+acta-store = { workspace = true }
+blake3 = { workspace = true }
+acta-vector = { workspace = true }
+acta-text = { workspace = true }
+acta-checkpoint = { workspace = true }
+acta-graph = { workspace = true }
+acta-rank = { workspace = true }
+acta-adapt = { workspace = true }
+ahash = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
+tokio-util = { version = "0.7.18", features = ["rt"] }
+zeroize = { version = "1", features = ["derive", "zeroize_derive"] }
+thiserror = { workspace = true }
+
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+tempfile = { workspace = true }
+criterion = { version = "0.5", features = ["async_tokio", "html_reports"] }
+proptest = "1.4"
+acta-vector = { workspace = true, features = ["experimental-diskann"] }
+acta-testkit = { workspace = true }
+ed25519-dalek = "2"
+
+[features]
+default = []
+bench = []
+sandbox = ["acta-engine/sandbox"]
+reranking = []
+onnx = ["acta-engine/onnx"]
+experimental-diskann = ["acta-vector/experimental-diskann"]
+background-maintenance = ["acta-engine/background-maintenance"]
+graph-connectivity-health = ["acta-engine/graph-connectivity-health", "acta-graph/physio-percolation"]
+coherence-bonus-fusion = []
+adaptive-candidate-pool-sizing = ["acta-engine/adaptive-candidate-pool-sizing"]
+volatile-vault = []
+# RESOLVED: AGT-DB-897f3a5c — Forward edge-reinforcement-learning feature to acta-graph/edge-reinforcement-learning (TS: 2026-09-09T15:48:51Z) (SESSION: 2c31404a)
+edge-reinforcement-learning = ["acta-graph/edge-reinforcement-learning"]
+
+
+[[example]]
+name = "quickstart"
+
+[[example]]
+name = "hybrid_search"
+
+[[test]]
+name = "diskann_collection_fallback"
+required-features = ["experimental-diskann"]
+
+[[example]]
+name = "collections"
+
+[[example]]
+name = "verify_deletion_proof_external"

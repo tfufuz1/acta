@@ -1,0 +1,19 @@
+[lints]
+workspace = true
+
+[package]
+name = "acta-durable-fs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Durable filesystem operations and synchronous disk flushing for Acta"
+
+[package.metadata.acta]
+ring = "0"
+
+[dependencies]
+acta-sys = { path = "../acta-sys", version = "0.1.0" }
+
+[dev-dependencies]
+tempfile = { workspace = true }

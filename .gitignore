@@ -33,8 +33,6 @@ acta_orphaned_pins.json
 
 # TODO: .unwrap-baseline.json is tracked in repository to provide baseline for Gate 2
 
-# Benchmark-Datenbanken / Downloads
-benchmarks/acta-bench/tests/data/
 
 # Kompilierte Ad-hoc-Binaries ohne Cargo-Build-System
 /fix_unsafe
@@ -45,21 +43,6 @@ benchmarks/acta-bench/tests/data/
 **/fuzz/Cargo.lock
 coverage.json
 
-# Generierte Benchmark-/Test-Ergebnisse
-
-# Jules Session History Log (alt: .jules/, neu: .agents/jules/)
-.jules/session_history.jsonl*
-.agents/jules/session_history.jsonl*
-
-.jules/claims.json
-.jules/SESSION.md
-.jules/verify/claim_precheck.sh
-.jules/context/
-
-# Jules dynamischer Kontext (bei jedem Task-Start neu erzeugt → nicht versionieren)
-.agents/jules/context/*.md
-.agents/jules/context/*.txt
-!.agents/jules/context/.gitkeep
 
 
 

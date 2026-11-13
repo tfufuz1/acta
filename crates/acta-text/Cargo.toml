@@ -1,0 +1,39 @@
+[lints]
+workspace = true
+
+[package]
+name = "acta-text"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Acta — Text processing and BM25 search for Hybrid Search"
+
+[package.metadata.acta]
+ring = "0"
+
+[dependencies]
+acta-types = { workspace = true }
+acta-ports = { workspace = true }
+bytes = { workspace = true }
+itoa = { workspace = true }
+regex = { workspace = true }
+unicode-segmentation = "1.11.0"
+bincode = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+parking_lot = { workspace = true }
+tracing = { workspace = true }
+blake3 = { workspace = true }
+futures = "0.3"
+
+[features]
+default = []
+bm25f = []
+docid-128 = ["acta-types/docid-128"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
+tempfile = { workspace = true }
+proptest = "1.4"

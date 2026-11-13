@@ -1,0 +1,28 @@
+[lints]
+workspace = true
+
+[package]
+name = "acta-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Deprecated Strangler Facade re-exporting Ring-0 types, traits, MVCC, and wire IPC for Acta"
+
+[package.metadata.acta]
+ring = "0"
+
+[features]
+test-utils = []
+
+[dependencies]
+acta-types = { workspace = true }
+acta-ports = { workspace = true }
+acta-mvcc = { workspace = true }
+acta-wire = { workspace = true }
+
+[dev-dependencies]
+# Async runtime for executing async unit tests.
+tokio = { workspace = true, features = ["rt", "macros"] }
+# Property-based testing framework for invariant validation.
+proptest = "1.4"

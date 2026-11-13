@@ -1,0 +1,47 @@
+[package]
+name = "acta"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Acta — Embedded hybrid-search for AI agents (Facade)"
+
+[package.metadata.acta]
+ring = "4"
+
+[dependencies]
+acta-types = { workspace = true }
+acta-ports = { workspace = true }
+acta-license = { workspace = true }
+acta-store = { workspace = true }
+acta-db = { workspace = true }
+acta-crypto = { workspace = true, optional = true }
+acta-privacy = { workspace = true, optional = true }
+acta-audit-export = { workspace = true, optional = true }
+acta-avv-generator = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { version = "1", features = ["v4"] }
+acta-infer-candle = { workspace = true, optional = true }
+acta-rank = { workspace = true }
+tokio = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+zeroize = { version = "1.8.2", features = ["zeroize_derive"] }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }
+tempfile = { workspace = true }
+acta-crypto = { workspace = true }
+acta-testkit = { workspace = true }
+
+[features]
+default = ["embedded"]
+embedded = []
+compliance = ["audit-export", "avv-generator"]
+audit-export = ["dep:acta-audit-export"]
+avv-generator = ["dep:acta-avv-generator"]
+candle = ["acta-infer-candle"]
+
+[lints]
+workspace = true

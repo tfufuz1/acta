@@ -1,0 +1,29 @@
+[lints]
+workspace = true
+
+[package]
+name = "acta-text-fuzz" # <!-- crate-ref-ignore -->
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+acta-text = { path = ".." }
+
+[[bin]]
+name = "fuzz_bm25_tokenize"
+path = "fuzz_targets/fuzz_bm25_tokenize.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_tokenizer_smoke"
+path = "fuzz_targets/fuzz_tokenizer_smoke.rs"
+test = false
+doc = false
