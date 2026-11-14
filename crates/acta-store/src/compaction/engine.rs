@@ -41,6 +41,8 @@ pub struct CompactionEngine {
     merge_operator: Option<Arc<dyn MergeOperator>>,
     clock: Arc<dyn acta_env::Clock>,
     pub(crate) vfs: Arc<dyn Vfs>,
+    /// Retention-Policy (Spec §5.1). Standard: `LiveWhileKeyAlive` (= bisheriges Verhalten).
+    retention: parking_lot::RwLock<Arc<dyn crate::history::RetentionPolicy>>,
 }
 
 impl CompactionEngine {
@@ -78,10 +80,21 @@ impl CompactionEngine {
             merge_operator: None,
             clock: Arc::new(acta_env::SystemClock::new()),
             vfs: Arc::new(RealFs),
+            retention: parking_lot::RwLock::new(crate::history::PartitionRetention::default_arc()),
         }
     }
 
     /// Configures a custom VFS implementation for compaction file operations.
+    /// Aktuelle Retention-Policy.
+    pub fn retention(&self) -> Arc<dyn crate::history::RetentionPolicy> {
+        Arc::clone(&self.retention.read())
+    }
+
+    /// Ersetzt die Retention-Policy (wirkt auf folgende Flushes/Compactions).
+    pub fn set_retention(&self, policy: Arc<dyn crate::history::RetentionPolicy>) {
+        *self.retention.write() = policy;
+    }
+
     pub fn with_vfs(mut self, vfs: Arc<dyn Vfs>) -> Self {
         self.vfs = vfs;
         self
@@ -624,6 +637,7 @@ impl CompactionEngine {
         .await?;
         let mut last_key: Option<bytes::Bytes> = None;
         let mut floor_emitted = false;
+        let retention_policy = self.retention();
         let mut processed_count = 0;
 
         // Token-Bucket-State für I/O-Rate-Limiting (§4.12 C-2)
@@ -826,7 +840,14 @@ impl CompactionEngine {
                     }
                     true
                 } else {
-                    false
+                    // Spec §5.1: Die Policy entscheidet, ob eine geschattete Altversion
+                    // physisch verworfen werden darf (`KeepAll` ⇒ nie).
+                    !retention_policy.may_drop_version(
+                        crate::history::DEFAULT_PARTITION,
+                        raw_seq,
+                        true,
+                        min_snapshot_seq,
+                    )
                 };
 
                 if keep {
@@ -840,8 +861,15 @@ impl CompactionEngine {
                     // is the floor version below min_snapshot_seq. Being a tombstone below min_snapshot_seq
                     // during full compaction, no active snapshot references a non-deleted version below it
                     // and no older SSTables exist, so GC'ing it is safe.
-                    let should_gc_tombstone =
-                        is_tombstone && is_full_compaction && raw_seq < min_snapshot_seq;
+                    let should_gc_tombstone = is_tombstone
+                        && is_full_compaction
+                        && raw_seq < min_snapshot_seq
+                        && retention_policy.may_drop_version(
+                            crate::history::DEFAULT_PARTITION,
+                            raw_seq,
+                            true,
+                            min_snapshot_seq,
+                        );
                     if !should_gc_tombstone {
                         let entry_bytes = (item.key.len() + item.value.len() + 16) as u64; // +16 für Overhead
                         builder

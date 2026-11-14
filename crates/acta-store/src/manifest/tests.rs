@@ -442,3 +442,92 @@ async fn test_manifest_poisoning_on_fsync_failure() {
         "Error message should mention poisoned and INV-FSYNC-1"
     );
 }
+
+// ── Spec §4/§5/§6: neue Manifest-Einträge ────────────────────────────────
+
+fn rec(id: u8, state: ErasureState, seq: u64) -> ManifestEntry {
+    ManifestEntry::Erasure(ErasureRecord {
+        id: [id; 16],
+        state,
+        handle: [0xAB; 16],
+        seq,
+    })
+}
+
+#[test]
+fn test_new_entries_roundtrip_and_tail_candidate_sizes() {
+    let entries = vec![
+        ManifestEntry::SeqHwm { seq: 77, tx: 9 },
+        ManifestEntry::HistoryFloor { partition: 3, seq: 55 },
+        rec(1, ErasureState::Shredded, 1234),
+    ];
+    for e in entries {
+        let bytes = e.to_bytes().expect("ser");
+        assert_eq!(ManifestEntry::from_bytes(&bytes[4..]).expect("de"), e);
+        // Die Tail-Heuristik muss die exakte Länge akzeptieren (kein Fehlalarm bei Torn-Tail).
+        let claimed = u32::from_le_bytes(bytes[0..4].try_into().expect("len")) as usize;
+        assert!(super::recovery::is_valid_tail_truncation_candidate(
+            claimed,
+            &bytes[4..bytes.len() - 1]
+        ));
+        assert!(!super::recovery::is_valid_tail_truncation_candidate(
+            claimed + 1,
+            &bytes[4..bytes.len() - 1]
+        ));
+    }
+}
+
+#[test]
+fn test_extractors_are_monotone() {
+    let entries = vec![
+        ManifestEntry::SeqHwm { seq: 10, tx: 5 },
+        ManifestEntry::SeqHwm { seq: 8, tx: 9 },
+        ManifestEntry::HistoryFloor { partition: 0, seq: 7 },
+        ManifestEntry::HistoryFloor { partition: 0, seq: 3 },
+        rec(1, ErasureState::Purged, 5),
+        rec(1, ErasureState::Requested, 1),
+    ];
+    assert_eq!(Manifest::extract_seq_hwm(&entries), Some((10, 9)));
+    assert_eq!(Manifest::extract_history_floors(&entries).get(&0), Some(&7));
+    let st = Manifest::extract_erasure_states(&entries);
+    assert_eq!(st[&[1u8; 16]].state, ErasureState::Purged);
+}
+
+#[tokio::test]
+async fn test_rollover_carries_over_metadata() {
+    let dir = tempdir().expect("tmp");
+    let path = dir.path().join("MANIFEST");
+    let m = Manifest::open(&path).await.expect("open");
+    m.append_batch(&[
+        ManifestEntry::WalCheckpoint { hmac: [7u8; 32] },
+        ManifestEntry::SeqHwm { seq: 42, tx: 4 },
+        ManifestEntry::HistoryFloor { partition: 0, seq: 11 },
+        rec(2, ErasureState::Shredded, 40),
+    ])
+    .await
+    .expect("append");
+    m.rollover(&[]).await.expect("rollover");
+    let loaded = Manifest::load(&path).await.expect("load");
+    assert_eq!(Manifest::extract_seq_hwm(&loaded), Some((42, 4)));
+    assert_eq!(Manifest::extract_history_floors(&loaded).get(&0), Some(&11));
+    assert_eq!(Manifest::extract_high_water_mark(&loaded), Some([7u8; 32]));
+    assert_eq!(
+        Manifest::extract_erasure_states(&loaded)[&[2u8; 16]].state,
+        ErasureState::Shredded
+    );
+}
+
+#[tokio::test]
+async fn test_torn_new_entry_at_tail_is_tolerated() {
+    let dir = tempdir().expect("tmp");
+    let path = dir.path().join("MANIFEST");
+    let m = Manifest::open(&path).await.expect("open");
+    m.append(&ManifestEntry::SeqHwm { seq: 1, tx: 1 }).await.expect("a");
+    drop(m);
+    let extra = ManifestEntry::SeqHwm { seq: 2, tx: 2 }.to_bytes().expect("ser");
+    let mut f = std::fs::OpenOptions::new().append(true).open(&path).expect("f");
+    use std::io::Write;
+    f.write_all(&extra[..extra.len() - 3]).expect("w");
+    let loaded = Manifest::load(&path).await.expect("load");
+    assert_eq!(Manifest::extract_seq_hwm(&loaded), Some((1, 1)));
+}

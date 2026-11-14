@@ -119,6 +119,24 @@ pub(super) fn is_valid_tail_truncation_candidate(claimed_len: usize, partial: &[
                     }
                 }
             }
+            5 => {
+                // SeqHwm: exakt 4 + 1 + 16 = 21
+                if claimed_len != 21 {
+                    return false;
+                }
+            }
+            6 => {
+                // HistoryFloor: exakt 4 + 1 + 12 = 17
+                if claimed_len != 17 {
+                    return false;
+                }
+            }
+            7 => {
+                // Erasure: exakt 4 + 1 + 41 = 46
+                if claimed_len != 46 {
+                    return false;
+                }
+            }
             _ => {
                 // Unknown op_tag is definitely corruption
                 return false;

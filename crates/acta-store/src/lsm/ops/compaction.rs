@@ -8,7 +8,7 @@
 
 use super::super::engine::LsmStorage;
 use super::super::{MemTable, SstableBuilder, SstableReader, Wal};
-use crate::compaction::retain_key_versions;
+use crate::history::{retain_versions_with_policy, DEFAULT_PARTITION};
 use bytes::Bytes;
 use crate::error::{StoreError as ActaError, StoreResult as Result};
 use acta_ids::TOMBSTONE_BIT;
@@ -25,9 +25,23 @@ pub(crate) async fn flush(storage: &LsmStorage) -> Result<()> {
     let _flush_lock = storage.flush_mutex.lock().await;
 
     // Dekker-Write-Fence: Flush vs Purge Koordination
-    if !storage.flush_purge_fence.enter_flush() {
-        tracing::debug!("Flush postponed: exclusive purge operation currently active");
-        return Ok(());
+    // F8: Kein stilles `Ok(())` bei aktivem Purge. Der Purge hat Vorrang (Dekker-Tie-Break),
+    // der Flush wartet begrenzt und meldet danach `Busy`, damit der Aufrufer nicht
+    // fälschlich von einem durablen Flush ausgeht.
+    {
+        const FENCE_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+        let started = std::time::Instant::now();
+        loop {
+            if storage.flush_purge_fence.enter_flush() {
+                break;
+            }
+            if started.elapsed() >= FENCE_WAIT {
+                return Err(ActaError::Busy(
+                    "flush postponed: exclusive purge operation active".into(),
+                ));
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
     }
     struct FlushFenceGuard<'a>(&'a super::super::fence::FlushPurgeFence);
     impl<'a> Drop for FlushFenceGuard<'a> {
@@ -118,6 +132,7 @@ pub(crate) async fn flush(storage: &LsmStorage) -> Result<()> {
     let mut manifest_attempted = false;
     let phase3_res: Result<()> = async {
         let floor_seq = storage.snapshot_registry.min_active_seqno();
+        let retention_policy = storage.compaction_engine.retention();
 
         let mut key_map: BTreeMap<Bytes, Vec<(Bytes, u64, u64)>> = BTreeMap::new();
 
@@ -136,7 +151,13 @@ pub(crate) async fn flush(storage: &LsmStorage) -> Result<()> {
 
         for (k, mut versions) in key_map {
             versions.sort_by(|a, b| (b.1 & !TOMBSTONE_BIT).cmp(&(a.1 & !TOMBSTONE_BIT)));
-            let retained = retain_key_versions(versions, |(_, seq, _)| *seq, floor_seq);
+            let retained = retain_versions_with_policy(
+                versions,
+                |(_, seq, _)| *seq,
+                floor_seq,
+                DEFAULT_PARTITION,
+                retention_policy.as_ref(),
+            );
             for (v, seq, tx) in retained {
                 builder.add(&k, &v, seq, tx).await?;
             }
@@ -174,6 +195,11 @@ pub(crate) async fn flush(storage: &LsmStorage) -> Result<()> {
         if let Some(hmac) = latest_hmac_opt {
             manifest_entries.push(crate::manifest::ManifestEntry::WalCheckpoint { hmac });
         }
+        // §4.3: High-Water-Mark mit jedem Flush durabel machen (im selben atomaren Batch).
+        manifest_entries.push(crate::manifest::ManifestEntry::SeqHwm {
+            seq: storage.next_seq_no.load(Ordering::SeqCst).saturating_sub(1),
+            tx: storage.last_committed_tx.load(Ordering::SeqCst),
+        });
 
         manifest_attempted = true;
         storage.manifest.append_batch(&manifest_entries).await?;

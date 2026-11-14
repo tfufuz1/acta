@@ -79,6 +79,7 @@ pub mod commit;
 pub mod fence;
 pub mod flush;
 pub mod group_commit;
+pub mod history;
 pub mod lock_order;
 pub mod recovery;
 pub mod scan;

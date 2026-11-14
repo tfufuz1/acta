@@ -16,7 +16,7 @@ mod rollover;
 mod tests;
 
 pub use core::Manifest;
-pub use entry::ManifestEntry;
+pub use entry::{ErasureRecord, ErasureState, ManifestEntry};
 
 /// Maximum allowed payload size for a single manifest entry (1 MB).
 pub const MAX_MANIFEST_ENTRY_SIZE: u32 = 1024 * 1024;

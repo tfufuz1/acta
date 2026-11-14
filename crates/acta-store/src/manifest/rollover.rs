@@ -102,6 +102,17 @@ impl Manifest {
             }
         };
 
+        // Metadaten (Checkpoint-HMAC, SeqHwm, HistoryFloor, Erasure-Journal) aus der
+        // bisherigen Datei übernehmen; ein reiner Add-Snapshot würde sie verlieren.
+        // Fehler beim Lesen => Rollover abbrechen (alte Datei bleibt gültig).
+        let carried: Vec<ManifestEntry> = match Manifest::load(&self.path).await {
+            Ok(old) => Manifest::carry_over_metadata(&old),
+            Err(e) => {
+                let _ = tokio::fs::remove_file(&tmp_path).await;
+                return Err(e);
+            }
+        };
+
         let rollover_res: Result<()> = async {
             let mut header = Vec::with_capacity(5);
             header.extend_from_slice(super::core::MANIFEST_HEADER_MAGIC);
@@ -113,7 +124,7 @@ impl Manifest {
                 ))
             })?;
 
-            for entry in live_entries {
+            for entry in live_entries.iter().chain(carried.iter()) {
                 let bytes = entry.to_bytes()?;
                 new_file.write_all(&bytes).await.map_err(|e| {
                     StoreError::Storage(format!(

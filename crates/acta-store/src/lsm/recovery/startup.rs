@@ -29,6 +29,27 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+/// `true`, wenn im Datenverzeichnis mindestens eine `*.sst`-Datei liegt.
+async fn dir_has_sstables(path: &std::path::Path) -> Result<bool> {
+    let mut rd = tokio::fs::read_dir(path)
+        .await
+        .map_err(|e| ActaError::Storage(format!("Failed to read data dir: {e}")))?;
+    while let Some(entry) = rd
+        .next_entry()
+        .await
+        .map_err(|e| ActaError::Storage(format!("Failed to read directory entry: {e}")))?
+    {
+        if entry
+            .file_name()
+            .to_str()
+            .is_some_and(|n| n.ends_with(".sst"))
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 struct PendingTxOp {
     lsn: u64,
     op: WalOp,
@@ -136,8 +157,21 @@ impl LsmStorage {
             ts_a.cmp(ts_b).then_with(|| path_a.cmp(path_b))
         });
 
+        let mut manifest_seq_hwm: Option<(u64, u64)> = None;
+        let mut manifest_history_floors: std::collections::BTreeMap<u32, u64> =
+            std::collections::BTreeMap::new();
         let manifest_path = config.path.join("MANIFEST");
         let manifest_exists = manifest_path.exists();
+        // F6 / P0-5: Fehlt das MANIFEST, obwohl SSTables existieren, wäre ein
+        // Neuaufbau aus dem Verzeichnisinhalt eine Wiederauferstehung bereits
+        // verworfener (z. B. geshredderter/gepurgter) SSTs. Fail-closed.
+        if !manifest_exists && dir_has_sstables(&config.path).await? {
+            return Err(ActaError::Storage(
+                "MANIFEST missing in non-pristine database directory (SSTables present); \
+                 refusing to rebuild from directory contents"
+                    .into(),
+            ));
+        }
         #[allow(clippy::type_complexity)]
         let (valid_manifest_sstables, dead_manifest_sstables, manifest_hwm): (
             Option<std::collections::BTreeSet<std::path::PathBuf>>,
@@ -151,14 +185,20 @@ impl LsmStorage {
                 .collect();
             let dead_set = crate::manifest::Manifest::reconstruct_dead_sstables(&entries);
             let hwm = crate::manifest::Manifest::extract_high_water_mark(&entries);
+            manifest_seq_hwm = crate::manifest::Manifest::extract_seq_hwm(&entries);
+            manifest_history_floors = crate::manifest::Manifest::extract_history_floors(&entries);
             (Some(valid_set), Some(dead_set), hwm)
         } else {
             (None, None, None)
         };
 
         let memtable = MemTable::new();
-        let mut max_seq = 0u64;
-        let mut max_tx = 0u64;
+        // §4.3: next_seq = max(wal_max, sst_max, manifest_hwm) + 1 (Seq-Eindeutigkeit
+        // auch nach Tombstone-GC der jüngsten Version).
+        let mut max_seq = manifest_seq_hwm.map_or(0u64, |(s, _)| s & !TOMBSTONE_BIT);
+        let mut max_tx = manifest_seq_hwm
+            .map_or(0u64, |(_, t)| t)
+            .min(TxId::INTERNAL_BASE.saturating_sub(1));
         let mut replayed_size = 0u64;
         let mut pending_tx_map: std::collections::BTreeMap<u64, Vec<PendingTxOp>> =
             std::collections::BTreeMap::new();
@@ -327,6 +367,10 @@ impl LsmStorage {
             let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if file_name.ends_with(".tmp")
                 || path.extension().is_some_and(|ext| ext == "tmp")
+                // F5 / P0-5: Builder-Tmp-Dateien heißen `<name>.sst.tmp.<pid>`; die
+                // Extension ist dort die PID, nicht `tmp`. Ohne dieses Muster bleiben
+                // Reste abgebrochener Flushes/Purges dauerhaft liegen.
+                || file_name.contains(".sst.tmp.")
                 || file_name.starts_with("SALT.tmp.")
                 || file_name.starts_with("MANIFEST.new.")
             {
@@ -495,6 +539,7 @@ impl LsmStorage {
             compaction_engine,
             manifest,
             next_seq_no: AtomicU64::new(max_seq.saturating_add(1)),
+            history_floors: parking_lot::RwLock::new(manifest_history_floors),
             last_committed_tx: AtomicU64::new(max_tx),
             last_applied_seq: AtomicU64::new(max_seq),
             flush_notify,

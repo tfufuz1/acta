@@ -81,6 +81,12 @@ pub enum StoreError {
     #[error("Not found: {0}")]
     NotFound(String),
 
+    /// Operation derzeit nicht möglich, weil ein exklusiver Vorgang (z. B. Purge-Rewrite)
+    /// läuft. Aufrufer dürfen erneut versuchen; ein stilles `Ok(())` wäre falsch, weil
+    /// der Flush dann nicht stattgefunden hat (F8).
+    #[error("Busy: {0}")]
+    Busy(String),
+
     /// Interner System- oder Logikfehler.
     #[error("Internal error: {0}")]
     Internal(String),

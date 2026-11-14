@@ -63,6 +63,7 @@ pub mod compaction;
 #[cfg(feature = "workspace")]
 pub mod engine;
 pub mod fsync;
+pub mod history;
 pub mod key_source;
 #[cfg(not(loom))]
 pub mod lsm;

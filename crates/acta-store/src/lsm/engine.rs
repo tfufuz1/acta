@@ -50,6 +50,8 @@ pub struct LsmStorage {
     pub(super) compaction_engine: Arc<CompactionEngine>,
     pub(super) manifest: Arc<crate::manifest::Manifest>,
     pub(super) next_seq_no: AtomicU64,
+    /// Persistierte History-Floors je Partition (Spec §5.1; monoton, I4).
+    pub(super) history_floors: parking_lot::RwLock<std::collections::BTreeMap<u32, u64>>,
     pub(super) last_committed_tx: AtomicU64,
     pub(super) last_applied_seq: AtomicU64,
     pub(super) flush_notify: Arc<tokio::sync::Notify>,

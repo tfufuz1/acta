@@ -35,7 +35,11 @@ impl Manifest {
                         .unwrap_or_else(|| path.clone());
                     valid_map.remove(&key);
                 }
-                ManifestEntry::RollbackComplete { .. } | ManifestEntry::WalCheckpoint { .. } => {}
+                ManifestEntry::RollbackComplete { .. }
+                | ManifestEntry::WalCheckpoint { .. }
+                | ManifestEntry::SeqHwm { .. }
+                | ManifestEntry::HistoryFloor { .. }
+                | ManifestEntry::Erasure(_) => {}
                 ManifestEntry::Replace { removed, added, .. } => {
                     for p in removed {
                         let key = p
@@ -90,11 +94,82 @@ impl Manifest {
                 }
                 ManifestEntry::Add { .. }
                 | ManifestEntry::RollbackComplete { .. }
-                | ManifestEntry::WalCheckpoint { .. } => {}
+                | ManifestEntry::WalCheckpoint { .. }
+                | ManifestEntry::SeqHwm { .. }
+                | ManifestEntry::HistoryFloor { .. }
+                | ManifestEntry::Erasure(_) => {}
             }
         }
 
         dead_set.into_iter().collect()
+    }
+
+    /// Höchste persistierte `SeqHwm{seq, tx}` (Spec §4.3); beide Komponenten monoton.
+    pub fn extract_seq_hwm(entries: &[ManifestEntry]) -> Option<(u64, u64)> {
+        let mut out: Option<(u64, u64)> = None;
+        for e in entries {
+            if let ManifestEntry::SeqHwm { seq, tx } = e {
+                out = Some(match out {
+                    Some((s, t)) => (s.max(*seq), t.max(*tx)),
+                    None => (*seq, *tx),
+                });
+            }
+        }
+        out
+    }
+
+    /// Persistierte History-Floors je Partition (monoton: höchster Wert gewinnt, I4).
+    pub fn extract_history_floors(entries: &[ManifestEntry]) -> std::collections::BTreeMap<u32, u64> {
+        let mut out = std::collections::BTreeMap::new();
+        for e in entries {
+            if let ManifestEntry::HistoryFloor { partition, seq } = e {
+                let slot = out.entry(*partition).or_insert(0u64);
+                if *seq > *slot {
+                    *slot = *seq;
+                }
+            }
+        }
+        out
+    }
+
+    /// Letzter (höchster) Zustand je `erasure_id`. Übergänge sind monoton (I3): ein
+    /// niedrigerer Zustand überschreibt nie einen höheren.
+    pub fn extract_erasure_states(
+        entries: &[ManifestEntry],
+    ) -> std::collections::BTreeMap<[u8; 16], super::entry::ErasureRecord> {
+        let mut out: std::collections::BTreeMap<[u8; 16], super::entry::ErasureRecord> =
+            std::collections::BTreeMap::new();
+        for e in entries {
+            if let ManifestEntry::Erasure(r) = e {
+                match out.get(&r.id) {
+                    Some(prev) if prev.state >= r.state => {}
+                    _ => {
+                        out.insert(r.id, *r);
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// Kompakte Metadaten-Einträge, die ein Rollover übernehmen MUSS: letzter
+    /// `WalCheckpoint`, `SeqHwm`, `HistoryFloor`s und Erasure-Journal. Ohne sie gingen
+    /// Anti-Rollback-Anker, Seq-Eindeutigkeit und offene Löschvorgänge verloren.
+    pub fn carry_over_metadata(entries: &[ManifestEntry]) -> Vec<ManifestEntry> {
+        let mut out = Vec::new();
+        if let Some(hmac) = Self::extract_high_water_mark(entries) {
+            out.push(ManifestEntry::WalCheckpoint { hmac });
+        }
+        if let Some((seq, tx)) = Self::extract_seq_hwm(entries) {
+            out.push(ManifestEntry::SeqHwm { seq, tx });
+        }
+        for (partition, seq) in Self::extract_history_floors(entries) {
+            out.push(ManifestEntry::HistoryFloor { partition, seq });
+        }
+        for (_, rec) in Self::extract_erasure_states(entries) {
+            out.push(ManifestEntry::Erasure(rec));
+        }
+        out
     }
 
     /// Extracts the most recent WAL high-water-mark HMAC from a list of manifest entries.

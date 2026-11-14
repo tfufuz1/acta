@@ -42,6 +42,56 @@ pub enum ManifestEntry {
     },
     /// A WAL high-water-mark entry recording the valid WAL-tail HMAC at flush/checkpoint time.
     WalCheckpoint { hmac: [u8; 32] },
+    /// Seq-/Tx-High-Water-Mark (Spec §4.3). Verhindert Seq-Wiederverwendung nach
+    /// Tombstone-GC: `next_seq = max(wal_max, sst_max, hwm) + 1`. Monoton steigend.
+    SeqHwm { seq: u64, tx: u64 },
+    /// Persistierter History-Floor einer Partition (Spec §5.1). Monoton steigend; wird
+    /// **vor** dem Verwerfen alter Versionen durabel.
+    HistoryFloor { partition: u32, seq: u64 },
+    /// Erasure-Journal-Eintrag (Spec §6). Enthält nur Handle, nie Identität.
+    Erasure(ErasureRecord),
+}
+
+/// Zustände der Erasure-State-Machine (Spec §6). Die Reihenfolge ist die zulässige
+/// Übergangsreihenfolge; Übergänge sind monoton.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(u8)]
+pub enum ErasureState {
+    Requested = 1,
+    Frozen = 2,
+    /// Commit-Punkt der Löschung (D-2).
+    Shredded = 3,
+    Receipted = 4,
+    Purged = 5,
+    DerivedRebuilt = 6,
+    Verified = 7,
+    Closed = 8,
+}
+
+impl ErasureState {
+    pub fn from_u8(v: u8) -> Option<Self> {
+        Some(match v {
+            1 => Self::Requested,
+            2 => Self::Frozen,
+            3 => Self::Shredded,
+            4 => Self::Receipted,
+            5 => Self::Purged,
+            6 => Self::DerivedRebuilt,
+            7 => Self::Verified,
+            8 => Self::Closed,
+            _ => return None,
+        })
+    }
+}
+
+/// Ein Journal-Eintrag der Löschkette: `(erasure_id, state, handle, seq)`.
+/// `seq` ist bei `Requested` der Antragszeitpunkt (Unix-Sekunden), ab `Shredded` der `erase_seq`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ErasureRecord {
+    pub id: [u8; 16],
+    pub state: ErasureState,
+    pub handle: [u8; 16],
+    pub seq: u64,
 }
 
 impl ManifestEntry {
@@ -92,6 +142,23 @@ impl ManifestEntry {
             ManifestEntry::WalCheckpoint { hmac } => {
                 payload.push(4u8); // op_tag = 4
                 payload.extend_from_slice(hmac);
+            }
+            ManifestEntry::SeqHwm { seq, tx } => {
+                payload.push(5u8);
+                payload.extend_from_slice(&seq.to_le_bytes());
+                payload.extend_from_slice(&tx.to_le_bytes());
+            }
+            ManifestEntry::HistoryFloor { partition, seq } => {
+                payload.push(6u8);
+                payload.extend_from_slice(&partition.to_le_bytes());
+                payload.extend_from_slice(&seq.to_le_bytes());
+            }
+            ManifestEntry::Erasure(r) => {
+                payload.push(7u8);
+                payload.extend_from_slice(&r.id);
+                payload.push(r.state as u8);
+                payload.extend_from_slice(&r.handle);
+                payload.extend_from_slice(&r.seq.to_le_bytes());
             }
         }
 
@@ -361,10 +428,68 @@ impl ManifestEntry {
                     .map_err(|_| StoreError::Serialization("Invalid hmac format".into()))?;
                 Ok(ManifestEntry::WalCheckpoint { hmac })
             }
+            5 => {
+                if remaining.len() != 16 {
+                    return Err(StoreError::Serialization("SeqHwm payload length mismatch".into()));
+                }
+                let seq = rd_u64(remaining, 0)?;
+                let tx = rd_u64(remaining, 8)?;
+                Ok(ManifestEntry::SeqHwm { seq, tx })
+            }
+            6 => {
+                if remaining.len() != 12 {
+                    return Err(StoreError::Serialization(
+                        "HistoryFloor payload length mismatch".into(),
+                    ));
+                }
+                let pbytes = remaining
+                    .get(0..4)
+                    .and_then(|b| <[u8; 4]>::try_from(b).ok())
+                    .ok_or_else(|| StoreError::Serialization("HistoryFloor partition".into()))?;
+                Ok(ManifestEntry::HistoryFloor {
+                    partition: u32::from_le_bytes(pbytes),
+                    seq: rd_u64(remaining, 4)?,
+                })
+            }
+            7 => {
+                if remaining.len() != 41 {
+                    return Err(StoreError::Serialization(
+                        "Erasure payload length mismatch".into(),
+                    ));
+                }
+                let id = rd_16(remaining, 0)?;
+                let st = *remaining
+                    .get(16)
+                    .ok_or_else(|| StoreError::Serialization("Erasure state missing".into()))?;
+                let state = ErasureState::from_u8(st).ok_or_else(|| {
+                    StoreError::Serialization(format!("Unknown erasure state {st}"))
+                })?;
+                let handle = rd_16(remaining, 17)?;
+                let seq = rd_u64(remaining, 33)?;
+                Ok(ManifestEntry::Erasure(ErasureRecord {
+                    id,
+                    state,
+                    handle,
+                    seq,
+                }))
+            }
             _ => Err(StoreError::Serialization(format!(
                 "Unknown Manifest op tag: {}",
                 op_tag
             ))),
         }
     }
+}
+
+fn rd_u64(buf: &[u8], off: usize) -> StoreResult<u64> {
+    buf.get(off..off + 8)
+        .and_then(|b| <[u8; 8]>::try_from(b).ok())
+        .map(u64::from_le_bytes)
+        .ok_or_else(|| StoreError::Serialization("u64 field truncated".into()))
+}
+
+fn rd_16(buf: &[u8], off: usize) -> StoreResult<[u8; 16]> {
+    buf.get(off..off + 16)
+        .and_then(|b| <[u8; 16]>::try_from(b).ok())
+        .ok_or_else(|| StoreError::Serialization("16-byte field truncated".into()))
 }

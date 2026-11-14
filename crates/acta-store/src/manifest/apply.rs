@@ -34,7 +34,11 @@ impl Manifest {
         }
 
         let mut file = self.file.lock().await;
+        // F4 / P0-4: Ein fehlgeschlagener (ggf. partieller) Write hinterlässt einen
+        // Torso-Frame im Dateimittelpunkt, sobald später weitergeschrieben wird. Daher
+        // fail-closed: Handle vergiften, nie mehr anhängen.
         if let Err(e) = file.write_all(&batch_bytes).await {
+            self.is_poisoned.store(true, Ordering::SeqCst);
             return Err(StoreError::Storage(format!(
                 "MANIFEST write failed for {}: {}",
                 self.path.display(),
@@ -42,6 +46,7 @@ impl Manifest {
             )));
         }
         if let Err(e) = file.flush().await {
+            self.is_poisoned.store(true, Ordering::SeqCst);
             return Err(StoreError::Storage(format!(
                 "MANIFEST flush failed for {}: {}",
                 self.path.display(),
