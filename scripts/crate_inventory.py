@@ -9,15 +9,14 @@ Liest für jedes Workspace-Mitglied (und jedes crates/*-Verzeichnis):
   * [dependencies], [dev-dependencies], [build-dependencies] inkl. target-Tabellen
   * Auflösung von `workspace = true` gegen [workspace.dependencies]
   * optional-Flag, Feature-Liste, Feature-Verweise auf interne Crates
-  * package.metadata.contextra.ring
+  * package.metadata.acta.ring
   * öffentliche API (pub fn/struct/enum/trait/type/const/static/mod/use) aus src/
   * unsafe-Vorkommen und #![forbid/deny(unsafe_code)]-Status
   * LOC der src/-Dateien
 
 Abgeleitet:
   * Reverse-Abhängigkeiten (wer hängt von mir ab)
-  * Hub-Kopplung: Kanten in Hub-Crates (Standard: contextra, contextra-engine,
-    contextra-ports, contextra-types, contextra-db)
+  * Hub-Kopplung: Kanten in Hub-Crates (Standard: siehe DEFAULT_HUBS)
   * Zyklen im internen Normal-Abhängigkeitsgraphen
 
 Unterbefehle:
@@ -31,11 +30,11 @@ Unterbefehle:
   check      Exit 1 bei Zyklen oder Verstoß gegen --max-hub-edges
 
 Beispiele:
-  python3 tools/crate_inventory.py overview
-  python3 tools/crate_inventory.py crate contextra-ports
-  python3 tools/crate_inventory.py hubs --json
-  python3 tools/crate_inventory.py agents --dry-run
-  python3 tools/crate_inventory.py check --max-hub-edges 0
+  python3 scripts/crate_inventory.py overview
+  python3 scripts/crate_inventory.py crate acta-ports
+  python3 scripts/crate_inventory.py hubs --json
+  python3 scripts/crate_inventory.py agents --dry-run
+  python3 scripts/crate_inventory.py check --max-hub-edges 0
 """
 
 from __future__ import annotations
@@ -43,6 +42,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import signal
 import sys
 import tomllib
 from dataclasses import dataclass, field, asdict
@@ -53,8 +53,8 @@ GEN_BEGIN = "<!-- BEGIN GENERATED: crate_inventory.py -->"
 GEN_END = "<!-- END GENERATED: crate_inventory.py -->"
 
 # Crates, an denen die Entkopplung Kanten zählt (Bausteinsammlung, kein Produkt).
-DEFAULT_HUBS = ("contextra", "contextra-engine", "contextra-ports",
-                "contextra-types", "contextra-db")
+# ANNAHME: Hub-Crates sind hier vorläufig gesetzt und müssen fachlich bestätigt werden.
+DEFAULT_HUBS = ("acta-types", "acta-ports")
 
 PUB_ITEM_RE = re.compile(
     r"^\s*pub\s+(?:async\s+)?(?:unsafe\s+)?(?:const\s+)?"
@@ -156,7 +156,7 @@ def _parse_dep_table(name: str, spec, kind: str, target: Optional[str],
         name=name, kind=kind, target=target, optional=optional,
         version=str(version) if version is not None else None,
         features=feats,
-        internal=name in internal_names or name.startswith("contextra"),
+        internal=name in internal_names,
         via_workspace=via_ws,
     )
 
@@ -235,7 +235,7 @@ def load_inventory(root: Optional[Path] = None) -> Dict[str, Crate]:
     for rel, (cdir, man) in manifests.items():
         pkg = man.get("package", {})
         name = pkg.get("name", cdir.name)
-        ring = ((pkg.get("metadata") or {}).get("contextra") or {}).get("ring")
+        ring = ((pkg.get("metadata") or {}).get("acta") or {}).get("ring")
         deps = _collect_deps(man, ws_deps, internal_names)
         pub, reex, unsafe_hits, loc, files, policy = _scan_src(cdir)
         feats = {k: list(v or []) for k, v in (man.get("features") or {}).items()}
@@ -447,7 +447,7 @@ def render_agents_block(c: Crate, crates: Dict[str, Crate], hubs: Iterable[str])
                 lines.append(f"- {k} ({len(c.pub_items[k])}): {_short(c.pub_items[k], 15)}")
         if c.pub_reexports:
             lines.append(f"- pub use: {_short(c.pub_reexports, 10)}")
-    lines += ["", "Regeneriert mit `python3 tools/crate_inventory.py agents`. "
+    lines += ["", "Regeneriert mit `python3 scripts/crate_inventory.py agents`. "
               "Manuelle Notizen stehen außerhalb dieses Blocks.", "", GEN_END]
     return "\n".join(lines)
 
@@ -600,4 +600,6 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 
 if __name__ == "__main__":
+    # Bei Pipes wie `| head` still beenden statt BrokenPipeError zu werfen.
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     sys.exit(main())

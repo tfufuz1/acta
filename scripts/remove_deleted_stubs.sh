@@ -52,10 +52,18 @@ mapfile -d '' CANDIDATES < <(
 )
 
 STUBS=()
+# Byte-genauer Vergleich mit cmp: erlaubt exakt "DELETED" ohne Zeilenende,
+# mit LF oder mit CRLF. Command-Substitution wäre hier ungeeignet, da sie
+# Null-Bytes verwirft und binäre Dateien fälschlich als Treffer werten kann.
+is_stub() {
+    local f="$1"
+    cmp -s -- "$f" <(printf 'DELETED') \
+        || cmp -s -- "$f" <(printf 'DELETED\n') \
+        || cmp -s -- "$f" <(printf 'DELETED\r\n')
+}
+
 for f in "${CANDIDATES[@]}"; do
-    # Command-Substitution entfernt abschließende Zeilenumbrüche; \r wird vorab
-    # entfernt, damit CRLF-Stubs ebenfalls erkannt werden.
-    if [[ "$(tr -d '\r' < "$f")" == "DELETED" ]]; then
+    if is_stub "$f"; then
         STUBS+=("$f")
     fi
 done

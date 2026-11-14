@@ -4,7 +4,7 @@ generate_interface_spec.py
 ===========================
 
 Erzeugt die "Globale Mikrofeingranulare Schnittstellenspezifikation" für alle
-Contextra-Workspace-Crates neu, direkt aus dem aktuellen Quellcode-Stand.
+Acta-Workspace-Crates neu, direkt aus dem aktuellen Quellcode-Stand.
 
 Funktionsweise
 --------------
@@ -22,7 +22,7 @@ Funktionsweise
 Verwendung
 ----------
     python3 scripts/generate_interface_spec.py
-    python3 scripts/generate_interface_spec.py --repo-root /pfad/zu/contextra
+    python3 scripts/generate_interface_spec.py --repo-root /pfad/zu/acta
     python3 scripts/generate_interface_spec.py --out-dir docs/specs --no-timestamp
 
 Empfohlener Ablageort im Repo: `scripts/generate_interface_spec.py`
@@ -47,46 +47,46 @@ from collections import Counter
 # --------------------------------------------------------------------------- #
 
 RING_META: dict[str, tuple[int, str, str]] = {
-    "contextra-ids": (0, "Fertig", "Kanonische Identitätstypen, DocId, TenantId und ID_WIDTH_BITS."),
-    "contextra-env": (0, "Fertig", "System-Umwelt, deterministische Clock, SeededRng und MetricsSink."),
-    "contextra-sys": (0, "Fertig", "System-Abstraktionen für mmap, mlock und Win32-ACLs (Unsafe-Insel)."),
-    "contextra-durable-fs": (0, "Fertig", "Durable I/O, atomare Dateiverschiebungen und fsync-Garantien."),
-    "contextra-simd": (0, "Fertig", "AVX2/AVX-512/NEON SIMD-Distanzberechnungskerne mit Laufzeit-Dispatch (Unsafe-Insel)."),
-    "contextra-wire": (0, "Fertig", "FlatBuffers-IPC-Generat und Zero-Copy-Adapter (Unsafe-Insel)."),
-    "contextra-adapt": (0, "Fertig", "LinUCB-Bandit-Mathematik, Lyapunov-Drift-Wächter und PID-Regler."),
-    "contextra-ingest": (0, "Fertig", "Multi-Format Dokumenten-Ingestion mit Chunking und Formaterkennung."),
-    "contextra-privacy": (0, "Fertig", "Cloud-Egress Privacy Gateway, PII-Vault, Surrogat-Tokenisierung und DLP."),
-    "contextra-sandbox": (0, "Fertig", "WASM-Ausführungs-Isolation mit Fuel- und Wall-Clock-Limits via Wasmtime."),
-    "contextra-prompt-guard": (0, "Fertig", "Heuristische und ML-basierte Prompt-Injection- und Jailbreak-Erkennung."),
-    "contextra-infer-onnx": (0, "Fertig", "ONNX-Embeddings und Reranking via ort."),
-    "contextra-erasure": (0, "Fertig", "Löschungsprüfung, kryptografische Nachweise und Audit-Ledger."),
-    "contextra-license": (0, "Fertig", "Lizenzierungs- und Aktivierungsprüfung."),
-    "contextra-audit-export": (0, "Fertig", "Generator für Verarbeitungsverzeichnisse."),
-    "contextra-avv-generator": (0, "Fertig", "Template-Generator für Auftragsverarbeitungsverträge (AVV)."),
-    "contextra-mvcc": (1, "Fertig", "SeqLog, SnapshotRegistry und transaktionaler TxBuffer (MVCC-Isolation)."),
-    "contextra-crypto": (1, "Fertig", "AES-256-GCM-SIV, WAL-HMAC-Integritätsketten, Zeroize und KeyManager."),
-    "contextra-text": (1, "Fertig", "BM25/BM25F-Volltextindexierung und deutsche Kompositazerlegung."),
-    "contextra-graph": (1, "Fertig", "Compressed Sparse Row (CSR) Graph, Forward-Push PPR, Leiden und Hyperkanten."),
-    "contextra-rank": (1, "Fertig", "4-Signal-Retrieval-Fusion, Score-Kalibrierung und Drift-Messung."),
-    "contextra-checkpoint": (1, "Fertig", "Time-Travel-Registry und Checkpoint-Verwaltung ohne globalen Zustand."),
-    "contextra-kvcache": (1, "Fertig", "Verschlüsselter Prefix-Radix-Baum und KV-Cache-Segment-Verwaltung."),
-    "contextra-vault": (1, "Fertig", "Schlüsselverwaltung mit Hardware-Sicherheitsmodul / Keyring-Anbindung."),
-    "contextra-infer-ollama": (1, "Fertig", "HTTP-Inferenz-Client für Ollama mit Contextual-Chunk-Prefixing."),
-    "contextra-infer-candle": (1, "Fertig", "Native GGUF-Modell-Inferenz via Candle."),
-    "contextra-store": (1, "Fertig", "LSM-Tree Storage Engine mit WAL-Group-Commit und HMAC-Integritätsprüfung."),
-    "contextra-vector": (1, "Fertig", "HNSW- und DiskANN-Vektorindex-Implementierungen."),
-    "contextra-types": (2, "Fertig", "Kanonische Domänenmodelle, Budgets, Filter-AST und Fehlertypen."),
-    "contextra-ports": (2, "Fertig", "dyn-kompatible Trait-Definitionen (Ports) für Storage, Indizes und Embedder."),
-    "contextra-router": (2, "Fertig", "SLM-Profil-Routing und MCP-Dispatch."),
-    "contextra-agent": (2, "Fertig", "Agenten-Workflow-Engine mit auditierbarer State-Machine und DLQ."),
-    "contextra-cognition": (2, "Fertig", "Hintergrund-Kompaktierung, Synthese und Konsolidierungs-Scheduler."),
-    "contextra-engine": (2, "Fertig", "Collection-LSM-Anbindung, Multi-Index-Pläne und Schreibtransaktionen."),
-    "contextra-db": (2, "Fertig", "Monolithische Übergangsfassade für Speicher-, Such- und Indexzugriffe."),
-    "contextra": (2, "Fertig", "Öffentliche Haupt-Fassade und Composition Root für Rust-Anwendungen."),
-    "contextra-mcp": (3, "Fertig", "Stdio-JSON-RPC MCP-Server-Protokoll-Adapter."),
-    "contextra-py": (3, "Fertig", "PyO3 Python-FFI-Bindings."),
-    "contextra-testkit": (3, "Fertig", "Deterministische Test-Utilities (ManualClock, InMemoryStorageEngine, FaultVfs)."),
-    "contextra-bench": (3, "Fertig", "End-to-End-Benchmarks für Ingestion, Vektorsuche und Transaktionsdurchsatz."),
+    "acta-ids": (0, "Fertig", "Kanonische Identitätstypen, DocId, TenantId und ID_WIDTH_BITS."),
+    "acta-env": (0, "Fertig", "System-Umwelt, deterministische Clock, SeededRng und MetricsSink."),
+    "acta-sys": (0, "Fertig", "System-Abstraktionen für mmap, mlock und Win32-ACLs (Unsafe-Insel)."),
+    "acta-durable-fs": (0, "Fertig", "Durable I/O, atomare Dateiverschiebungen und fsync-Garantien."),
+    "acta-simd": (0, "Fertig", "AVX2/AVX-512/NEON SIMD-Distanzberechnungskerne mit Laufzeit-Dispatch (Unsafe-Insel)."),
+    "acta-wire": (0, "Fertig", "FlatBuffers-IPC-Generat und Zero-Copy-Adapter (Unsafe-Insel)."),
+    "acta-adapt": (0, "Fertig", "LinUCB-Bandit-Mathematik, Lyapunov-Drift-Wächter und PID-Regler."),
+    "acta-ingest": (0, "Fertig", "Multi-Format Dokumenten-Ingestion mit Chunking und Formaterkennung."),
+    "acta-privacy": (0, "Fertig", "Cloud-Egress Privacy Gateway, PII-Vault, Surrogat-Tokenisierung und DLP."),
+    "acta-sandbox": (0, "Fertig", "WASM-Ausführungs-Isolation mit Fuel- und Wall-Clock-Limits via Wasmtime."),
+    "acta-prompt-guard": (0, "Fertig", "Heuristische und ML-basierte Prompt-Injection- und Jailbreak-Erkennung."),
+    "acta-infer-onnx": (0, "Fertig", "ONNX-Embeddings und Reranking via ort."),
+    "acta-erasure": (0, "Fertig", "Löschungsprüfung, kryptografische Nachweise und Audit-Ledger."),
+    "acta-license": (0, "Fertig", "Lizenzierungs- und Aktivierungsprüfung."),
+    "acta-audit-export": (0, "Fertig", "Generator für Verarbeitungsverzeichnisse."),
+    "acta-avv-generator": (0, "Fertig", "Template-Generator für Auftragsverarbeitungsverträge (AVV)."),
+    "acta-mvcc": (1, "Fertig", "SeqLog, SnapshotRegistry und transaktionaler TxBuffer (MVCC-Isolation)."),
+    "acta-crypto": (1, "Fertig", "AES-256-GCM-SIV, WAL-HMAC-Integritätsketten, Zeroize und KeyManager."),
+    "acta-text": (1, "Fertig", "BM25/BM25F-Volltextindexierung und deutsche Kompositazerlegung."),
+    "acta-graph": (1, "Fertig", "Compressed Sparse Row (CSR) Graph, Forward-Push PPR, Leiden und Hyperkanten."),
+    "acta-rank": (1, "Fertig", "4-Signal-Retrieval-Fusion, Score-Kalibrierung und Drift-Messung."),
+    "acta-checkpoint": (1, "Fertig", "Time-Travel-Registry und Checkpoint-Verwaltung ohne globalen Zustand."),
+    "acta-kvcache": (1, "Fertig", "Verschlüsselter Prefix-Radix-Baum und KV-Cache-Segment-Verwaltung."),
+    "acta-vault": (1, "Fertig", "Schlüsselverwaltung mit Hardware-Sicherheitsmodul / Keyring-Anbindung."),
+    "acta-infer-ollama": (1, "Fertig", "HTTP-Inferenz-Client für Ollama mit Contextual-Chunk-Prefixing."),
+    "acta-infer-candle": (1, "Fertig", "Native GGUF-Modell-Inferenz via Candle."),
+    "acta-store": (1, "Fertig", "LSM-Tree Storage Engine mit WAL-Group-Commit und HMAC-Integritätsprüfung."),
+    "acta-vector": (1, "Fertig", "HNSW- und DiskANN-Vektorindex-Implementierungen."),
+    "acta-types": (2, "Fertig", "Kanonische Domänenmodelle, Budgets, Filter-AST und Fehlertypen."),
+    "acta-ports": (2, "Fertig", "dyn-kompatible Trait-Definitionen (Ports) für Storage, Indizes und Embedder."),
+    "acta-router": (2, "Fertig", "SLM-Profil-Routing und MCP-Dispatch."),
+    "acta-agent": (2, "Fertig", "Agenten-Workflow-Engine mit auditierbarer State-Machine und DLQ."),
+    "acta-cognition": (2, "Fertig", "Hintergrund-Kompaktierung, Synthese und Konsolidierungs-Scheduler."),
+    "acta-engine": (2, "Fertig", "Collection-LSM-Anbindung, Multi-Index-Pläne und Schreibtransaktionen."),
+    "acta-db": (2, "Fertig", "Monolithische Übergangsfassade für Speicher-, Such- und Indexzugriffe."),
+    "acta": (2, "Fertig", "Öffentliche Haupt-Fassade und Composition Root für Rust-Anwendungen."),
+    "acta-mcp": (3, "Fertig", "Stdio-JSON-RPC MCP-Server-Protokoll-Adapter."),
+    "acta-py": (3, "Fertig", "PyO3 Python-FFI-Bindings."),
+    "acta-testkit": (3, "Fertig", "Deterministische Test-Utilities (ManualClock, InMemoryStorageEngine, FaultVfs)."),
+    "acta-bench": (3, "Fertig", "End-to-End-Benchmarks für Ingestion, Vektorsuche und Transaktionsdurchsatz."),
 }
 
 RING_NAMES = {
@@ -98,19 +98,20 @@ RING_NAMES = {
 
 # Reihenfolge der Darstellung im Dokument (Ring-für-Ring, dependency-nah sortiert)
 ORDER = [
-    "contextra-types", "contextra-ports", "contextra-mvcc", "contextra-wire", "contextra-sys",
-    "contextra-simd", "contextra-crypto", "contextra-vector", "contextra-text", "contextra-graph",
-    "contextra-rank", "contextra-adapt", "contextra-core", "contextra-audit-export",
-    "contextra-avv-generator", "contextra-license",
-    "contextra-store", "contextra-kvcache", "contextra-checkpoint",
-    "contextra-infer-candle", "contextra-infer-ollama", "contextra-infer-onnx", "contextra-sandbox",
-    "contextra-engine", "contextra-cognition", "contextra-privacy", "contextra-router",
-    "contextra-agent", "contextra-db",
-    "contextra", "contextra-mcp", "contextra-py",
-    "contextra-testkit",
+    "acta-types", "acta-ports", "acta-mvcc", "acta-wire", "acta-sys",
+    "acta-simd", "acta-crypto", "acta-vector", "acta-text", "acta-graph",
+    "acta-rank", "acta-adapt", "acta-core", "acta-audit-export",
+    "acta-avv-generator", "acta-license",
+    "acta-store", "acta-kvcache", "acta-checkpoint",
+    "acta-infer-candle", "acta-infer-ollama", "acta-infer-onnx", "acta-sandbox",
+    "acta-engine", "acta-cognition", "acta-privacy", "acta-router",
+    "acta-agent", "acta-db",
+    "acta", "acta-mcp", "acta-py",
+    "acta-testkit",
 ]
 
-UNSAFE_ISLANDS = {"contextra-simd", "contextra-sys", "contextra-wire"}
+PRESENT: list[str] = []  # wird in main() mit den tatsächlich vorhandenen Crates gefüllt
+UNSAFE_ISLANDS = {"acta-simd", "acta-sys", "acta-wire"}
 
 
 # --------------------------------------------------------------------------- #
@@ -320,7 +321,7 @@ def parse_cargo_toml(crate_dir: str) -> tuple[list[str], list[str], list[tuple[s
         if not m:
             continue
         dep = m.group(1)
-        (internal if dep.startswith("contextra") else external).append(dep)
+        (internal if dep.startswith("acta") else external).append(dep)
     internal, external = sorted(set(internal)), sorted(set(external))
     features = []
     for line in feat_sec.split("\n"):
@@ -355,7 +356,9 @@ def fmt_trait(t: dict) -> str:
 
 
 def render_crate(name: str, crate_dir: str, f) -> Counter:
-    ring, status, purpose = RING_META[name]
+    ring, status, purpose = RING_META.get(
+        name, (None, "Unklassifiziert", "Keine kuratierte Beschreibung hinterlegt; RING_META ergänzen.")
+    )
     items = collect_crate_items(crate_dir)
     lm = extract_lib_map(crate_dir)
     internal, external, features = parse_cargo_toml(crate_dir)
@@ -363,7 +366,8 @@ def render_crate(name: str, crate_dir: str, f) -> Counter:
 
     f.write(f"\n---\n\n## `{name}`\n\n")
     f.write("| Attribut | Wert |\n|---|---|\n")
-    f.write(f"| **Ring** | {ring} — {RING_NAMES[ring]} |\n")
+    ring_label = f"{ring} — {RING_NAMES[ring]}" if ring is not None else "nicht zugeordnet"
+    f.write(f"| **Ring** | {ring_label} |\n")
     f.write(f"| **Status** | {status} |\n")
     f.write(f"| **Zweck** | {purpose} |\n")
     f.write(f"| **Unsafe-Code** | {unsafe_flag} |\n")
@@ -447,9 +451,9 @@ def render_crate(name: str, crate_dir: str, f) -> Counter:
 
 
 def render_frontmatter(f, generated_at: str, total_stats: Counter, n_crates: int) -> None:
-    f.write(f"""# Contextra — Globale Mikrofeingranulare Schnittstellenspezifikation
+    f.write(f"""# Acta — Globale Mikrofeingranulare Schnittstellenspezifikation
 
-**Repository:** `contextra` (Workspace-Root) · **Generiert am:** {generated_at}
+**Repository:** `acta` (Workspace-Root) · **Generiert am:** {generated_at}
 **Erzeugt durch:** `scripts/generate_interface_spec.py` (automatisierte, reproduzierbare Vollanalyse aller Workspace-Crates)
 **Methodik:** Statische Extraktion aller `pub`-Symbole (Traits, Structs, Enums, Funktionen, Typ-Aliase, Konstanten) aus jedem `src/**/*.rs` je Crate, angereichert mit den Original-Doc-Kommentaren (`///`, `//!`), den `Cargo.toml`-Metadaten (Abhängigkeiten, Feature-Flags) und der `lib.rs`-Re-Export-Oberfläche. Test-Module (`#[cfg(test)] mod tests`) sind ausgeschlossen.
 
@@ -472,7 +476,7 @@ def render_frontmatter(f, generated_at: str, total_stats: Counter, n_crates: int
 
 ## 1. Ring-Architektur (Layering-Modell, DAG-Invariante)
 
-Contextra erzwingt ein striktes 5-Ring-Schichtenmodell. Abhängigkeiten dürfen **ausschließlich von höheren auf niedrigere Ringe** verlaufen (keine Aufwärtskanten, P5-Invariante).
+Acta erzwingt ein striktes 5-Ring-Schichtenmodell. Abhängigkeiten dürfen **ausschließlich von höheren auf niedrigere Ringe** verlaufen (keine Aufwärtskanten, P5-Invariante).
 
 | Ring | Name | Verantwortung | Merkmal |
 |---|---|---|---|
@@ -480,9 +484,9 @@ Contextra erzwingt ein striktes 5-Ring-Schichtenmodell. Abhängigkeiten dürfen 
 | **1** | Persistence & Cache | LSM-Tree-Storage, WAL, Block-Cache, KV-Cache-Segmente, Time-Travel-Checkpoints | Async-I/O nur an den Rändern |
 | **2** | External Adapters & Sandboxing | Candle/GGUF-, Ollama-, ONNX-Inferenz, WASM-Sandbox | Blätter im Abhängigkeitsgraphen |
 | **3** | Orchestration & Cognition | Transaktions-Engine, Collection-Engine, Kompaktierung, Privacy-Gateway, Routing, Agent-Workflows | Geschäfts-/Orchestrierungslogik |
-| **4** | Boundary & Composition Roots | Öffentliche Fassade (`contextra`), MCP-Server, Python-Bindings | Einzige Composition Root |
+| **4** | Boundary & Composition Roots | Öffentliche Fassade (`acta`), MCP-Server, Python-Bindings | Einzige Composition Root |
 
-**Unsafe-Inseln:** `contextra-sys`, `contextra-simd`, `contextra-wire` (einzige Crates ohne `#![forbid(unsafe_code)]`).
+**Unsafe-Inseln:** `acta-sys`, `acta-simd`, `acta-wire` (einzige Crates ohne `#![forbid(unsafe_code)]`).
 
 **Locking-Disziplin:** `collections (RwLock) → kv_locks (KvKeyLocks) → embedder (RwLock)`, Shard-Indizes strikt aufsteigend akquirieren, kein `.await` unter gehaltenem Sync-Lock.
 
@@ -490,17 +494,17 @@ Contextra erzwingt ein striktes 5-Ring-Schichtenmodell. Abhängigkeiten dürfen 
 
 ## 2. Crate-Inventar nach Ring (Navigationsübersicht)
 
-**Ring 0 — Foundation:** {', '.join(f'`{c}`' for c in ORDER if RING_META[c][0] == 0)}
+**Ring 0 — Foundation:** {', '.join(f'`{c}`' for c in PRESENT if RING_META.get(c, (None,))[0] == 0)}
 
-**Ring 1 — Persistence & Cache:** {', '.join(f'`{c}`' for c in ORDER if RING_META[c][0] == 1)}
+**Ring 1 — Persistence & Cache:** {', '.join(f'`{c}`' for c in PRESENT if RING_META.get(c, (None,))[0] == 1)}
 
-**Ring 2 — External Adapters & Sandboxing:** {', '.join(f'`{c}`' for c in ORDER if RING_META[c][0] == 2)}
+**Ring 2 — External Adapters & Sandboxing:** {', '.join(f'`{c}`' for c in PRESENT if RING_META.get(c, (None,))[0] == 2)}
 
-**Ring 3 — Orchestration & Cognition:** {', '.join(f'`{c}`' for c in ORDER if RING_META[c][0] == 3)}
+**Ring 3 — Orchestration & Cognition:** {', '.join(f'`{c}`' for c in PRESENT if RING_META.get(c, (None,))[0] == 3)}
 
-**Ring 4 — Boundary & Composition Roots:** {', '.join(f'`{c}`' for c in ORDER if RING_META[c][0] == 4)}
+**Ring 4 — Boundary & Composition Roots:** {', '.join(f'`{c}`' for c in PRESENT if RING_META.get(c, (None,))[0] == 4)}
 
-**Tooling:** {', '.join(f'`{c}`' for c in ORDER if RING_META[c][0] == 99)}
+**Tooling:** {', '.join(f'`{c}`' for c in PRESENT if RING_META.get(c, (None,))[0] == 99)}
 
 ---
 
@@ -524,25 +528,25 @@ def render_closing(f) -> None:
 ## Anhang A — Querschnittliche Invarianten (gelten crateübergreifend)
 
 * **Zero-Panic-Doktrin:** `unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented`, `unreachable` sind workspace-weit als Clippy-Lint verboten.
-* **`unsafe_code = "deny"`** ist Workspace-Default; nur `contextra-sys`, `contextra-simd`, `contextra-wire` heben dies explizit auf.
+* **`unsafe_code = "deny"`** ist Workspace-Default; nur `acta-sys`, `acta-simd`, `acta-wire` heben dies explizit auf.
 * **Sync-Kern, Async-Schale (P26):** Ring-0-Crates verwenden kein `tokio`.
-* **DAG-Integrität (P5):** Aufwärtskanten sind verboten; einzige dokumentierte Restausnahme: `contextra-router → contextra-db` (Migrationsartefakt).
-* **`#[non_exhaustive]`-Disziplin** bei zentralen Fehler-Enums (u. a. `ContextraError`).
-* **Deletion-Proof-Kette:** kryptographisch extern verifizierbare Löschbeweise (`contextra-crypto`).
-* **Feature-Ring-Trennung:** `fast` / `sovereign` / `compliance` (Crate `contextra`) trennen Lizenzstufen auf Kompilierungsebene.
+* **DAG-Integrität (P5):** Aufwärtskanten sind verboten; einzige dokumentierte Restausnahme: `acta-router → acta-db` (Migrationsartefakt).
+* **`#[non_exhaustive]`-Disziplin** bei zentralen Fehler-Enums (u. a. `ActaError`).
+* **Deletion-Proof-Kette:** kryptographisch extern verifizierbare Löschbeweise (`acta-crypto`).
+* **Feature-Ring-Trennung:** `fast` / `sovereign` / `compliance` (Crate `acta`) trennen Lizenzstufen auf Kompilierungsebene.
 
 ## Anhang B — Nicht tiefenanalysierte Hilfs-Targets
 
 | Target | Pfad | Rolle |
 |---|---|---|
-| `contextra-bench` | `benchmarks/contextra-bench` | Criterion-Benchmark-Harness, kein Teil der Produktions-API. |
+| `acta-bench` | `benchmarks/acta-bench` | Criterion-Benchmark-Harness, kein Teil der Produktions-API. |
 | `xtask` | `xtask/` | Cargo-`xtask`-Automatisierungsbinary, von `[workspace] exclude` ausgenommen. |
 
 ## Anhang C — Referenzierte Primärquellen im Repository
 
 * `README.md`, `ARCHITECTURE.md`, `CONSTITUTION.md`, `VETOES.md`, `AGENTS.md`
 * `capabilities.toml`, `deny.toml`, `supply-chain/`
-* `docs/spec/CONTEXTRA_FINALE_PRODUKTSPEZIFIKATION.md`
+* `docs/spec/ACTA_FINALE_PRODUKTSPEZIFIKATION.md`
 * `docs/refactor/router-db-edge-audit.md`, `docs/refactor/mcp-upward-edges-audit.md`
 
 ---
@@ -556,12 +560,12 @@ def render_closing(f) -> None:
 # --------------------------------------------------------------------------- #
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Regeneriert die Contextra-Schnittstellenspezifikation aus dem Quellcode.")
-    parser.add_argument("--repo-root", default=".", help="Pfad zum Contextra-Repository-Root (Standard: aktuelles Verzeichnis).")
+    parser = argparse.ArgumentParser(description="Regeneriert die Acta-Schnittstellenspezifikation aus dem Quellcode.")
+    parser.add_argument("--repo-root", default=".", help="Pfad zum Acta-Repository-Root (Standard: aktuelles Verzeichnis).")
     parser.add_argument("--out-dir", default="docs", help="Zielverzeichnis für die generierte Datei (Standard: docs/).")
     parser.add_argument("--no-timestamp", action="store_true",
                          help="Schreibt zusätzlich KEINE datierte Kopie, nur die stabile Datei ohne Datum im Namen.")
-    parser.add_argument("--stable-name", default="CONTEXTRA_INTERFACE_SPECIFICATION.md",
+    parser.add_argument("--stable-name", default="ACTA_INTERFACE_SPECIFICATION.md",
                          help="Dateiname der stets aktuellen, undatierten Kopie (wird zusätzlich zur datierten Version geschrieben, außer bei --no-timestamp-only).")
     parser.add_argument("--no-timestamp-only", action="store_true",
                          help="Schreibt NUR die stabile Datei ohne Datumsstempel im Namen (kein <name>_YYYYMMDD.md).")
@@ -570,14 +574,25 @@ def main() -> int:
     repo_root = os.path.abspath(args.repo_root)
     crates_dir = os.path.join(repo_root, "crates")
     if not os.path.isdir(crates_dir):
-        print(f"[error] '{crates_dir}' nicht gefunden. --repo-root muss auf den Contextra-Workspace-Root zeigen.",
+        print(f"[error] '{crates_dir}' nicht gefunden. --repo-root muss auf den Acta-Workspace-Root zeigen.",
               file=sys.stderr)
         return 1
 
-    missing = [c for c in ORDER if not os.path.isdir(os.path.join(crates_dir, c))]
-    present = [c for c in ORDER if c not in missing]
+    global PRESENT
+    discovered = sorted(
+        d for d in os.listdir(crates_dir)
+        if os.path.isfile(os.path.join(crates_dir, d, "Cargo.toml"))
+    )
+    known = [c for c in ORDER if c in discovered]
+    unclassified = [c for c in discovered if c not in ORDER]
+    missing = [c for c in ORDER if c not in discovered]
+    present = known + unclassified
+    PRESENT = present
     if missing:
-        print(f"[warn] {len(missing)} im Skript bekannte Crate(s) nicht im Repo gefunden (übersprungen): {missing}",
+        print(f"[info] {len(missing)} in ORDER gelistete Crate(s) existieren im Repo nicht (ignoriert): {missing}",
+              file=sys.stderr)
+    if unclassified:
+        print(f"[warn] {len(unclassified)} Crate(s) ohne Eintrag in RING_META (bitte ergänzen): {unclassified}",
               file=sys.stderr)
 
     now = _dt.datetime.now()

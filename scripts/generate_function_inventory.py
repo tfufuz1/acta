@@ -42,8 +42,6 @@ def get_level_mapping(repo_root: Path) -> Dict[str, str]:
     cap_file = repo_root / "capabilities.toml"
     mapping: Dict[str, str] = {
         "(root)": "–",
-        "contextra-bench": "E3",
-        "contextra-store-fuzz": "–",
     }
     if cap_file.is_file():
         try:
@@ -77,7 +75,7 @@ def determine_crate_and_ring(rel_path: str, ring_map: Dict[str, str]) -> Tuple[s
     else:
         c_name = "(root)"
 
-    ring = ring_map.get(c_name, "Ring 0" if c_name.startswith("contextra") else "–")
+    ring = ring_map.get(c_name, "–")
     return c_name, ring
 
 
@@ -259,7 +257,7 @@ def parse_rust_file_functions(
                     entries.append(
                         FunctionEntry(
                             crate=crate_name,
-                            ring=ring,
+                            level=ring,
                             datei=rel_path,
                             zeile=start_line,
                             ende=end_line,
@@ -348,7 +346,7 @@ def scan_workspace_functions(
 def write_inventory_csv(entries: List[FunctionEntry], out_path: Path):
     fieldnames = [
         "crate",
-        "ring",
+        "level",
         "datei",
         "zeile",
         "ende",
@@ -368,7 +366,7 @@ def write_inventory_csv(entries: List[FunctionEntry], out_path: Path):
         for e in entries:
             writer.writerow({
                 "crate": e.crate,
-                "ring": e.ring,
+                "level": e.level,
                 "datei": e.datei,
                 "zeile": e.zeile,
                 "ende": e.ende,
@@ -409,7 +407,7 @@ def write_inventory_markdown(entries: List[FunctionEntry], out_path: Path, title
 
     crate_rings = {}
     for e in entries:
-        crate_rings[e.crate] = e.ring
+        crate_rings[e.crate] = e.level
 
     for crate in sorted(crates_count.keys()):
         c_entries = [e for e in entries if e.crate == crate]
@@ -449,7 +447,7 @@ def main():
     parser.add_argument("--head", action="store_true", help="Inspect current HEAD filesystem.")
     parser.add_argument("--out-csv", required=True, help="Path for output CSV file.")
     parser.add_argument("--out-md", required=True, help="Path for output Markdown file.")
-    parser.add_argument("--title", default="Funktionsinventar Contextra", help="Markdown title.")
+    parser.add_argument("--title", default="Funktionsinventar Acta", help="Markdown title.")
     args = parser.parse_args()
 
     repo_root = Path.cwd()
