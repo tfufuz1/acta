@@ -79,6 +79,13 @@ pub struct LsmStorage {
 }
 
 impl Drop for LsmStorage {
+    /// Signalisiert den Hintergrundtasks das Ende, wartet aber nicht darauf.
+    ///
+    /// Der Verzeichnis-Lock (`DirLock`) hängt am Manifest, das die Tasks ebenfalls halten.
+    /// Er wird daher erst freigegeben, wenn die Tasks beendet sind. Ein sofortiges
+    /// Neuöffnen desselben Verzeichnisses nach `drop` schlägt deshalb fehl. Vor dem
+    /// Neuöffnen `wait_shutdown().await` aufrufen (bzw. `close().await` für einen
+    /// Flush). Das verhindert zwei gleichzeitige Schreiber auf denselben Daten.
     fn drop(&mut self) {
         self.cancel_token.cancel();
     }

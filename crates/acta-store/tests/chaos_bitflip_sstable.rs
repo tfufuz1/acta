@@ -9,7 +9,8 @@
 
 use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
-use acta_types::{ActaError, TxId};
+use acta_store::StoreError as ActaError;
+use acta_types::TxId;
 use proptest::prelude::*;
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};

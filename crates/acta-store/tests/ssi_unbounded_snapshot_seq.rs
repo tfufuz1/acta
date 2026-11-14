@@ -4,7 +4,8 @@
 
 use acta_ports::StorageEngine;
 use acta_store::{LsmConfig, LsmStorage};
-use acta_types::{ActaError, TxId};
+use acta_store::StoreError as ActaError;
+use acta_types::TxId;
 use std::sync::Arc;
 use tempfile::TempDir;
 

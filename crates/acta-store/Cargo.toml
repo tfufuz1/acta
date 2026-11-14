@@ -53,6 +53,9 @@ tokio-util = { version = "0.7.18", features = ["rt"] }
 
 
 [dev-dependencies]
+acta-env = { workspace = true, features = ["test-utils"] }
+acta-ports = { workspace = true }
+acta-types = { workspace = true }
 libc = "0.2"
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
@@ -190,3 +193,23 @@ harness = false
 [[bench]]
 name = "redb_comparative_bench"
 harness = false
+
+[[test]]
+name = "determinism_injection_test"
+required-features = ["workspace"]
+
+[[test]]
+name = "campaign_j21_hypotheses"
+required-features = ["workspace"]
+
+[[test]]
+name = "durability_mode_feature_gate"
+required-features = ["workspace"]
+
+[[test]]
+name = "ssi_tracked_reads_via_trait"
+required-features = ["workspace"]
+
+[[test]]
+name = "toctou_put_if_absent"
+required-features = ["workspace"]

@@ -2,6 +2,9 @@
 //!
 //! Prueft die automatische Kuerzung und Reparatur beschaedigter WAL-Dateien am Dateiende.
 
+use std::sync::Arc;
+use crate::error::StoreResult as Result;
+
 use super::*;
 use acta_ids::TxId;
 use tempfile::tempdir;

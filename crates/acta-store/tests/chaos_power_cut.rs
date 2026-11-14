@@ -6,7 +6,7 @@
 
 use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
-use acta_types::ActaError;
+use acta_store::StoreError as ActaError;
 use rand::Rng;
 use std::collections::HashMap;
 use std::fs;

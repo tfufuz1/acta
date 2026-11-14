@@ -80,6 +80,7 @@ async fn repro_bug_tx_end_duplicate_seq_no_wal_replay() {
             .commit(tx)
             .await
             .expect("commit multi-op transaction failed");
+        storage.wait_shutdown().await;
     }
 
     // 2. Reopen database from disk
@@ -406,6 +407,7 @@ async fn test_crash_kill_durability() {
             );
         }
 
+        storage.wait_shutdown().await;
         drop(storage);
 
         let storage_reopen = match LsmStorage::open(config.clone()).await {

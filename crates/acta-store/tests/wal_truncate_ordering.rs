@@ -6,7 +6,8 @@
 // REQUIRES: Feature "fault-injection" für Test 1.
 
 use acta_store::wal::{Wal, WalEntry, WalOp};
-use acta_types::{Result, TxId};
+use acta_store::StoreResult as Result;
+use acta_types::TxId;
 use std::sync::Arc;
 use tempfile::tempdir;
 

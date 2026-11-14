@@ -281,6 +281,8 @@ async fn test_h5_lsm_storage_reopen_and_stale_lock() {
     );
 
     // 3. Drop first LsmStorage, reopen succeeds
+    // Hintergrundtasks müssen den Dir-Lock freigeben, bevor neu geöffnet wird.
+    lsm1.wait_shutdown().await;
     drop(lsm1);
     let config3 = LsmConfig {
         path: db_path.clone(),
@@ -292,6 +294,9 @@ async fn test_h5_lsm_storage_reopen_and_stale_lock() {
         lsm3.is_ok(),
         "Re-opening LsmStorage after drop must succeed"
     );
+    if let Ok(ref s) = lsm3 {
+        s.wait_shutdown().await;
+    }
     drop(lsm3);
 
     // 4. Stale LOCK file left on disk (simulating SIGKILL)
@@ -448,6 +453,8 @@ async fn test_h7_differential_btree_map_oracle() {
             }
             5 => {
                 // Reopen / Crash simulation after confirmed commit
+                // Absturz-Simulation ohne flush: Tasks stoppen, Lock freigeben.
+                lsm.wait_shutdown().await;
                 drop(lsm);
                 lsm = open_db(&db_path).await;
             }

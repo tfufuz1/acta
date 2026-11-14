@@ -1,5 +1,6 @@
 use acta_store::wal::{KeyManager, Wal, WalEntry, WalOp, MAX_WAL_ENTRY_SIZE};
-use acta_types::{ActaError, TxId};
+use acta_store::StoreError as ActaError;
+use acta_types::TxId;
 use std::sync::Arc;
 use tempfile::tempdir;
 

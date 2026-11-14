@@ -13,7 +13,7 @@ use tempfile::tempdir;
 static TEST_MUTEX: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[tokio::test]
-async fn fsync_fail_poisons_irreversibly() -> acta_types::Result<()> {
+async fn fsync_fail_poisons_irreversibly() -> acta_store::StoreResult<()> {
     let _guard = TEST_MUTEX.lock().await;
     let dir = tempdir()?;
     let wal_path = dir.path().join("fsync_fail.wal");
@@ -61,7 +61,7 @@ async fn fsync_fail_poisons_irreversibly() -> acta_types::Result<()> {
 }
 
 #[tokio::test]
-async fn set_len_fail_poisons() -> acta_types::Result<()> {
+async fn set_len_fail_poisons() -> acta_store::StoreResult<()> {
     let _guard = TEST_MUTEX.lock().await;
     let dir = tempdir()?;
     let wal_path = dir.path().join("set_len_fail.wal");
@@ -110,7 +110,7 @@ async fn set_len_fail_poisons() -> acta_types::Result<()> {
 }
 
 #[tokio::test]
-async fn rollback_contention_poisons_handle() -> acta_types::Result<()> {
+async fn rollback_contention_poisons_handle() -> acta_store::StoreResult<()> {
     let _guard = TEST_MUTEX.lock().await;
     let dir = tempdir()?;
     let wal_path = dir.path().join("rollback_contention.wal");
@@ -147,7 +147,7 @@ async fn rollback_contention_poisons_handle() -> acta_types::Result<()> {
 }
 
 #[tokio::test]
-async fn recover_from_poison_rejects_fsync_cause() -> acta_types::Result<()> {
+async fn recover_from_poison_rejects_fsync_cause() -> acta_store::StoreResult<()> {
     let _guard = TEST_MUTEX.lock().await;
     let dir = tempdir()?;
     let wal_path = dir.path().join("reject_fsync.wal");
@@ -171,7 +171,7 @@ async fn recover_from_poison_rejects_fsync_cause() -> acta_types::Result<()> {
 }
 
 #[tokio::test]
-async fn recover_from_poison_accepts_torn_write() -> acta_types::Result<()> {
+async fn recover_from_poison_accepts_torn_write() -> acta_store::StoreResult<()> {
     let _guard = TEST_MUTEX.lock().await;
     let dir = tempdir()?;
     let wal_path = dir.path().join("torn_write.wal");

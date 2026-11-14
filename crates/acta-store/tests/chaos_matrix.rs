@@ -6,7 +6,8 @@
 
 use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
-use acta_types::{ActaError, TxId};
+use acta_store::StoreError as ActaError;
+use acta_types::TxId;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::collections::BTreeMap;
@@ -208,7 +209,6 @@ async fn test_chaos_matrix_bitflip_and_crash_recovery() {
                         | ActaError::Io(_)
                         | ActaError::WalCorruption { .. }
                         | ActaError::ChecksumMismatch { .. }
-                        | ActaError::Crypto(_)
                 ),
                 "Expected clean ActaError on corrupted storage reopen, got: {:?}",
                 e

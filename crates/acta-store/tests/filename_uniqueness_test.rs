@@ -1,5 +1,5 @@
 use acta_mvcc::SnapshotRegistry;
-use acta_ports::{ResourceBudget, ResourceTracker};
+use acta_store::budget::{ResourceBudget, ResourceTracker};
 use acta_store::compaction::{CompactionConfig, CompactionEngine};
 use acta_store::sstable::BlockCache;
 use acta_store::wal::{Wal, WalOp};

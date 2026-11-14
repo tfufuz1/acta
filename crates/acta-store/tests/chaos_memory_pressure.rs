@@ -2,7 +2,8 @@ mod support;
 
 use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
-use acta_types::{ActaError, TxId};
+use acta_store::StoreError as ActaError;
+use acta_types::TxId;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -103,7 +104,18 @@ async fn test_chaos_memory_pressure_sequential_and_concurrent() {
             "Expected tracing::warn! log event when consume_memory exceeds budget limit in commit() Phase 3"
         );
 
-        // 4. Now memory usage is > 95% limit. Subsequent put() calls MUST fail with Memory budget exceeded error.
+        // 4. Budget bis zur Kapazitätsgrenze ausschöpfen. Der Put-Pfad lehnt ab, sobald
+        //    `has_memory_capacity()` false ist (Grenze: 100 % des Limits, nicht 95 %).
+        //    Subsequent put() calls MUST fail with Memory budget exceeded error.
+        let mut guard = 0u32;
+        while storage.budget_for_test().has_memory_capacity() && guard < 4_000_000 {
+            let _ = storage.budget_for_test().consume_memory(1);
+            guard += 1;
+        }
+        assert!(
+            !storage.budget_for_test().has_memory_capacity(),
+            "budget must be exhausted before the overflow check"
+        );
         let overflow_tx = TxId::new(100);
         let put_overflow = storage.put(overflow_tx, b"overflow_key", &payload).await;
         if let Err(ActaError::Storage(err_msg)) = &put_overflow {

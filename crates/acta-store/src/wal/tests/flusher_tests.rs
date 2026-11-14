@@ -2,6 +2,8 @@
 //!
 //! Prueft Flush-Backpressure, Batch-Grouping und Fehlerweitergabe.
 
+use std::sync::Arc;
+
 use super::*;
 use crate::wal::{PreparedBatch, WalConfig, WalEntry, WalOp};
 use acta_ids::TxId;

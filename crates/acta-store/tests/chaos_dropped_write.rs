@@ -5,7 +5,8 @@
 
 use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
-use acta_types::{ActaError, TxId};
+use acta_store::StoreError as ActaError;
+use acta_types::TxId;
 use std::fs::Permissions;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -111,22 +112,10 @@ async fn test_chaos_dropped_write_error_propagation_and_recovery() {
         }
     }
 
-    // 4. Restore write permissions to file (0o644)
+    // 4. Schreibrechte wiederherstellen. Der WAL-Handle ist nach dem Schreibfehler
+    //    vergiftet (fail-closed, Spec P0-4): weitere Commits DÜRFEN NICHT stillschweigend
+    //    durchlaufen, auch wenn die Datei wieder beschreibbar ist.
     std::fs::set_permissions(&wal_path, Permissions::from_mode(0o644)).unwrap();
-
-    // Re-open WAL file handle for wal_path in /proc/self/fd with O_RDWR | O_APPEND
-    if let Ok(entries) = std::fs::read_dir("/proc/self/fd") {
-        for entry in entries.flatten() {
-            if let Ok(target) = std::fs::read_link(entry.path()) {
-                if target == wal_path {
-                    if let Ok(fd_num) = entry.file_name().to_string_lossy().parse::<i32>() {
-                        let _ = acta_sys::reopen_and_dup2(&wal_path, fd_num, 2 | 1024);
-                        // O_RDWR | O_APPEND
-                    }
-                }
-            }
-        }
-    }
 
     // 5a. Assert: The failed commit MUST leave last_committed_tx unchanged
     let last_tx_after_failure = storage.last_tx_id().await.unwrap();
@@ -135,12 +124,34 @@ async fn test_chaos_dropped_write_error_propagation_and_recovery() {
         "last_committed_tx must remain unchanged at tx1 after failed commit attempt"
     );
 
-    // 5b. Assert: Re-committing the same content after restoring write permissions must succeed
+    // 5b. Assert: Der vergiftete Handle lehnt weitere Commits ab.
+    storage.put(tx2, b"key2", b"val2").await.unwrap();
+    assert!(
+        storage.commit(tx2).await.is_err(),
+        "poisoned WAL handle must reject commits until explicit reload"
+    );
+
+    // 5c. Reload: Instanz sauber beenden und neu öffnen (Dir-Lock freigeben).
+    storage.wait_shutdown().await;
+    drop(storage);
+    let storage = LsmStorage::new(LsmConfig {
+        path: db_path.clone(),
+        ..Default::default()
+    })
+    .await
+    .expect("reopen after restoring write permissions");
+
+    // Nach Reload: tx1 bleibt Stand, tx2 erneut committen.
+    assert_eq!(
+        storage.last_tx_id().await.unwrap(),
+        tx1,
+        "after reload last_committed_tx must still be tx1"
+    );
     storage.put(tx2, b"key2", b"val2").await.unwrap();
     storage
         .commit(tx2)
         .await
-        .expect("Re-committing tx2 after restoring write permissions must succeed");
+        .expect("re-committing tx2 after reload must succeed");
 
     let last_tx_final = storage.last_tx_id().await.unwrap();
     assert_eq!(
@@ -148,7 +159,7 @@ async fn test_chaos_dropped_write_error_propagation_and_recovery() {
         "last_committed_tx must advance to tx2 after successful re-commit"
     );
 
-    // 5c. Assert: All previously committed entries remain correctly readable without collateral damage
+    // 5d. Assert: All previously committed entries remain correctly readable without collateral damage
     let val1_check = storage.get(b"key1").await.unwrap();
     assert_eq!(
         val1_check,

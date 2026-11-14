@@ -1,7 +1,8 @@
 use acta_store::lsm::{LsmConfig, LsmStorage};
 use acta_store::manifest::{Manifest, ManifestEntry};
 use acta_store::wal::{Wal, WalEntry, WalOp, WAL_V3_HEADER};
-use acta_types::{ActaError, TxId};
+use acta_store::StoreError as ActaError;
+use acta_types::TxId;
 use tempfile::tempdir;
 use tokio::fs;
 

@@ -1,6 +1,8 @@
 //! Integration tests for SSTable lifecycle and recovery on VFS / in-memory Vfs.
 
-use acta_ports::{ActaError, Result, Vfs, VfsFile, VfsOpenOptions};
+use acta_store::io_seam::{Vfs, VfsFile, VfsOpenOptions};
+use acta_store::StoreError as ActaError;
+use acta_store::StoreResult as Result;
 use acta_store::sstable::{BlockCache, SstableBuilder, SstableReader};
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
@@ -158,6 +160,15 @@ impl Vfs for MemFs {
         Ok(())
     }
 
+    fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>> {
+        let files = self.files.lock().unwrap();
+        Ok(files
+            .keys()
+            .filter(|k| k.parent() == Some(path))
+            .cloned()
+            .collect())
+    }
+
     fn list_dir(&self, path: &Path) -> Result<Vec<String>> {
         let files = self.files.lock().unwrap();
         let mut entries = Vec::new();
@@ -259,6 +270,10 @@ impl Vfs for FaultFs {
 
     fn exists(&self, path: &Path) -> Result<bool> {
         self.inner.exists(path)
+    }
+
+    fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>> {
+        self.inner.read_dir(path)
     }
 
     fn len(&self, path: &Path) -> Result<u64> {

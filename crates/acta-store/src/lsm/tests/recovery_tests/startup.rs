@@ -56,6 +56,8 @@ async fn test_startup_flush_before_wal_cleanup() {
         let tx = TxId::new(1);
         storage.put(tx, b"k_persist", b"v_persist").await.unwrap();
         storage.commit(tx).await.unwrap();
+        // Dir-Lock freigeben, bevor dasselbe Verzeichnis erneut geöffnet wird.
+        storage.wait_shutdown().await;
     }
 
     {
@@ -65,6 +67,7 @@ async fn test_startup_flush_before_wal_cleanup() {
 
         let ssts = storage.sstables.read().await;
         assert_eq!(ssts.len(), 1, "Startup flush must have created an SSTable");
+        storage.wait_shutdown().await;
     }
 }
 
@@ -175,6 +178,7 @@ async fn test_rollback_crash_recovery_startup() {
         intent_bytes.extend_from_slice(b"MFRLBK\0\0");
         intent_bytes.extend_from_slice(&1u64.to_le_bytes());
         tokio::fs::write(&intent_path, &intent_bytes).await.unwrap();
+        storage.wait_shutdown().await;
     }
 
     {
@@ -190,6 +194,7 @@ async fn test_rollback_crash_recovery_startup() {
             !intent_path.exists(),
             "Rollback intent file must be removed after successful recovery"
         );
+        storage.wait_shutdown().await;
     }
 }
 
@@ -288,6 +293,7 @@ async fn test_uncommitted_transaction_discarded_on_open_recovery() {
         let tx2 = TxId::new(2);
         storage.put(tx2, b"uncommitted_k", b"uncommitted_v").await.unwrap();
         // tx2 not committed
+        storage.wait_shutdown().await;
     }
 
     {
@@ -297,6 +303,7 @@ async fn test_uncommitted_transaction_discarded_on_open_recovery() {
             Some(bytes::Bytes::from_static(b"committed_v"))
         );
         assert_eq!(storage.get(b"uncommitted_k").await.unwrap(), None);
+        storage.wait_shutdown().await;
     }
 }
 
@@ -328,6 +335,7 @@ async fn test_aborted_transaction_discarded_on_open_recovery() {
         let tx2 = TxId::new(2);
         storage.put(tx2, b"k_aborted", b"v_aborted").await.unwrap();
         storage.rollback(tx2).await.unwrap();
+        storage.wait_shutdown().await;
     }
 
     {
@@ -337,5 +345,6 @@ async fn test_aborted_transaction_discarded_on_open_recovery() {
             Some(bytes::Bytes::from_static(b"v_alive"))
         );
         assert_eq!(storage.get(b"k_aborted").await.unwrap(), None);
+        storage.wait_shutdown().await;
     }
 }

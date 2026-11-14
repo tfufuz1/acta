@@ -50,6 +50,7 @@ async fn test_lsm_rollback_persistence() {
             Some(bytes::Bytes::from_static(b"v1"))
         );
         assert_eq!(storage.get(b"k2").await.unwrap(), None);
+        storage.wait_shutdown().await;
     }
 
     {
@@ -71,6 +72,7 @@ async fn test_lsm_rollback_persistence() {
             storage.get(b"k3").await.unwrap(),
             Some(bytes::Bytes::from_static(b"v3"))
         );
+        storage.wait_shutdown().await;
     }
 }
 

@@ -15,7 +15,8 @@ use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
 use acta_store::tenant_codec::TenantKeyCodec;
 use acta_store::wal::{Wal, WalConfig, WalOp, WAL_V3_HEADER};
-use acta_types::{CollectionId, DocId, Result, TenantId, TxId};
+use acta_store::StoreResult as Result;
+use acta_types::{CollectionId, DocId, TenantId, TxId};
 use tempfile::tempdir;
 use tokio::fs;
 

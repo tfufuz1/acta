@@ -9,7 +9,7 @@ use tempfile::TempDir;
 
 #[tokio::test]
 #[allow(clippy::unwrap_used)]
-async fn test_failing_proptest_sequence() -> acta_types::Result<()> {
+async fn test_failing_proptest_sequence() -> acta_store::StoreResult<()> {
     let tmp = TempDir::new().unwrap();
     let config = LsmConfig {
         path: tmp.path().to_path_buf(),

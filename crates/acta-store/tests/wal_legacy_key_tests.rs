@@ -1,5 +1,6 @@
 use acta_store::wal::{Wal, WalEntry, WalOp, WAL_V3_HEADER};
-use acta_types::{ActaError, TxId};
+use acta_store::StoreError as ActaError;
+use acta_types::TxId;
 use std::sync::{Arc, Mutex};
 use tempfile::tempdir;
 use tokio::fs;

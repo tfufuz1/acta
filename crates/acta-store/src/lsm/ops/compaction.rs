@@ -112,6 +112,10 @@ pub(crate) async fn flush(storage: &LsmStorage) -> Result<()> {
             .join(format!("sst-{:020}-{:06}.sst", seq, count % 1_000_000));
 
     // ── Phase 3: Expensive I/O & Atomic Transition ──────────────────────────
+    // F2 / P0-2: Wurde `manifest.append_batch` für `sst_path` auch nur versucht,
+    // kann das Manifest diese SST referenzieren (Ausgang bei Fehler unbekannt).
+    // Dann darf der Fehlerpfad die Datei NIE mehr löschen.
+    let mut manifest_attempted = false;
     let phase3_res: Result<()> = async {
         let floor_seq = storage.snapshot_registry.min_active_seqno();
 
@@ -171,6 +175,7 @@ pub(crate) async fn flush(storage: &LsmStorage) -> Result<()> {
             manifest_entries.push(crate::manifest::ManifestEntry::WalCheckpoint { hmac });
         }
 
+        manifest_attempted = true;
         storage.manifest.append_batch(&manifest_entries).await?;
         // === SSTABLE MANIFEST INTEGRATION END ===
 
@@ -263,7 +268,14 @@ pub(crate) async fn flush(storage: &LsmStorage) -> Result<()> {
     .await;
 
     if let Err(ref e) = phase3_res {
-        if sst_path.exists() {
+        if manifest_attempted {
+            // Nach Manifest-Versuch: SST nicht löschen (siehe oben). Verwaiste bzw.
+            // unmanifestierte SSTs überspringt der Startup; Aufräumen ist Retry-Sache.
+            tracing::error!(
+                path = ?sst_path,
+                "Flush-Fehler nach Manifest-Versuch; SST bleibt bestehen (kein Datenverlust): {e}"
+            );
+        } else if sst_path.exists() {
             if let Err(rm_err) = storage.compaction_engine.vfs.remove_file(&sst_path) {
                 tracing::warn!(
                     path = ?sst_path,

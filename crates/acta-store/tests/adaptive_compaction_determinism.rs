@@ -1,4 +1,4 @@
-use acta_ports::StorageStats;
+use acta_store::stats::StorageStats;
 use acta_store::{AdaptiveCompactionPlanner, CostBasedAdaptivePlanner, WorkloadMetrics};
 
 #[test]

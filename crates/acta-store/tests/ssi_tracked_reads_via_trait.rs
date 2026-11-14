@@ -137,7 +137,7 @@ async fn test_ssi_validator_fake_forces_commit_conflict_failure() {
 
     let commit_res = storage.commit(tx).await;
     assert!(
-        matches!(commit_res, Err(ActaError::Conflict(ref msg)) if msg.contains("Forced conflict")),
+        matches!(commit_res, Err(acta_store::StoreError::Conflict(ref msg)) if msg.contains("Forced conflict")),
         "Commit must fail with ActaError::Conflict when fake SsiValidator rejects ReadSet: {:?}",
         commit_res
     );

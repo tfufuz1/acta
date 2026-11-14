@@ -9,6 +9,7 @@
 
 #![forbid(unsafe_code)]
 
+use std::sync::Arc;
 use super::*;
 use crate::lsm::{LsmConfig, LsmStorage};
 use crate::tenant_codec::TenantKeyCodec;

@@ -8,7 +8,8 @@
 use acta_store::lsm::{LsmConfig, LsmStorage};
 use acta_store::manifest::{Manifest, ManifestEntry};
 use acta_store::wal::{Wal, WalOp};
-use acta_types::{ActaError, TxId};
+use acta_store::StoreError as ActaError;
+use acta_types::TxId;
 use tempfile::tempdir;
 use tokio::fs;
 

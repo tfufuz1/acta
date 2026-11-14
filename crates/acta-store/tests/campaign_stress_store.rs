@@ -131,6 +131,7 @@ async fn test_campaign_group_commit_stress_200_tasks() {
         }
 
         // Verify WAL completeness / replay consistency post reopen
+        storage.wait_shutdown().await;
         drop(storage);
 
         let storage_reopened = LsmStorage::new(config).await.expect("reopen");

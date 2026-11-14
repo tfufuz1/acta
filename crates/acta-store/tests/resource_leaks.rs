@@ -2,7 +2,8 @@ mod support;
 
 use acta_ports::StorageEngine;
 use acta_store::lsm::{LsmConfig, LsmStorage};
-use acta_types::{Result, TxId};
+use acta_store::StoreResult as Result;
+use acta_types::TxId;
 use tempfile::TempDir;
 
 #[tokio::test]

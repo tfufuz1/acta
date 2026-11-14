@@ -21,6 +21,8 @@ async fn test_wal_replay_after_restart() {
         storage.put(tx1, b"key2", b"val2").await.expect("put key2");
         storage.commit(tx1).await.expect("commit tx1");
         // Do NOT flush! Leave writes in WAL and MemTable. Simulated crash on drop.
+        // wait_shutdown stoppt nur die Tasks (Dir-Lock freigeben), ohne flush.
+        storage.wait_shutdown().await;
     }
 
     // Restart storage engine reading same directory

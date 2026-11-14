@@ -1,5 +1,5 @@
 use acta_store::manifest::{Manifest, ManifestEntry};
-use acta_types::Result;
+use acta_store::StoreResult as Result;
 use std::path::PathBuf;
 use tempfile::TempDir;
 

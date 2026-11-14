@@ -146,8 +146,18 @@ impl StoreError {
 }
 
 impl From<acta_crypto::CryptoError> for StoreError {
+    /// Bildet Kryptofehler strukturiert ab. `WalCorruption` bleibt eine eigene Variante,
+    /// damit Aufrufer (Replay, Recovery, Tests) Manipulation und Lücken von
+    /// I/O-Fehlern unterscheiden können. Alles andere wird wie bisher als `Storage`
+    /// mit dem Präfix "Crypto error:" geführt.
     fn from(err: acta_crypto::CryptoError) -> Self {
-        StoreError::Storage(format!("Crypto error: {err}"))
+        match err {
+            acta_crypto::CryptoError::WalCorruption { offset, reason } => {
+                StoreError::WalCorruption { offset, reason }
+            }
+            acta_crypto::CryptoError::InvalidInput(msg) => StoreError::InvalidInput(msg),
+            other => StoreError::Storage(format!("Crypto error: {other}")),
+        }
     }
 }
 

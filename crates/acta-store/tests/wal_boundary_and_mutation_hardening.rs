@@ -5,7 +5,7 @@ use acta_types::TxId;
 use tempfile::tempdir;
 
 #[tokio::test]
-async fn test_inv_fsync_1_handle_poisoning_contract() -> acta_types::Result<()> {
+async fn test_inv_fsync_1_handle_poisoning_contract() -> acta_store::StoreResult<()> {
     let dir = tempdir()?;
     let wal_path = dir.path().join("inv_fsync_contract.wal");
     let wal = Wal::open(&wal_path).await?;
@@ -40,7 +40,7 @@ async fn test_inv_fsync_1_handle_poisoning_contract() -> acta_types::Result<()> 
 }
 
 #[tokio::test]
-async fn test_wal_mutation_bitflip_rejection_in_middle() -> acta_types::Result<()> {
+async fn test_wal_mutation_bitflip_rejection_in_middle() -> acta_store::StoreResult<()> {
     let dir = tempdir()?;
     let wal_path = dir.path().join("mutation_middle.wal");
     let wal = Wal::open(&wal_path).await?;
@@ -80,7 +80,7 @@ async fn test_wal_mutation_bitflip_rejection_in_middle() -> acta_types::Result<(
 }
 
 #[tokio::test]
-async fn test_wal_clean_torn_tail_cutoff() -> acta_types::Result<()> {
+async fn test_wal_clean_torn_tail_cutoff() -> acta_store::StoreResult<()> {
     let dir = tempdir()?;
     let wal_path = dir.path().join("torn_tail.wal");
     let wal = Wal::open(&wal_path).await?;

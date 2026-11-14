@@ -1,5 +1,6 @@
 use acta_store::wal::{KeyManager, Wal, WalConfig, WalOp};
-use acta_types::{Result, TxId};
+use acta_store::StoreResult as Result;
+use acta_types::TxId;
 use tempfile::tempdir;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;

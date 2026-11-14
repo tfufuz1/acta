@@ -9,6 +9,7 @@ use crate::error::StoreError as ActaError;
 use std::sync::atomic::Ordering;
 use tempfile::TempDir;
 
+#[tokio::test]
 async fn test_system_pressure_monitor_integration() {
     let tmp = TempDir::new().expect("temp dir");
     let config = LsmConfig {
@@ -164,9 +165,10 @@ async fn test_delete_memory_capacity_exceeded() {
     };
     let storage = LsmStorage::new(config).await.expect("create storage");
 
+    // Budget-Limit ist max_ram_mb * 1 MiB; genau das Limit belegen (used == limit => erschöpft).
     storage
         .budget
-        .consume_memory(1_000_000)
+        .consume_memory(1024 * 1024)
         .expect("fill budget");
     assert!(!storage.budget.has_memory_capacity());
 

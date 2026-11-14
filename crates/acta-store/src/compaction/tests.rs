@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::sstable::{create_block_cache, BlockCache, SstableBuilder, SstableReader};
-use crate::StorageEngine;
+use acta_ports::StorageEngine;
 use acta_ids::TOMBSTONE_BIT;
 use acta_mvcc::SnapshotRegistry;
 use std::path::PathBuf;

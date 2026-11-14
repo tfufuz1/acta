@@ -7,7 +7,7 @@ use acta_types::TxId;
 use tempfile::tempdir;
 
 #[tokio::test]
-async fn test_flusher_rollback_after_partial_append_failure() -> acta_types::Result<()> {
+async fn test_flusher_rollback_after_partial_append_failure() -> acta_store::StoreResult<()> {
     let dir = tempdir()?;
     let wal_path = dir.path().join("flusher_rollback.wal");
 
@@ -83,7 +83,7 @@ async fn test_flusher_rollback_after_partial_append_failure() -> acta_types::Res
 }
 
 #[tokio::test]
-async fn test_flusher_truncate_failure_preserves_state() -> acta_types::Result<()> {
+async fn test_flusher_truncate_failure_preserves_state() -> acta_store::StoreResult<()> {
     let dir = tempdir()?;
     let wal_path = dir.path().join("truncate_fail.wal");
 

@@ -62,9 +62,13 @@ mod tests {
             (b"k1".to_vec(), 5u64),
         ];
 
+        // u64::MAX ist der Sentinel fuer "kein aktiver Snapshot" (siehe
+        // acta-mvcc min_active_seqno). Dann gilt Regel 2/3: nur die neueste Version
+        // mit raw_seq <= floor bleibt erhalten. Vorheriger Erwartungswert [30,20,10,5]
+        // widersprach der dokumentierten Regel.
         let retained = retain_key_versions(versions, |(_, seq)| *seq, u64::MAX);
         let seqs: Vec<u64> = retained.into_iter().map(|(_, seq)| seq).collect();
-        assert_eq!(seqs, vec![30, 20, 10, 5]);
+        assert_eq!(seqs, vec![30]);
     }
 
     #[test]

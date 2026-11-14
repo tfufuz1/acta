@@ -1038,10 +1038,14 @@ async fn test_compaction_backpressure_timeout_exceeded() {
         ..CompactionConfig::default()
     };
 
-    // Exhausted ResourceTracker budget: capacity limit = 0
+    // Erschöpftes ResourceTracker-Budget: Limit 1024 Byte, vollständig belegt.
+    // (memory_limit == 0 bedeutet laut Dokumentation "unbegrenzt", nicht "erschöpft".)
     let exhausted_tracker = Arc::new(crate::budget::ResourceTracker::new(
-        crate::budget::ResourceBudget { memory_limit: 0 },
+        crate::budget::ResourceBudget { memory_limit: 1024 },
     ));
+    exhausted_tracker
+        .consume_memory(1024)
+        .expect("fill budget to its limit");
 
     let engine = CompactionEngine::new(
         config,

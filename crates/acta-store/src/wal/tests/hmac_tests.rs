@@ -294,10 +294,15 @@ async fn test_open_with_key_manager_is_new_race_condition() {
     assert_eq!(wal1.path(), wal2.path());
 }
 
+#[cfg(feature = "legacy-wal-key")]
 #[test]
 fn test_legacy_integrity_key_deobfuscation() {
     let key = legacy_integrity_key().expect("legacy key");
-    assert_eq!(&key, b"acta-integrity-key-v1\0\0\0\0\0\0");
+    // Golden-Check gegen den Wert, mit dem bestehende Legacy-WAL-Dateien signiert wurden.
+    // Der Schluessel ist 32 Byte lang; der Klartext-Praefix ist mit Nullen aufgefuellt.
+    // Nicht aendern, ohne Kompatibilitaet zu alten WAL-Dateien zu pruefen.
+    assert_eq!(&key[..26], b"contextra-integrity-key-v1");
+    assert!(key[26..].iter().all(|&b| b == 0), "legacy key padding must be zero");
 }
 
 #[cfg(feature = "fault-injection")]

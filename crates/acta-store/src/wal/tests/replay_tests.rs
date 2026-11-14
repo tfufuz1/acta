@@ -2,6 +2,8 @@
 //!
 //! Prueft deterministisches Replay ueber Sequenzgrenzen hinweg.
 
+use std::sync::Arc;
+
 use super::*;
 use acta_ids::TxId;
 use tempfile::tempdir;
@@ -317,6 +319,7 @@ async fn test_wal_tampered_wrong_key_entry_detected() {
     );
 }
 
+#[cfg(feature = "legacy-wal-key")]
 #[tokio::test]
 async fn test_wal_legacy_key_fallback_migration() {
     let dir = tempdir().expect("tempdir"); // expect
@@ -596,6 +599,7 @@ async fn test_batch_encrypted_wal_truncation_crash_consistency() {
 /// Windows ACL verification test.
 /// Note: This test executes only on Windows platforms (e.g. `windows-latest` CI runner).
 
+#[cfg(feature = "legacy-wal-key")]
 #[tokio::test]
 async fn test_wal_v1_auto_migration_on_min_version_v3() {
     let dir = tempdir().expect("tempdir"); // expect
@@ -691,6 +695,7 @@ async fn test_recover_from_bak_if_present_cases() {
     );
 }
 
+#[cfg(feature = "legacy-wal-key")]
 #[tokio::test]
 async fn test_full_rewrite_crash_recovery_pipeline() {
     let dir = tempdir().expect("tempdir");
@@ -752,6 +757,7 @@ async fn test_full_rewrite_crash_recovery_pipeline() {
     }
 }
 
+#[cfg(feature = "legacy-wal-key")]
 #[tokio::test]
 async fn test_v1_plaintext_rejected_when_key_manager_active() {
     let dir = tempdir().expect("tempdir");
@@ -823,6 +829,7 @@ async fn test_v1_plaintext_rejected_when_key_manager_active() {
     }
 }
 
+#[cfg(feature = "legacy-wal-key")]
 #[tokio::test]
 async fn test_split_brain_legacy_fallback_chain_continuity() {
     let dir = tempdir().expect("tempdir");
