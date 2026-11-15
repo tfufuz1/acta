@@ -1,32 +1,15 @@
-# acta-vector — Umsetzungsplan (v3)
+# acta-vector — Umsetzungsplan (Fassung 3.0 Final)
 
-> Abgeleitet aus `docs/SPEC.md` v3 §6 (Umsetzungsreihenfolge) und §3.1 (Crate-Tabelle).
-> Ring: **Ring 1** (E1b) · Klasse: **A** · Ziel: Vollständig autarker, modularer Vektorindex-Baustein.
+*Bezug: Roadmap R0–R7 aus [docs/SPEC.md](file:///home/freddy/Projekte/acta/docs/SPEC.md) §12*
 
-## 1. Arbeitsbereiche des Crates
+## Meilensteine
 
-| Schritt | Inhalt | Voraussetzung | Nachweis | Status |
-|---|---|---|---|---|
-| **S-12** | Feature-Hygiene (R10): Default-Features auf `std` bereinigen (`ports-compat` entfernen); leere Features entfernen; `docid-128` weiterleiten. | S-01R | `feature_audit` grün; `cargo check -p acta-vector --no-default-features` | ⏳ In Bearbeitung |
-| **S-36** | `vector`: Kern auf `ids`/`env`/`mvcc`/`VectorError` konsolidieren; `contract.rs` vereinen; `VectorDeleteMode`; Feature `simd` transparent; ID-Breite `HNSW_VERSION` 2 → 3; V-VETO Wachtest verifizieren. | S-30B, S-10C, S-11R | GL, GF (HNSW v2/3), GD (Distanz, Rng, ms), GC, GE | ⏳ In Bearbeitung |
-| **S-80** | Auslagerung von DiskANN (`vector/diskann/`) in eigenständiges Crate `acta-vector-diskann`. | S-36 | GL, DiskANN-Tests isoliert grün | ⏳ Geplant |
+| Stufe | Aufgabe | Ziel / Nachweis | Status |
+|---|---|---|---|
+| **R2** | Maskierung im Suchpfad via `ErasedOrds` | Test `T-VEC` im Gate | In Arbeit |
+| **R5** | Implementierung des Rebuild-Modus ohne ArtKey-Kollateralschaden (F-5) | Test `hnsw_no_residue_after_erase` | Geplant |
+| **R5** | Vollständige `ErasureLayer`-Anbindung mit `on_gate`-Ack | Test `vector_layer_witness` | Geplant |
 
-## 2. Architektur & Entkopplungs-Meilensteine
-
-1. **Autarkie des Kerns:**
-   - Der Kern (`--no-default-features`) benötigt ausschließlich Standard-Bibliothek und mathematische/kryptographische Basistypen.
-   - `acta-ports` und `acta-types` sind vollständig in `compat/` isoliert und nur aktiv, wenn `ports-compat` bzw. `workspace` angefordert wird.
-2. **Neutralisierung von Wartungs- & Bereinigungs-Schnittstellen:**
-   - Bereinigung von Vektoren geschieht neutral über `Tombstone`, `Maintain`-Operationen (`compact()`, `is_rebuild_required()`).
-   - DSGVO-/Purger-Relikte in `hnsw/purge.rs` und `hnsw/scanner.rs` sind als `deprecated` markiert und gehören zur Transitional-Brücke.
-3. **Dokumentation & Anker-System:**
-   - Einheitliche Strukturierung aller Module nach VS Code Comment-Anchors Syntax (`// SECTION`, `// !SECTION`, `ANCHOR[...]`).
-   - Standardisierte Dateiköpfe mit `// FILE-CONTEXT`, `// ZWECK:`, `// INVARIANTEN:`.
-
-## 3. Definition of Done (DoD)
-
-- [x] Crate-lokale `SPEC.md` und `PLAN.md` entsprechen `docs/SPEC.md` v3.
-- [x] Quelltext ist vollständig und transparent nach dem hierarchischen Anker-Schema kommentiert.
-- [x] Keine unerlaubten `unwrap()` / `expect()` / `panic!` in Produktionspfaden.
-- [x] Determinismus-Wächter meldet keine unzulässigen Laufzeit-RNGs in Graphaufbau- und Suchpfaden.
-- [x] Alle modulinternen Tests laufen fehlerfrei durch.
+## Definition of Done
+- Ghost Vectors werden physisch genullt und der Graph repariert.
+- Zusage S10 (Lineage) für alle Vektoren erfüllt.

@@ -1,67 +1,32 @@
 # acta-crypto
 
-Kryptographische Primitive, AEAD-Blockverschlüsselung, Schlüsselableitung, WAL-Integritätsketten und Zeroize-Schlüsselcontainer für die Acta-Architektur.
+Kryptografische Primitive, AEAD-Datensatzumschlag (XChaCha20-Poly1305), hierarchische DEK-Ableitung und Zeroize-Schlüsselcontainer für Acta.
 
 ## Rolle und Zweck
-`acta-crypto` ist ein autarker Ring-0-Baustein (Ebene 1, Foundation) zur Bereitstellung I/O-freier kryptographischer Primitive:
-- **AEAD-Blockverschlüsselung:** Authentifizierte Verschlüsselung via AES-256-GCM-SIV (RFC 8452) mit Nonce-Misuse-Resistance und AAD-Integrität.
-- **Schlüsselableitung (KDF):** Schlüsselhierarchie via HKDF-SHA256 (RFC 5869) und Passwort-/Passphrasen-Verarbeitung via Argon2id (RFC 9106).
-- **WAL-Integrität:** Kryptographische Integritätsketten mittels HMAC-SHA256 für das Write-Ahead-Log.
-- **Sichere Speicherhygiene:** Sämtliche sensiblen Schlüsselstrukturen implementieren `ZeroizeOnDrop` und maskieren sich in `Debug` und `Display`.
+`acta-crypto` ist ein autarker Ring-0-Fundamentbaustein (Ebene 1):
+- **Datensatz-AEAD (Umschlag v3):** XChaCha20-Poly1305 mit intern generierter 192-Bit-Zufallsnonce und vollständiger AAD-Bindung.
+- **Hierarchische DEK-Ableitung:** HKDF-SHA256 über Ancestor-Salts (Mandant, Collection, Subject, Dokument).
+- **WAL- und Ledger-Integrität:** HMAC-SHA256 für Hash-Ketten und pseudonymitätsfreie Commitments ($K_{\text{commit}}[e]$).
+- **Speicherhygiene:** `ZeroizeOnDrop` für alle Schlüsselstrukturen; keine Leaks in `Debug` oder `Display`.
 
 ## Abgrenzung (Nicht-Ziele)
-- **Keine Rechts-, Zertifizierungs- oder Compliance-Garantien:** Das Crate implementiert technische kryptographische Algorithmen; es liefert keine Aussagen über regulatorische Konformität.
-- **Keine Löschketten- oder Audit-Nachweis-Logik:** Löschketten, Sagas, Deletion-Proofs und Auditberichte gehören ausschließlich nach `acta-erasure`.
-- **I/O- und Netzwerk-Freiheit:** Reine mathematische und kryptographische Routinen; Persistenz und Dateizugriffe erfolgen ausschließlich über Konsumenten-Ports.
+- **Keine I/O- oder Netzwerkoperationen:** Reine In-Memory-Kryptografie.
+- **Keine Rechtsaussagen:** Das Crate implementiert mathematische Algorithmen; es enthält keine Werbeaussagen (Gate `G-WORD`).
 
-## Reifegrad und Tier
-- **Gruppe:** `foundation`
-- **Ebene:** 1 (Ring 0)
-- **Klasse:** A (autarker Baustein)
-- **Tier:** `beta`
+## Interne Abhängigkeiten
+- `acta-ids`: Typisierte Bezeichner (`TenantId`, `DocId`, `DocTag`, `DocOrd`)
+- `acta-env`: Zufalls- und Zeit-Ports (`Rng`, `Clock`)
 
-## Tatsächliche interne Abhängigkeiten (Minimaler Kern)
-Ermittelt via `cargo tree -p acta-crypto -e normal --no-default-features`:
-- `acta-ids`: Typisierte Bezeichner (`TenantId`, `DocId`, `TxId`, `TenantScoped`)
-- `acta-env`: Minimaler Umwelt- und Plattform-Kontext
-
-*Optionale Integrations-Abhängigkeiten (hinter Feature `workspace`):*
-- `acta-types`: Typen für Workspace-Integration
-- `acta-ports`: Port-Definitionen für Workspace-Integration
-
-## Feature-Tabelle
-
-| Feature | Standard | Beschreibung |
-|---|---|---|
-| `kv-encryption` | Ja | KV-Segment-Verschlüsselung und Tenant-Isolierung für KV-Cache |
-| `workspace` | Ja | Brücke für `ActaError` und Workspace-Typen in `compat/` |
-| `types-compat` | Nein | Alias für `workspace` |
-| `ports-compat` | Nein | Alias für `workspace` |
-| `cloud-egress-guard` | Nein | Zusätzliche Egress-Wächter-Strukturen |
-| `test-utils` | Nein | Hilfsroutinen für Testläufe |
-
-## Schnellstart / Minimalbeispiel
+## Schnellstart
 
 ```rust
-use acta_crypto::aead::{open_record, seal_record_with_nonce};
+use acta_crypto::aead::{seal_record, open_record, SealCtx};
 use acta_crypto::dek::Dek;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let dek = Dek::new([0x42u8; 32]);
-    let doc_id = [0x11u8; 16];
-    let key_meta = b"user_record_key";
-    let nonce = [0x99u8; 12];
-    let plaintext = b"Sensible Nutzlast";
-
-    let envelope = seal_record_with_nonce(&dek, doc_id, key_meta, plaintext, nonce)?;
-    let opened = open_record(&dek, key_meta, &envelope)?;
+fn example(ctx: &SealCtx, dek: &Dek, plaintext: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+    let envelope = seal_record(ctx, dek, plaintext)?;
+    let opened = open_record(ctx, dek, &envelope)?;
     assert_eq!(opened.as_slice(), plaintext);
-
     Ok(())
 }
-```
-
-Ausführung ohne optionale Features:
-```bash
-cargo run -p acta-crypto --example standalone --no-default-features
 ```

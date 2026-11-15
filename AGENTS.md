@@ -1,13 +1,41 @@
-Das Ziel ist es die Löschkette  mit Zeitreisen (mvcc) zu vereinbaren.
+# AGENTS.md — Acta Richtlinie für Agenten (Fassung 3.0 Final)
 
-Dieses Projekt soll die physische Löschung und kryptographisches entfernen von personenbezogenen Daten für Nutzer massiv vereinfachen. 
-Das Ziel ist es exakt zu kontrollieren wie die Daten angelegt werden um diese präzise jederzeit atomar löschen zu können. Das Projekt verfolgt das Ziel die Datenschutzkonforme Löschung von personenbezogenen Daten atomar auf Speicherebene vorrausschauend zu implementieren um das Löschen von personenbezogenen Daten maximal effizient und ressourcenschonend zu integrieren. Es ist nicht das Ziel und Aufgabe personenbezogene Daten auf dem Computer und aus den Dokumenten zu entfernen aber aus dem gesamten RAG System muss dies zu 100% sauber und elegant entfernt werden können ohne Rückstände. Das gesamte Produkt dreht sich darum Daten von Anfang an für das Löschen anzulegen.
+> **Verbindliche Arbeitsanweisung:** Dieses Dokument fasst die normativen Regeln für alle Agenten zusammen.
+> **Alleinige normative Quelle:** [docs/SPEC.md](file:///home/freddy/Projekte/acta/docs/SPEC.md) (Fassung 3.0 Final). Sämtliche älteren Notizen, Entwürfe und informelle Zusicherungen sind ungültig.
 
-Das zweite Ziel ist ein Versionskontrollsystem das Zeitreisen ermöglicht. Das Ziel dahinter ist es Unternehmen ermöglichen Entscheidungen nachzuvollziehen die LLM's getroffen haben anhand von Bedingungen wie Gesetzen, Richtlinien, Unternehmensleitlinien, Feste Begrenzungen, Deadlines etc.. Die Zeitreisen sollen es ermöglichen nicht personenbezogene Daten und Zustände zurück zu verfolgen. Darum müssen personenbezogene Daten von den Zeitreisen entkoppelt werden.
+---
 
+## 1. Mission und Grundsatzentscheidung
 
-**Personenbezogene Daten** Die DSGVO Artikel-29-Gruppe definiert Anonymisierung als Schutz vor drei Angriffen: Herausgreifen (singling out), Verknüpfbarkeit (linkability) und Ableitung (inference). Die EDPB-Entwürfe zur Anonymisierung formulieren daraus Prüfkriterien: keine Datensatzisolierung, keine Verknüpfung, keine Ableitung. Entscheidend ist also, ob ein Datensatz eine Person herausgreifen, mit anderen Datensätzen verbinden oder Attribute ableiten lässt.
+Das Ziel von Acta ist die Vereinbarung von atomarer, physischer und kryptografischer **Löschbarkeit von Personenbezug** mit einer bitemporalen **Zeitreise (MVCC)** über nicht-personenbezogene Sachverhalte:
 
+1. **Konstruktive Löschbarkeit von Geburt an:**  
+   Personenbezogene Daten werden von Anfang an in **Ebene P** unter individuellen Dokument-Schlüsseln (Umschlag v3, XChaCha20-Poly1305) versiegelt. Löschung erfolgt atomar durch Schlüsselvernichtung im Tresor ($O(1)$) gefolgt von physischem Purge.
+2. **Bitemporale Zeitreise ohne Personendaten:**  
+   Die Chronik (**Ebene N**) speichert Normen, Richtlinien, Prompt- und Modellstände zur lückenlosen Nachvollziehbarkeit von LLM-Entscheidungen. Ebene N ist strikt frei von personenbezogenen Daten.
+3. **Löschung triumphiert über Zeitreise (Zusage S1, S6):**  
+   Historische Zeitreiseabfragen (`as_of`) liefern für gelöschte Einheiten niemals Klartext, sondern belegen den Status `Erased`.
 
+---
 
-Überprüfe die unterschiedlichen Arten der Löschung in docs/
+## 2. Verbotene Begriffe und Nicht-Zusagen (Gate G-WORD)
+
+Agenten dürfen in Code, Kommentaren, Tests und Dokumentationen folgende Begriffe **niemals** als Software-Zusicherung verwenden:
+- „DSGVO-konform“ oder „DSGVO-zertifiziert“ (UWG-Risiko; Konformität ist ein Gesamtbetriebszustand).
+- „100 % gelöscht“, „garantiert vernichtet“, „unwiederbringlich“, „revisionssicher“, „fehlerfrei“.
+- „Löscht aus allen Backups“.
+
+**Zulässig ist ausschließlich:**  
+Das Berichten der objektiv gemessenen technischen Klassen **G, K, P, D, C** mit dem Status `reached` oder `not_reached` unter Ausweisung der deklarierten Annahmen (**A-FLASH, A-RAM, A-ANCHOR, A-CRYPTO, A-EXT**).
+
+---
+
+## 3. Unverrückbare Invarianten für Entwicklungsarbeiten
+
+- **Fail-Closed Doktrin (S7):** Kein Krypto-Fallback, kein Default-Schlüssel, keine `unwrap_or_default()`-Aufrufe im Schlüsselpfad.
+- **Invariante I-17:** Strikt ein Umschlag je Datensatz in Ebene P; niemals Blockverschlüsselung über Dokumentgrenzen hinweg.
+- **Saga-Reihenfolge (F-1, F-2):** Gate E2 IMMER vor E3. E3 (Schlüsselvernichtung) verlangt zwingend die Bestätigung von E2b (`on_gate` aller Schichten bestätigt).
+- **Lineage (S10, F-3):** Jede Ableitung (`Derived<T>`) ist typbedingt an monotone `doc_ord: u32` gebunden (`RoaringBitmap`).
+- **Cluster-Lokalität (F-4):** KeyV2 belegt `cluster = subject_tag`, um physische Lokalität im LSM-Tree zu garantieren.
+- **Ghost Vectors beseitigen:** Im Vektorindex genügen Soft-Deletes nicht. Vektoren müssen genullt und der HNSW-Graph repariert/neu synthetisiert werden.
+- **Ringarchitektur (R-DEP):** Abhängigkeiten zeigen streng von höheren zu niedrigeren Ringen (R7 $\rightarrow$ R6 $\rightarrow$ R5 $\rightarrow$ R4 $\rightarrow$ R3/R1 $\rightarrow$ R2 $\rightarrow$ R0).

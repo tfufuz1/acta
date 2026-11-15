@@ -1,43 +1,13 @@
-# `acta-erasure`
+# acta-erasure
 
-Modularer, autarker Löschkern für Acta: Saga, FileVault, ReadGate/GateLog, RestoreGuard, Messung/Witness, DeletionReport (Ed25519), Revocation-Log und kryptografisches Shredding.
+Löschkern, monolithische Saga (E0–E9), ReadGate, Tresor mit Epochenrotation, forensische Typestate-Messung und Audit-Bericht für Acta.
 
-Entspricht **Klasse A** gemäß `docs/SPEC.md` v4.0 (B1–B12).
+## Rolle und Zweck
+`acta-erasure` ist das zentrale Lösch-Crate in Ring R3:
+- **Lösch-Saga:** Atomare, monotone Zustandsmaschine für DSGVO-Löschungen.
+- **ReadGate:** $O(1)$-Lesesperre über `ErasedOrds: RoaringBitmap`.
+- **Kryptografischer Tresor:** Maskierte Shard-Slots (U, T, C, S, D, F, E) mit Epochenrotation und Tag-Nullung bei Grabsteinen.
+- **Audit-Zertifikat:** Deterministischer, signierter `ErasureReport` v1 nach RFC 8785 (JCS).
 
-## Eigenschaften (Klasse A)
-
-- **Keine internen Abhängigkeiten:** Keine Abhängigkeiten zu `acta-types`, `acta-ports` oder anderen internen Crates.
-- **Autarkie:** Sämtliche Löschtypen (`Purger`, `LayerScanner`, `KeyScope`, `WitnessLayer`, `ErasureId`, `PurgeOutcome`) sind hier kanonisch definiert.
-- **Zero-Panic (B9):** Keine `unwrap`/`expect`/`panic!` im Produktionscode. Mutex-Poisoning und I/O-Fehler führen zu deterministischem Fail-Closed.
-- **Unsafe-Freiheit (B10):** Vollständig unter `#![forbid(unsafe_code)]` implementiert.
-- **Standalone Export (B5):** Vollständig exportierbar und kompilierbar über `tools/export_crate.py acta-erasure`.
-
-## Minimalbeispiel (Export & Build)
-
-Export in ein isoliertes Verzeichnis außerhalb des Workspaces:
-
-```bash
-python3 tools/export_crate.py acta-erasure --out /tmp/export-acta-erasure
-cd /tmp/export-acta-erasure
-cargo check --no-default-features
-```
-
-## Verwendung
-
-```rust
-use acta_erasure::types_local::{ErasureId, KeyScope, TenantId, CollectionId, DocId};
-use acta_erasure::ed25519_proof::DeletionProofKeyPair;
-
-let keypair = DeletionProofKeyPair::generate();
-let scope = KeyScope::Document {
-    tenant: TenantId::new(1),
-    collection: CollectionId::new(2),
-    doc_id: DocId::new(100),
-};
-```
-
-## Nicht-Ziele
-
-- Keine Speicherung von Nutzdaten (Storage Engine gehört in `acta-store`).
-- Keine Index-Strukturen (Vektor-, Text- oder Graph-Indizes gehören in die jeweiligen Crates).
-- Keine rechtlichen Behauptungen oder Garantien (siehe `docs/SPEC.md` §6.4).
+## Workspace-Mitgliedschaft (Behebung V-03)
+`acta-erasure` ist vollwertiges Mitglied im Root-Workspace (`members` und `default-members`). Default-Features sind `["signing", "vault"]`.

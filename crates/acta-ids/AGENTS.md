@@ -1,28 +1,9 @@
 # AGENTS.md — `acta-ids`
 
-> Werkzeug/Crate-Kontext für Agenten. Der obere Teil ist generiert; manuelle Notizen unterhalb ergänzen.
+> Arbeitskontext für Agenten. Gültig gemäß [docs/SPEC.md](file:///home/freddy/Projekte/acta/docs/SPEC.md) (Fassung 3.0 Final).
 
-<!-- BEGIN GENERATED: crate_inventory.py -->
-
-## Inventar (generiert)
-
-- **Pfad:** `crates/acta-ids` · **Ring:** – · **Version:** 0.1.0
-- **Beschreibung:** Canonical identity and tenant types for the Acta ecosystem
-- **src:** 1 Dateien, 501 LOC · **unsafe:** 0 Vorkommen, Policy `forbid`
-- **Interne Abhängigkeiten (normal, 0):** –
-- **Interne Dev/Build-Abhängigkeiten (0):** –
-- **Externe Abhängigkeiten (normal, 3):** `blake3`, `serde`, `thiserror`
-- **Reverse-Abhängigkeiten (8):** `acta-checkpoint`, `acta-crypto`, `acta-graph`, `acta-mvcc`, `acta-store`, `acta-text`, `acta-types`, `acta-vector`
-- **Kopplung an Hub-Crates:** ausgehend –; eingehend `acta-types`
-- **Features (3):** `default`, `docid-128`, `std`
-
-### Öffentliche API (grob, aus src/)
-- struct (11): `CollectionId`, `DocId`, `DocRef`, `EntityId`, `FileId`, `Seq`, `StoreId`, `TenantId`, `TenantScoped`, `Timestamp`, `TxId`
-- enum (2): `IdError`, `TenantScopeViolation`
-- fn (21): `as_bytes`, `as_micros`, `as_u64`, `from_doc_id`, `from_key`, `from_micros`, `inner`, `internal`, `into_inner`, `into_inner_checked`, `is_internal`, `is_system`, `is_valid`, `is_valid_origin`, `map` … (+6)
-- type (1): `Result`
-- const (12): `DEFAULT`, `ID_WIDTH_BITS`, `INTERNAL_BASE`, `INVALID`, `MAX`, `MAX_COLLECTION_SEQUENCE`, `MAX_REF_LEN`, `MAX_SEARCH_K`, `MIN`, `SYSTEM`, `TOMBSTONE_BIT`, `ZERO`
-
-Regeneriert mit `python3 tools/crate_inventory.py agents`. Manuelle Notizen stehen außerhalb dieses Blocks.
-
-<!-- END GENERATED: crate_inventory.py -->
+## Leitlinien für Agenten
+1. **Ring R0:** Keine internen Abhängigkeiten zu anderen Workspace-Crates zulässig.
+2. **Keine PII:** Keine Felder für personenbezogene Rohdaten anlegen. Identifikatoren sind typisierte Zufallswerte oder BLAKE3-Tags.
+3. **Fail-Closed:** Kein `Default` für IDs implementieren.
+4. **Lineage:** `DocOrd` ist ein `u32` Newtype für monotone Dokument-Ordinale.

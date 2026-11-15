@@ -1,31 +1,8 @@
 # AGENTS.md — `acta-checkpoint`
 
-> Werkzeug/Crate-Kontext für Agenten. Der obere Teil ist generiert; manuelle Notizen unterhalb ergänzen.
+> Arbeitskontext für Agenten. Gültig gemäß [docs/SPEC.md](file:///home/freddy/Projekte/acta/docs/SPEC.md) (Fassung 3.0 Final).
 
-<!-- BEGIN GENERATED: crate_inventory.py -->
-
-## Inventar (generiert)
-
-- **Pfad:** `crates/acta-checkpoint` · **Ring:** 1 · **Version:** 0.1.0
-- **Beschreibung:** Backup and snapshot management for Acta storage
-- **src:** 20 Dateien, 4017 LOC · **unsafe:** 0 Vorkommen, Policy `forbid`
-- **Interne Abhängigkeiten (normal, 4):** `acta-env`, `acta-ids`, `acta-ports`, `acta-types`
-- **Interne Dev/Build-Abhängigkeiten (1):** `acta-testkit`
-- **Externe Abhängigkeiten (normal, 8):** `blake3`, `bytes`, `parking_lot`, `serde`, `serde_json`, `thiserror`, `tokio`, `tracing`
-- **Reverse-Abhängigkeiten (2):** `acta-agent`, `acta-db`
-- **Kopplung an Hub-Crates:** ausgehend `acta-ports`, `acta-types`; eingehend `acta-db`
-- **Features (5):** `default`, `docid-128`, `ports-compat`, `types-compat`, `workspace`
-
-### Öffentliche API (grob, aus src/)
-- struct (19): `CheckpointGuard`, `CheckpointManifest`, `CheckpointMeta`, `DefaultHardlinkCloner`, `HardlinkCloneResult`, `InMemorySnapshotSource`, `InstanceOrphanRegistry`, `LoomDirEntry`, `LoomMetadata`, `LoomReadDir`, `OrphanRegistry`, `OrphanState`, `PersistentCheckpointStore`, `PinGuard`, `PinnedSeqNoOrphan` … (+4)
-- enum (1): `CheckpointError`
-- trait (6): `CheckpointHardlinkCloner`, `CheckpointRegistry`, `CheckpointVfs`, `FsSeam`, `SnapshotPinner`, `SnapshotSource`
-- fn (91): `allocate_tx`, `await_pending_rollbacks`, `checkpoint`, `checkpoint_counter`, `checkpoint_guard_skipped_rollback_count`, `clear_all`, `clear_all_orphaned_checkpoints`, `clear_orphan_pin`, `clear_orphaned_checkpoint`, `clock`, `close`, `commit`, `copy`, `create_checkpoint`, `create_dir_all` … (+76)
-- type (5): `BoxFuture`, `CheckpointResult`, `PinId`, `Result`, `VersionedKeyMap`
-- const (1): `CURRENT_ID_WIDTH_BITS`
-- mod (5): `compat`, `contract`, `error`, `ports_impl`, `snapshot_bridge`
-- pub use: `crate::error::{CheckpointError, CheckpointResult}`, `crate::fs_seam::{FsSeam, StdFsSeam}`, `crate::meta::WorkflowState`, `crate::snapshot_source::{BoxFuture, SnapshotSource}`, `crate::vfs::CheckpointVfs`, `error::{CheckpointError, CheckpointResult}`, `fs_seam::{FsSeam, StdFsSeam}`, `guard::{CheckpointGuard, PinGuard}`, `hardlink_cloner::{ CheckpointHardlinkCloner, DefaultHardlinkCloner, HardlinkCloneResult, SnapshotPinner, }`, `manifest::CheckpointManifest` … (+5)
-
-Regeneriert mit `python3 tools/crate_inventory.py agents`. Manuelle Notizen stehen außerhalb dieses Blocks.
-
-<!-- END GENERATED: crate_inventory.py -->
+## Strikte Regeln für Agenten
+1. **Registrierungspflicht:** Niemals `fs::hard_link` oder Kopien von Datendateien ohne vorherige Eintragung in der `CopyRegistry` anlegen.
+2. **RestoreGuard einhalten:** Backups älter als 72 Stunden dürfen nicht stillschweigend geladen werden.
+3. **Ring R1:** Abhängigkeiten nur nach unten.

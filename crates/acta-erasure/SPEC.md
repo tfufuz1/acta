@@ -1,78 +1,61 @@
-# acta-erasure — Spezifikation (docs/SPEC.md §3.1) [S]
+# acta-erasure — Crate-Spezifikation (Fassung 3.0 Final)
 
-> Diese Spezifikation ist die normative Vorgabe für `acta-erasure`. Sie beschreibt den kanonischen Zielzustand, den verifizierten Ist-Zustand und die einzuhaltenden Verträge als autarker Baustein.
-> Die fachliche Spezifikation der Löschkette ist in `docs/erasure/Loeschkette_Implementierungsspezifikation.md` definiert.
+*Bezug: Normative Gesamtspezifikation [docs/SPEC.md](file:///home/freddy/Projekte/acta/docs/SPEC.md) (Teil IV, V, VI, VII, VIII, XI, XII)*  
+*Ring: R3 (Löschkern) · Geltung: Verbindlich für `acta-erasure`*
 
-**Pfad:** `crates/acta-erasure/` · **Umsetzungsplan:** `PLAN.md` (im selben Verzeichnis)
+---
 
-## 1. Zweck
+## 1. Zweck und Einordnung
 
-Löschkette: Löschbeweise, Ledger, Signaturen, Read-Gates, Audit-Zeugen und Scanner-Traits. *[S]*
+`acta-erasure` ist das Herzstück der DSGVO-Löschkette in **Ring R3 (Löschkern)**:
+- **Lösch-Saga (E0 bis E9):** Monotoner Zustandsautomat (`Requested` $\rightarrow$ `Gated` $\rightarrow$ `KeyDestroyed` $\rightarrow$ `Purging` $\rightarrow$ `Verifying` $\rightarrow$ `Completed`).
+- **ReadGate & GateLog:** Sofortige Lesesperre in Schritt E2 mit $O(1)$-Latenzzusage (< 500 ms) via `ErasedOrds: RoaringBitmap`.
+- **Kryptografischer Tresor (Vault):** 16-Shard-Tresor für Ancestor-Salts (U, T, C, S, D, F, E). Grabsteine nullen `tag` und `payload` vollständig (V-11).
+- **Epochenrotation (V-04):** Rollierende Maskierung der Slots unter $E_e$ und HSM-Vernichtung alter Epochen zur Abwehr von Backup-Wiederbelebungen.
+- **Forensische Messung:** Typestate-Scanner (`Scanner<Unarmed>` $\rightarrow$ `Scanner<Armed>` $\rightarrow$ `LayerWitness`) über MK1, MK2 und MK3.
+- **Audit-Bericht & Notar:** Signierter `ErasureReport` v1 nach RFC 8785 (JCS) mit kryptografischer Hash-Kette im Ledger.
 
-## 2. Zielzustand (docs/SPEC.md §3.1) [S]
+---
 
-| Merkmal | Ziel |
+## 2. Architektur und Workspace-Integration
+
+| Merkmal | Vorgabe (docs/SPEC.md §3.1, §3.2) |
 |---|---|
-| Gruppe | compliance |
-| Ebene (Kern-Closure) | 0 |
-| Kern-Closure | — (vollkommen autark) |
-| Default-Features | `signing`, `vault`, `async` (erhält volles Verhalten) |
-| Fehlertyp (R3) | `ErasureError` (lokal, thiserror, non_exhaustive) |
-| Brücke (hinter Feature `workspace`, §1.1) | Keine internen Abhängigkeiten erforderlich |
+| **Ring** | **R3 (Löschkern)** |
+| **Workspace-Mitgliedschaft (V-03)**| Zwingend in `[workspace] members` und `default-members` |
+| **Erlaubte interne Abhängigkeiten** | Ring R0 (`acta-ids`, `acta-crypto`, `acta-env`, `acta-sys`, `acta-durable-fs`), Ring R2 (`acta-types`, `acta-ports`) |
+| **Default-Features** | `["signing", "vault"]` (`async` ist rein opt-in!) |
+| **Fehlertyp** | `ErasureError` (Fail-Closed, ohne Fallback) |
 
-Ebenen (SPEC §1.1): E0 = Kern-Closure leer · E1 = Kern-Closure ⊆ E0, höchstens 4 Mitglieder · E2 = Integration · E3 = Anwendungen und Testwerkzeuge. Der Kern ist der Code mit `--no-default-features`.
+---
 
-## 3. Ist-Zustand (verifiziert)
+## 3. Normative Anforderungen und Defektbehebungen
 
-| Messgröße | Wert |
-|---|---|
-| Lines of Code (Produktion, `loc.py`) | ca. 12.464 Zeilen in 66 Dateien |
-| Version / publish | workspace-vererbt / <unset> |
-| Interne Normal-Abhängigkeiten (Ist, Cargo.toml) | keine (0) |
-| Interne Dev-Abhängigkeiten (Ist) | keine (0) |
-| Features (Ist, Anzahl) | 3 (`signing`, `vault`, `async`) |
-| Default-Features (Ist) | `["signing", "vault", "async"]` |
-| `#[test]`-Vorkommen (grep, src + tests) | > 139 |
-| zero-panic: Produktionsbefunde | 0 (kein unwrap/expect/panic in src außerhalb Tests) |
-| unsafe: Vorkommen / ohne SAFETY / Insel | 0 / 0 / False (`#![forbid(unsafe_code)]`) |
-| Determinismus: Produktionsbefunde | 0 unkontrollierte Ports (Uhren und Rng injizierbar) |
-| Port-M3-Leaks (port_contract_audit) | 0 |
-| Autarkie-Score (`decouple_inspector.py`) | 99/100 (Exzellent, Baustein der Klasse A) |
+1. **Behebung V-01 & V-05 (Beseitigung aller Krypto-Fallbacks, S7):**  
+   - Bei nicht lesbarem oder gelöschtem Slot MUSS `resolve_dek` zwingend `Err(ErasureError::Erased(SlotType))` zurückgeben.
+   - Der Fallback auf `blake3::keyed_hash(&k_unit, key)` ist vollständig entfernt.
+   - Sämtliche Dummy-Schlüssel (`[0x55; 32]`, `[0x42; 32]`, Nullschlüssel) sind eliminiert.
+2. **Behebung V-02 (Umschlag v3):**  
+   - Der veraltete XOR-Sealer ist entfernt. Siegelung erfolgt ausschließlich mit XChaCha20-Poly1305.
+3. **Behebung V-04 (Slot-Maskierung & Epochenrotation):**  
+   - Slot-Payloads liegen im Tresor niemals im Klartext. Sie sind unter $K_{\text{enc}}$ maskiert.
+   - Epochenrotation alle $T_{\text{ROT}} = 24\text{ h}$ oder $10\,000$ Vernichtungen mit physischer Anker-Zerstörung von $E_e$.
+4. **Behebung V-11 & V-12 (Tresor-Härtung):**  
+   - Grabsteine nullen `tag` und `payload` (alle Bytes 0x00).
+   - Zur Entlastung von Sweepern existiert `destroy_many(&[SlotRef])` mit gebündeltem fsync.
+5. **Behebung V-15 (Pseudonymitätsfreies Widerrufs-Log):**  
+   - Keine Klartext-IDs im Widerrufs-Log. Einträge nutzen keyed Commitments unter $K_{\text{commit}}[e]$.
+6. **Löschsaga-Schrittfolge (F-1 & F-2):**  
+   - **E2 Gate zuerst:** $O(1)$-Garantie bis zum Rücksprung.
+   - **E2a Nadelstichprobe:** Gedeckelt auf maximal 4.096 Klartextfenster, entnommen *nach* dem Gate.
+   - **E2b Pflicht-Ack:** E3 (Schlüsselvernichtung) darf erst nach bestätigtem RAM-Zeroing aller Schichten ausgeführt werden.
 
-## 4. Ist-vs-Ziel-Abgleich [V]
+---
 
-- **Interne Abhängigkeiten:** Vollständig eliminiert (0 interne Kanten).
-- **Features & Defaults:** Features `signing`, `vault`, `async` sind implementiert und default-aktiviert.
-- **Klasse-A Konformität:** Erfüllt Kriterien B1–B12 (0 interne Abhängigkeiten, lokale Port- und Domänentypen in `types_local.rs`, `#![forbid(unsafe_code)]`, Zero-Panic-Doktrin).
+## 4. Tests und Abnahme
 
-## 5. Verifizierte Befunde und Architekturprinzipien [V]
-
-- `acta-erasure` agiert als autonomer Baukasten.
-- Lokale Typendefinitionen für `TenantId`, `CollectionId`, `DocId`, `KeyScope`, `RequestContext`, `WitnessLayer`, `Purger`, `LayerScanner`.
-- Krypto-Shredding (`kv_shredding.rs`) und Revocation-Log (`revocation_log.rs`) sind vollständig gekapselt.
-- Ed25519-Signierung und Beweisprüfung sind hinter dem Feature `signing` isoliert.
-- Tresor-Subsystem (`vault/`) mit 16 Shards und Fail-Closed-Verhalten ist hinter dem Feature `vault` isoliert.
-- Asynchrone Schnittstellen und Tokio-Treiber sind hinter dem Feature `async` isoliert.
-
-## 6. Anforderungen und Verträge [S]
-
-### 6.1 Invarianten
-1. **INV-CLASS-MEASURED-1:** Kein Löschbericht ohne verifizierte Scanner-Zeugen.
-2. **INV-NO-RESURRECTION-1:** Keine Reaktivierung gelöschter Schlüssel nach Replay/Wiederanlauf.
-3. **INV-VAULT-FAILCLOSED-1:** Jeder E/A- oder Synchronisationsfehler beim Überschreiben vergiftet das Vault-Handle permanent.
-4. **INV-CLAIM-BIND-1:** Neutralität aller Berichte ohne rechtsverbindliche Garantiezusagen (SPEC §6.4).
-
-### 6.2 Modul-Organisation
-- Keine `mod.rs`-Dateien (SPEC D-90).
-- Wurzeldatei `<m>.rs` liegt jeweils neben dem optionalen Modul-Verzeichnis `<m>/`.
-
-## 7. Abnahme & Verifikation [S]
-
-```bash
-cargo check -p acta-erasure --no-default-features
-cargo check -p acta-erasure --features signing
-cargo check -p acta-erasure --features vault
-cargo check -p acta-erasure --features async
-cargo test -p acta-erasure
-python3 tools/decouple_inspector.py -c acta-erasure --all
-```
+- **Pflichttest V-01:** `vault_missing_slot_is_erased` – Nach Slot-Vernichtung liefert `open` hart `Err(Erased)`, niemals Datenmüll.
+- **Pflichttest V-04:** `slot_payload_masked_at_rest` – Binärer Scan bestätigt die Abwesenheit von Klartext-Salts im Tresor.
+- **Pflichttest V-14:** `proof_crash_resume_matrix` und `proof_fail_closed_and_consistency` kompilieren fehlerfrei und bestehen alle 12 Crash-Punkte.
+- **Pflichttest V-15:** `revocation_log_has_no_raw_ids` – Bestätigt Abwesenheit von Personen-Kennungen im Widerrufs-Log.
+- Gate `G-ERA-1`: Löschungen dürfen ausschließlich über `ErasureCore::execute` initiiert werden.

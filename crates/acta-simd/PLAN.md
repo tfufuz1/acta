@@ -1,27 +1,14 @@
-# acta-simd — Umsetzungsplan
+# acta-simd — Umsetzungsplan (Fassung 3.0 Final)
 
-> Abgeleitet aus `docs/SPEC.md` v3/v4.0. Dokumentiert den Umsetzungs- und Reifegrad von `acta-simd` als autarkem Baustein (Ring 0, Klasse A).
+*Bezug: Roadmap R0–R7 aus [docs/SPEC.md](file:///home/freddy/Projekte/acta/docs/SPEC.md) §12*
 
-## 1. Baustein-Status
+## Meilensteine
 
-| Schritt | Inhalt | Status | Beleg |
+| Stufe | Aufgabe | Ziel / Nachweis | Status |
 |---|---|---|---|
-| E0-Entkopplung | 0 interne Pflicht-Dependencies im Kern | Abgeschlossen | `count_bridge_refs.py` = 0 außerhalb von `compat/` |
-| Brücken-Isolation | `acta-types`-Abhängigkeit hinter Feature `workspace` / `types-compat` | Abgeschlossen | `src/compat/mod.rs` |
-| B09-Metrik | Lokale gespiegelte `DistanceMetric` mit Round-Trip & Serde Tests | Abgeschlossen | `src/metric.rs`, `src/compat/mod.rs` |
-| Unsafe-Audit | Lückenlose `// SAFETY:`-Dokumentation aller Kernel-Blöcke | Abgeschlossen | Insel-Audit grün |
-| Zero-Panic | Keine unkontrollierten Panics in Produktionspfaden | Abgeschlossen | `SimdError` Fail-Closed Rückgaben |
-| API-Härtung | Sichere Fassaden (`compute_distance`, `validate_vector`, `Dispatcher`) | Abgeschlossen | `src/lib.rs`, `src/dispatch.rs` |
-| Kommentierungs-System | Strukturierte Comment-Anchors, Regionen und Inline-Dokumentation | In Umsetzung | Gemäß Kommentar-Syntax-Vorgabe |
+| **R0** | Lückenloser `undocumented_unsafe_blocks` Audit | Alle SIMD-Instrinsics mit `// SAFETY:` | Abgeschlossen |
+| **R1** | Differenztests gegen skalares Orakel mit Proptest | IEEE-754 Konformitätstests | In Arbeit |
 
-## 2. Invarianten-Prüfungen
-
-- **INV-SIMD-DETERMINISM-1:** Bestätigt in `tests/simd_cross_validation.rs` und `tests/differential_tests.rs`.
-- **INV-SIMD-FINITE-1:** Bestätigt in `tests/edge_cases_tests.rs`.
-- **INV-SIMD-ALIGN-1:** Bestätigt in `tests/differential_tests.rs` und `tests/kernel_reference_tests.rs`.
-
-## 3. Definition of Done
-
-- Unabhängige Standalone-Exportierbarkeit via `tools/export_crate.py`.
-- Lückenlose Einhaltung der Rustdoc- und Kommentar-Konventionen (keine verbotenen Begriffe, saubere Regionen).
-- Sämtliche Tests des Crates kompilieren und laufen erfolgreich.
+## Definition of Done
+- 0 unkommentierte `unsafe`-Stellen.
+- 0 interne Pflicht-Abhängigkeiten.
