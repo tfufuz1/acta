@@ -1,11 +1,14 @@
 ---
 name: acta-toolchain
-description: Stellt Rust 1.89.0 für das Acta-Repo bereit, wenn static.rust-lang.org nicht erreichbar ist, und prüft die Toolchain. Verwenden, wenn cargo oder rustc die Toolchain 1.89.0 nicht finden, wenn rustup einen Download-Fehler meldet oder wenn eine neue VM eingerichtet wird.
+description: "Stellt Rust 1.89.0 für das Acta-Repo bereit, wenn static.rust-lang.org nicht erreichbar ist, und prüft die Toolchain. Verwenden, wenn cargo oder rustc die Toolchain 1.89.0 nicht finden, wenn rustup einen Download-Fehler meldet oder wenn eine neue VM eingerichtet wird."
 ---
 
 # Rust 1.89.0 bereitstellen (Acta)
 
 Das Repo pinnt `channel = "1.89.0"` in `rust-toolchain.toml`. In der VM ist `static.rust-lang.org` blockiert. Die Toolchain kommt deshalb aus conda-forge.
+
+## 0. Automatisch
+Normalerweise erledigt der SessionStart-Hook alles (`scripts/session-start.sh`). Manuell: `bash scripts/bootstrap-toolchain.sh` (Rust) und `bash scripts/bootstrap-tools.sh` (just, cargo-deny, -audit, -nextest, -mutants, -llvm-cov, -cyclonedx). Beide Skripte sind idempotent und getestet; die Schritte unten erklaeren, was sie tun.
 
 ## 1. Vorprüfung
 
@@ -80,3 +83,6 @@ Beide Befehle müssen mit Exit 0 enden.
 - `rustup toolchain link 1.89.0 …` wird abgelehnt. Nur der Symlink funktioniert.
 - `conda`, `micromamba` und `api.anaconda.org` sind nicht verfügbar. Pakete werden direkt per `curl` geladen.
 - Netzfehler von rustup erzeugen lange Backtraces. Zuerst `rustup toolchain list` prüfen.
+
+## Werkzeuge
+`bash scripts/bootstrap-tools.sh` installiert feste Versionen aus conda-forge. `cargo-geiger` per `cargo +stable install cargo-geiger --locked --root /root/toolchains/geiger` (0.14 braucht rustc >= 1.97). Nightly, Miri und cargo-fuzz sind in dieser VM nicht beschaffbar (siehe `docs/UMGEBUNG.md`).

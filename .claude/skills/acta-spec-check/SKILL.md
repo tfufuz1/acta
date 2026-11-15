@@ -1,6 +1,6 @@
 ---
 name: acta-spec-check
-description: Prüft Änderungen am Acta-Quelltext, an Dokumentation oder Oberflächentexten gegen docs/SPEC.md, insbesondere Wortfilter (SPEC 1.6, Liste A und Regel B), Hub-Regeln und Zusagen. Verwenden vor jedem Abschluss einer Code- oder Textänderung und bei Fragen, ob eine Formulierung oder ein Designentscheid zulässig ist.
+description: "Prüft Änderungen am Acta-Quelltext, an Dokumentation oder Oberflächentexten gegen docs/SPEC.md, insbesondere Wortfilter (SPEC 1.6, Liste A und Regel B), Hub-Regeln und Zusagen. Verwenden vor jedem Abschluss einer Code- oder Textänderung und bei Fragen, ob eine Formulierung oder ein Designentscheid zulässig ist."
 ---
 
 # SPEC-Prüfung für Änderungen

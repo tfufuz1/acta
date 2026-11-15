@@ -1,6 +1,6 @@
 ---
 name: acta-crate-scaffold
-description: Legt einen neuen Acta-Crate oder eine neue interne Abhängigkeit an, gemäß Level-Modell, Hub-Regeln, Budgets und Workspace-Lints. Verwenden, wenn ein Crate in Cargo.toml aufgenommen, verschoben oder ein Vertrags-Crate angelegt werden soll.
+description: "Legt einen neuen Acta-Crate oder eine neue interne Abhängigkeit an, gemäß Level-Modell, Hub-Regeln, Budgets und Workspace-Lints. Verwenden, wenn ein Crate in Cargo.toml aufgenommen, verschoben oder ein Vertrags-Crate angelegt werden soll."
 ---
 
 # Neuen Crate anlegen (Acta)

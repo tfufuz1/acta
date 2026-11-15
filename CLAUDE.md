@@ -4,6 +4,15 @@ Acta ist eine Wissens- und Entscheidungsplattform mit versionierbarem Unternehme
 
 Jeder Crate hat eine eigene `CLAUDE.md` unter `crates/<name>/CLAUDE.md` bzw. `xtask/CLAUDE.md`. Dort stehen Level, Budget, Aufgabe, Abhängigkeiten und Überführungsstand.
 
+## Arbeitsregeln für Claude (verbindlich)
+
+1. **Keine Sub-Agenten außer Haiku.** Der Agent-Tool-Aufruf ist nur mit `model: haiku` erlaubt. Alle Experten in `.claude/agents/` sind auf `model: haiku` gesetzt. Andere Typen (`general-purpose`, `Explore`, `Plan`, `claude` usw.) und jedes andere Modell nicht starten; die Arbeit selbst erledigen. Haiku-Ergebnisse nie ungeprüft übernehmen (Diff lesen, `/gates` selbst ausführen). Aussagen eines Sub-Agenten wie „Tests grün“ zählen erst nach eigenem Lauf.
+2. **Lieferung vor Ablauf des Kontingents.** Der Nutzer will alle bearbeiteten Dateien als ZIP. Format: nur bearbeitete oder neue Dateien, Pfade ab Repo-Wurzel (zum direkten Überschreiben); entfernte Dateien als **leere Dateien** mit ihrem Pfad (der Nutzer löscht die Hüllen lokal); nichts anderes im ZIP. Erzeugen mit `bash scripts/make-delivery.sh` (Skill `acta-delivery`, Befehl `/deliver`), ausliefern mit `SendUserFile`.
+   - Nach jedem abgeschlossenen Arbeitspaket eine Zwischenlieferung senden, nicht erst am Ende.
+   - Sobald Kontext oder Kontingent knapp werden (z. B. ab ca. 80 % Verbrauch, bei Warnhinweisen oder wenn eine lange Aufgabe noch aussteht): sofort liefern, dann weiterarbeiten. Eine nicht gelieferte Arbeit gilt als nicht erledigt.
+   - Vor dem Liefern `/gates` laufen lassen und den ehrlichen Stand (grün/rot/nicht geprüft) in die Antwort schreiben.
+3. **Ehrlichkeit vor Optik.** Keine Gates, Lints, Budgets oder `deny.toml` lockern, um Rot zu beseitigen. Befunde berichten, Entscheidungen beim Nutzer lassen.
+
 ## Umgebung (verifiziert, Stand 2026-11-15)
 
 **Toolchain.** Das Repo verlangt Rust **1.89.0** (`rust-toolchain.toml`). `static.rust-lang.org` ist in der VM blockiert, deshalb wird die Toolchain über conda-forge bereitgestellt:
@@ -13,7 +22,9 @@ Jeder Crate hat eine eigene `CLAUDE.md` unter `crates/<name>/CLAUDE.md` bzw. `xt
 3. Einbindung in rustup: `ln -sfn /root/toolchains/rust-1.89.0 /root/.rustup/toolchains/1.89.0-x86_64-unknown-linux-gnu`. Der Name `1.89.0` allein wird von `rustup toolchain link` abgelehnt.
 4. Danach wählt rustup die Toolchain im Repo automatisch. `rustc --version` muss `1.89.0` zeigen.
 
-Die vollständige Anleitung mit Stolpersteinen steht in `/root/toolchains/ENVIRONMENT_NOTES.md`. Der Skill `acta-toolchain` führt die Schritte aus.
+**Automatik:** Ein SessionStart-Hook (`.claude/settings.json`, `scripts/session-start.sh`) stellt Toolchain (`scripts/bootstrap-toolchain.sh`) und Werkzeuge (`scripts/bootstrap-tools.sh`) sicher und druckt einen Statusbericht. Details, Netztabelle, Befunde und Grenzen: `docs/UMGEBUNG.md`. Skill: `acta-toolchain`.
+
+**Werkzeuge (verifiziert):** just, cargo-deny, cargo-audit, cargo-nextest, cargo-mutants, cargo-llvm-cov, cargo-cyclonedx; cargo-geiger optional (`+stable`). **Nicht beschaffbar:** nightly, Miri, Sanitizer, cargo-fuzz (static.rust-lang.org blockiert). Dazu keine Prüfaussage machen.
 
 **Netz.** `index.crates.io` und `static.crates.io` sind erreichbar, `conda.anaconda.org` ebenfalls. `static.rust-lang.org` und `api.anaconda.org` nicht. Abhängigkeiten werden nur aus crates.io bezogen. Git-Quellen sind laut `deny.toml` verboten.
 
@@ -28,11 +39,15 @@ cargo test --workspace --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo fmt --all -- --check
 cargo xtask gates          # G1, G-DEF, G-HUB, G-UNSAFE, G-NOTOKIO, G-LINT, G-WORD
+cargo nextest run --workspace --locked      # schneller Testlauf
+cargo deny check           # G-SUPPLY (Teil): licenses und bans derzeit rot, siehe docs/UMGEBUNG.md
 ```
+
+Slash-Befehle: `/gates`, `/migrate <crate>`, `/spec <kapitel>`, `/wording`, `/deliver`.
 
 Die `justfile` bündelt dieselben Befehle (`just check`, `just test`, `just lint`, `just fmt`, `just gates`).
 
-**Stand der Prüfungen:** Alle Gates grün. `cargo test --workspace` grün. `cargo clippy ... -D warnings` grün. `cargo fmt --check` grün.
+**Stand der Prüfungen:** Alle sieben xtask-Gates, `cargo test`, `nextest`, `clippy -D warnings`, `fmt --check`, `cargo deny check advisories sources` grün. **Rot:** `cargo deny check licenses bans` (interne Pfad-Abhängigkeiten ohne Version, `LicenseRef-Proprietary`); Entscheidung und ADR nötig, `deny.toml` nicht eigenmächtig lockern.
 
 ## Architektur-Regeln (Kurzfassung, verbindlich: SPEC Kap. 3)
 
@@ -79,9 +94,13 @@ Die Überführungsreihenfolge und Arbeitspakete stehen in `README.md` (Abschnitt
 
 - Überführung der Archivcodes (alle Level L1 bis L9) nach SPEC.
 - Umsetzung der offenen Gates in `xtask`.
-- Festlegung, wann das Archiv pro Crate gelöscht wird (siehe oben).
+- Entscheidung zu `deny.toml` (Wildcard-Pfade, private Lizenz) und Vereinheitlichung `acta-verify` in `rings.toml`.
+- Fuzzing und Miri brauchen nightly (in dieser VM nicht verfügbar).
 
-## Skills
+## Experten und Skills
+
+39 Fachexperten als Subagenten (alle `model: haiku`, siehe Arbeitsregel 1) in `.claude/agents/` (je Crate `acta-<crate>-expert`, sieben Querschnittsexperten). Quelle und Pflege: `docs/EXPERTEN-PROMPTS.md`; Auswahl: Skill `acta-experts`.
+
 
 Projektspezifische Skills liegen unter `.claude/skills/`:
 - `acta-toolchain`: Rust 1.89.0 über conda-forge bereitstellen und prüfen.
@@ -89,3 +108,5 @@ Projektspezifische Skills liegen unter `.claude/skills/`:
 - `acta-archive-migration`: einen Crate aus dem Archiv nach SPEC überführen.
 - `acta-spec-check`: Spezifikationsbezug und Wortfilter für Änderungen prüfen.
 - `acta-crate-scaffold`: neuen Crate oder neue Abhängigkeit gemäß HR- und Level-Regeln anlegen.
+- `acta-experts`: passenden Fachexperten wählen und beauftragen (nur Haiku).
+- `acta-delivery`: ZIP-Lieferung der geänderten Dateien erzeugen und ausliefern.

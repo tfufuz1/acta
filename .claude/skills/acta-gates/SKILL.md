@@ -1,6 +1,6 @@
 ---
 name: acta-gates
-description: Führt die Architektur- und Hygienegates (cargo xtask gates) sowie Test, Clippy und fmt für das Acta-Repo aus und ordnet Befunde ein. Verwenden nach jeder Änderung an Cargo.toml, Crate-Quelltext, rings.toml, deny.toml oder vor einem Commit.
+description: "Führt die Architektur- und Hygienegates (cargo xtask gates) sowie Test, Clippy und fmt für das Acta-Repo aus und ordnet Befunde ein. Verwenden nach jeder Änderung an Cargo.toml, Crate-Quelltext, rings.toml, deny.toml oder vor einem Commit."
 ---
 
 # Gates und Qualitätsprüfung (Acta)
@@ -17,6 +17,8 @@ cargo test --workspace --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo fmt --all -- --check
 ```
+
+Schneller Testlauf: `cargo nextest run --workspace --locked`. Lieferketten-Gate (G-SUPPLY, noch nicht im xtask): `cargo deny check`, `cargo audit`, `cargo cyclonedx`, `cargo geiger`. Stand: advisories und sources gruen; `licenses` und `bans` rot wegen interner Pfad-Abhaengigkeiten und `LicenseRef-Proprietary` (Befund in `docs/UMGEBUNG.md`, Entscheidung offen, deny.toml nicht eigenmaechtig aendern). Mutationstests: `cargo mutants -p <crate>`. Abdeckung: `cargo llvm-cov -p <crate> --summary-only`.
 
 Lange Läufe im Hintergrund starten, Log nach `/root/scratch/` schreiben und Exit-Code gesondert prüfen. `| tail` maskiert den Exit-Code, daher ihn nicht über eine Pipe ermitteln.
 

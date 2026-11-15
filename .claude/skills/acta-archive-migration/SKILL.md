@@ -1,11 +1,14 @@
 ---
 name: acta-archive-migration
-description: Überführt Archivcode aus archive/<crate>/ sauber nach SPEC in den passenden Acta-Crate unter crates/<crate>/src, prüft ihn und entfernt danach den Archivordner. Verwenden, wenn ein Crate aus dem Archiv implementiert, refaktoriert oder überführt werden soll.
+description: "Überführt Archivcode aus archive/<crate>/ sauber nach SPEC in den passenden Acta-Crate unter crates/<crate>/src, prüft ihn und entfernt danach den Archivordner. Verwenden, wenn ein Crate aus dem Archiv implementiert, refaktoriert oder überführt werden soll."
 ---
 
 # Archiv-Überführung nach SPEC
 
 Das Archiv (`archive/`) ist die Quelle, nicht das Ziel. Es ist kein Teil des Workspace. Der Code wird nicht unverändert kopiert. Er wird gegen `docs/SPEC.md` gelesen, umgeschrieben und geprüft. Nach erfolgreicher Überführung wird der Archivordner des Crates entfernt.
+
+## Experten
+Arbeite mit dem Subagenten des Ziel-Crates (`.claude/agents/<crate>-expert.md`, Skill `acta-experts`) und starte per `/migrate <crate>`. Das Expertenprofil steht in `docs/EXPERTEN-PROMPTS.md`.
 
 ## Vorbedingungen
 
