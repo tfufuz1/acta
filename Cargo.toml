@@ -1,156 +1,152 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/acta-checkpoint",
+    "crates/acta-base",
     "crates/acta-crypto",
-    "crates/acta-durable-fs",
-    "crates/acta-env",
-    "crates/acta-erasure",
-    "crates/acta-graph",
-    "crates/acta-ids",
-    "crates/acta-mcp",
-    "crates/acta-mvcc",
-    "crates/acta-ports",
-    "crates/acta-rank",
-    "crates/acta-simd",
-    "crates/acta-store",
+    "crates/acta-fs",
     "crates/acta-sys",
+    "crates/acta-gate",
+    "crates/acta-access",
+    "crates/acta-infer",
+    "crates/acta-pii",
+    "crates/acta-ingest",
+    "crates/acta-parse",
+    "crates/acta-ledger",
+    "crates/acta-vault",
+    "crates/acta-seg",
+    "crates/acta-pstore",
+    "crates/acta-history",
     "crates/acta-text",
-    "crates/acta-types",
-    "crates/acta-vector",
-    "crates/acta-wire",
+    "crates/acta-vec",
+    "crates/acta-erasure",
+    "crates/acta-decision",
+    "crates/acta-rag",
+    "crates/acta-reports",
+    "crates/acta-engine",
+    "crates/acta-node",
+    "crates/acta-infer-http",
+    "crates/acta-sink-net",
+    "crates/acta-api",
+    "crates/acta-server",
+    "crates/acta-cli",
+    "crates/acta-parse-worker",
+    "crates/acta-verify",
+    "crates/acta-testkit",
+    "xtask",
 ]
 default-members = [
-    "crates/acta-checkpoint",
+    "crates/acta-base",
     "crates/acta-crypto",
-    "crates/acta-durable-fs",
-    "crates/acta-env",
-    "crates/acta-erasure",
-    "crates/acta-graph",
-    "crates/acta-ids",
-    "crates/acta-mcp",
-    "crates/acta-mvcc",
-    "crates/acta-ports",
-    "crates/acta-rank",
-    "crates/acta-simd",
-    "crates/acta-store",
+    "crates/acta-fs",
     "crates/acta-sys",
+    "crates/acta-gate",
+    "crates/acta-access",
+    "crates/acta-infer",
+    "crates/acta-pii",
+    "crates/acta-ingest",
+    "crates/acta-parse",
+    "crates/acta-ledger",
+    "crates/acta-vault",
+    "crates/acta-seg",
+    "crates/acta-pstore",
+    "crates/acta-history",
     "crates/acta-text",
-    "crates/acta-types",
-    "crates/acta-vector",
-    "crates/acta-wire",
+    "crates/acta-vec",
+    "crates/acta-erasure",
+    "crates/acta-decision",
+    "crates/acta-rag",
+    "crates/acta-reports",
+    "crates/acta-engine",
+    "crates/acta-node",
+    "crates/acta-infer-http",
+    "crates/acta-sink-net",
+    "crates/acta-api",
+    "crates/acta-server",
+    "crates/acta-cli",
+    "crates/acta-parse-worker",
+    "crates/acta-verify",
+    "crates/acta-testkit",
+    "xtask",
 ]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-license = "MIT OR Apache-2.0"
 rust-version = "1.89"
+license = "LicenseRef-Proprietary"
+publish = false
 
 [workspace.dependencies]
-acta-ids = { path = "crates/acta-ids" }
-acta-env = { path = "crates/acta-env" }
-acta-durable-fs = { path = "crates/acta-durable-fs" }
-# Error handling
 thiserror = "2"
-
-# Serialization
-serde = { version = "1", features = ["derive", "rc"] }
-serde_json = "1"
-bincode = "1.3.3"
-flatbuffers = "24.3"
-
-# Async runtime
-tokio = { version = "1", features = ["full"] }
-
-# Data structures
-bytes = "1"
-memmap2 = "0.9.11"
-ahash = { version = "0.8", features = ["serde"] }
-itoa = "1"
-parking_lot = "0.12"
+zeroize = "1"
+subtle = "2"
+chacha20poly1305 = "0.10"
+hkdf = "0.12"
+hmac = "0.12"
+sha2 = "0.10"
+ed25519-dalek = "2"
+argon2 = "0.5"
 roaring = "0.10"
+crc32c = "0.6"
+unicode-normalization = "0.1"
+unicode-segmentation = "1"
 regex = "1"
+rustix = { version = "1", features = ["mm", "process", "rand"] }
+getrandom = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+landlock = "0.4"
+seccompiler = "0.5"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "signal"] }
+proptest = "1"
+loom = "0.7"
+trybuild = "1"
 
-# Crypto & hashing
-blake3 = "1"
-crc32fast = "1.3"
-
-# Concurrency
-rand = "0.8"
-
-# Observability
-tracing = "0.1"
-
-# Testing
-tempfile = "3"
-criterion = { version = "0.5", features = ["async_tokio"] }
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
-# Workspace crates
-acta-wire = { path = "crates/acta-wire" }
-acta-sys = { path = "crates/acta-sys" }
-acta-simd = { path = "crates/acta-simd" }
-acta-store = { path = "crates/acta-store" }
-acta-vector = { path = "crates/acta-vector" }
-acta-index = { package = "acta-vector", path = "crates/acta-vector" } # <!-- crate-ref-ignore -->
-acta-text = { path = "crates/acta-text" }
-acta-checkpoint = { path = "crates/acta-checkpoint" }
+# Interne Crates (nur Pfad, keine Versionen)
+acta-base = { path = "crates/acta-base" }
 acta-crypto = { path = "crates/acta-crypto" }
-acta-graph = { path = "crates/acta-graph" }
-acta-mcp   = { path = "crates/acta-mcp" }
-acta-types = { path = "crates/acta-types" }
-acta-ports = { path = "crates/acta-ports" }
-acta-mvcc = { path = "crates/acta-mvcc" }
-acta-rank = { path = "crates/acta-rank" }
+acta-fs = { path = "crates/acta-fs" }
+acta-sys = { path = "crates/acta-sys" }
+acta-gate = { path = "crates/acta-gate" }
+acta-access = { path = "crates/acta-access" }
+acta-infer = { path = "crates/acta-infer" }
+acta-pii = { path = "crates/acta-pii" }
+acta-ingest = { path = "crates/acta-ingest" }
+acta-parse = { path = "crates/acta-parse" }
+acta-ledger = { path = "crates/acta-ledger" }
+acta-vault = { path = "crates/acta-vault" }
+acta-seg = { path = "crates/acta-seg" }
+acta-pstore = { path = "crates/acta-pstore" }
+acta-history = { path = "crates/acta-history" }
+acta-text = { path = "crates/acta-text" }
+acta-vec = { path = "crates/acta-vec" }
 acta-erasure = { path = "crates/acta-erasure" }
-
-# Text-Verarbeitung
-unicode-segmentation = "1.12"
-
-# 🧊 Frozen Zone — external deps for future reactivation
-# openraft = { version = "0.9", features = ["storage-v2", "serde"] }
-# tonic = { version = "0.12", features = ["tls"] }
-# prost = "0.13"
-#
-# Network
-# reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+acta-decision = { path = "crates/acta-decision" }
+acta-rag = { path = "crates/acta-rag" }
+acta-reports = { path = "crates/acta-reports" }
+acta-engine = { path = "crates/acta-engine" }
+acta-node = { path = "crates/acta-node" }
+acta-infer-http = { path = "crates/acta-infer-http" }
+acta-sink-net = { path = "crates/acta-sink-net" }
+acta-api = { path = "crates/acta-api" }
+acta-server = { path = "crates/acta-server" }
+acta-cli = { path = "crates/acta-cli" }
+acta-parse-worker = { path = "crates/acta-parse-worker" }
+acta-testkit = { path = "crates/acta-testkit" }
 
 [workspace.lints.rust]
-unsafe_code = "deny"
-unsafe_op_in_unsafe_fn = "deny"
-unexpected_cfgs = { level = "deny", check-cfg = ['cfg(loom)', 'cfg(feature, values("onnx"))'] }
+unsafe_code = "forbid"
+missing_docs = "warn"
 
 [workspace.lints.clippy]
-undocumented_unsafe_blocks = "deny"
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
-todo = "deny"
-unimplemented = "deny"
-unreachable = "deny"
-# K-13: await_holding_lock fehlte (SPEC §17.3, PLAN.md WP 0.4)
-await_holding_lock = "deny"
-await_holding_refcell_ref = "deny"
-# SPEC §17.3: zusätzliche Sicherheits-Lints
 indexing_slicing = "deny"
-exit = "deny"
-dbg_macro = "deny"
-cast_possible_truncation = "warn"
-cast_sign_loss = "warn"
+let_underscore_must_use = "deny"
 
 [profile.release]
-panic = "unwind"
-opt-level = 3
-lto = "fat"
-codegen-units = 1
-strip = true
-overflow-checks = true
-
-# Profile for standalone binaries without FFI/PyO3 bindings.
-[profile.release-abort]
-inherits = "release"
 panic = "abort"
-
-[profile.bench]
-inherits = "release"
+overflow-checks = true
+lto = "thin"
+codegen-units = 1

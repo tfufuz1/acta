@@ -1,58 +1,36 @@
-[lints]
-workspace = true
-
 [package]
 name = "acta-sys"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
-rust-version = "1.89"
-description = "Low-level unsafe system abstractions and FFI island for Acta (Ring 0)"
-repository = "https://github.com/tfufuz1/acta"
-readme = "README.md"
-keywords = ["posix", "mmap", "mlock", "durability", "fsync"]
-categories = ["os", "filesystem"]
-# Interner wiederverwendbarer Baustein im Kontext des Acta-Ökosystems; Veröffentlichung auf crates.io vorerst deaktiviert.
-publish = false
+publish.workspace = true
+description = "Acta Level 1"
 
-include = [
-    "src/**/*",
-    "tests/**/*",
-    "benches/**/*",
-    "examples/**/*",
-    "Cargo.toml",
-    "README.md",
-    "CHANGELOG.md",
-    "LICENSE-APACHE",
-    "LICENSE-MIT",
-]
-
-[package.metadata.acta]
-ring = "0"
-klasse = "A"
-
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = [
-    "Win32_Foundation",
-    "Win32_Security",
-    "Win32_Security_Authorization",
-    "Win32_Storage_FileSystem",
-    "Win32_System_Memory",
-    "Win32_System_Threading",
-] }
-
-[target.'cfg(unix)'.dependencies]
-libc = "0.2"
+[features]
+default = []
 
 [dependencies]
-memmap2 = { workspace = true }
-thiserror = { workspace = true }
-tracing = { workspace = true }
+acta-base.workspace = true
+thiserror.workspace = true
+zeroize.workspace = true
+rustix.workspace = true
+getrandom.workspace = true
+landlock.workspace = true
+seccompiler.workspace = true
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["async_tokio"] }
-tempfile = "3"
+acta-testkit.workspace = true
+proptest.workspace = true
 
-[[bench]]
-name = "sys_bench"
-harness = false
+[lints.rust]
+unsafe_code = "allow"
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "warn"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+let_underscore_must_use = "deny"

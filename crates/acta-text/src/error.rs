@@ -1,44 +1,21 @@
-//! Fehlerdefinitionen für `acta-text` (Klasse A / SPEC §4.1 / §5.3 / B12).
+//! Fehlertyp von acta-text (HR-4: ein Fehlertyp je Crate, kein `Other(String)`).
 
-use thiserror::Error;
+use acta_base::{ClassifiedError, ErrorClass};
 
-/// Typisierter Fehler für Volltextindexierung, Tokenisierung und Scoring.
-#[derive(Debug, Error)]
+/// Fehler von acta-text. Platzhalter bis zur Umsetzung der Archiv-Extraktion.
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum TextError {
-    /// Ungültige Eingabedaten (z. B. leere/ungültige Abfrage, ungültige Scoring-Parameter).
-    #[error("ungültige Eingabedaten: {0}")]
-    InvalidInput(String),
-
-    /// Fehler bei Textanalyse, Regex oder Tokenisierung.
-    #[error("Textverarbeitungsfehler: {0}")]
-    Text(String),
-
-    /// Überschreitung von Kapazitäts- oder Längengrenzen (z. B. MAX_TEXT_BYTES).
-    #[error("Kapazitätsgrenze überschritten: gefordert {requested}, maximal {maximum}")]
-    CapacityExceeded {
-        /// Geforderte Größe oder Länge.
-        requested: usize,
-        /// Maximal zulässige Grenze.
-        maximum: usize,
-    },
-
-    /// Speicher- oder E/A-Fehler bei Zugriff auf Segmente oder persistente Daten.
-    #[error("Speicher- oder E/A-Fehler: {0}")]
-    Storage(String),
-
-    /// Serialisierungs- oder Deserialisierungsfehler.
-    #[error("Serialisierungsfehler: {0}")]
-    Serialization(String),
-
-    /// E/A-Fehler der Standardbibliothek.
-    #[error("E/A-Fehler aufgetreten: {0}")]
-    Io(#[from] std::io::Error),
-
-    /// Interner Zustandskonflikt oder unerwarteter Ausführungszustand.
-    #[error("interner Zustandskonflikt: {0}")]
-    Internal(String),
+    /// Funktion ist noch nicht umgesetzt (nie als Erfolg zu melden, Z11).
+    #[error("not implemented")]
+    Unimplemented,
 }
 
-/// Einheitlicher Result-Typ für `acta-text`.
-pub type Result<T> = core::result::Result<T, TextError>;
+impl ClassifiedError for TextError {
+    fn class(&self) -> ErrorClass {
+        ErrorClass::Invalid
+    }
+    fn code(&self) -> &'static str {
+        "text.unimplemented"
+    }
+}
