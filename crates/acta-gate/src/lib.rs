@@ -12,6 +12,7 @@ pub mod error;
 pub mod layer;
 pub mod log;
 pub mod reasons;
+mod snapshot;
 pub mod state;
 pub mod view;
 pub mod writer;

@@ -18,7 +18,7 @@ use crate::error::GateError;
 use crate::reasons::{EraseReason, RestrictReason};
 use crate::state::GateSnapshot;
 
-type HmacSha256 = Hmac<Sha256>;
+pub(crate) type HmacSha256 = Hmac<Sha256>;
 
 /// Länge des Kettenetiketts in Bytes.
 pub const TAG_LEN: usize = 32;
@@ -34,11 +34,17 @@ const OP_RELEASE: u8 = 0x04;
 const OP_SUPERSEDE: u8 = 0x05;
 const OP_REDACT_K: u8 = 0x06;
 const OP_HIGH_WATER: u8 = 0x07;
+const OP_SNAPSHOT: u8 = 0x08;
 
 /// Schlüssel der HMAC-Kette. Wird beim Verwerfen gelöscht; kein `Debug`, kein `Clone` (Z15).
 pub struct GateKey([u8; 32]);
 
 impl GateKey {
+    /// Neuer HMAC-Zustand unter diesem Schlüssel.
+    pub(crate) fn mac(&self) -> Result<HmacSha256, GateError> {
+        HmacSha256::new_from_slice(&self.0).map_err(|_| GateError::Mac)
+    }
+
     /// Übernimmt einen bereits abgeleiteten Schlüssel.
     #[must_use]
     pub const fn from_bytes(bytes: [u8; 32]) -> Self {
@@ -215,10 +221,42 @@ fn split_frame(buf: &[u8]) -> Option<Frame<'_>> {
 
 /// Spielt das Log ab. Prüft jede Kette und Sequenz; ein abgeschnittener letzter
 /// Rahmen wird verworfen, ein Kettenbruch ist ein Integritätsfehler.
-pub(crate) fn replay(key: &GateKey, log: &[u8]) -> Result<Replayed, GateError> {
-    let mut snapshot = GateSnapshot::default();
-    let mut prev = [0u8; TAG_LEN];
-    let mut expected_seq: u64 = 1;
+/// Kopfrahmen `0x08` nach einer Verdichtung: bindet das Log an den Snapshot (C23).
+pub(crate) fn encode_snapshot_frame(
+    key: &GateKey,
+    prev: &[u8; TAG_LEN],
+    seq: u64,
+    epoch: u64,
+    out: &mut Vec<u8>,
+) -> Result<[u8; TAG_LEN], GateError> {
+    let payload = epoch.to_be_bytes();
+    let len = u16::try_from(payload.len()).map_err(|_| GateError::LogFormat)?;
+    let mut header = Vec::with_capacity(HEADER_LEN);
+    header.extend_from_slice(&seq.to_be_bytes());
+    header.push(OP_SNAPSHOT);
+    header.extend_from_slice(&len.to_be_bytes());
+    let tag: [u8; TAG_LEN] = chain_mac(key, prev, &header, &payload)?
+        .finalize()
+        .into_bytes()
+        .into();
+    out.extend_from_slice(&header);
+    out.extend_from_slice(&payload);
+    out.extend_from_slice(&tag);
+    Ok(tag)
+}
+
+/// Spielt ab einem geprüften Snapshot (oder vom Anfang). Ein Rahmen `0x08` ist nur als
+/// erster Rahmen nach einem Snapshot zulässig und muss dessen Epoche nennen.
+pub(crate) fn replay_from(
+    key: &GateKey,
+    start: Option<(GateSnapshot, [u8; TAG_LEN])>,
+    log: &[u8],
+) -> Result<Replayed, GateError> {
+    let has_start = start.is_some();
+    let (mut snapshot, mut prev) = start.unwrap_or_default();
+    let base_epoch = snapshot.epoch();
+    let mut expected_seq = base_epoch.checked_add(1).ok_or(GateError::LogFormat)?;
+    let mut first = true;
     let mut rest = log;
 
     while !rest.is_empty() {
@@ -232,11 +270,22 @@ pub(crate) fn replay(key: &GateKey, log: &[u8]) -> Result<Replayed, GateError> {
             .verify_slice(&frame.tag)
             .map_err(|_| GateError::ChainBroken { seq: frame.seq })?;
 
-        let op = decode_op(frame.op, frame.payload)?;
-        snapshot
-            .apply(&op, frame.seq)
-            .map_err(|_| GateError::LogFormat)?;
+        if frame.op == OP_SNAPSHOT {
+            let mut c = Cursor(frame.payload);
+            let epoch = c.u64()?;
+            c.finish()?;
+            if !(first && has_start && epoch == base_epoch) {
+                return Err(GateError::LogFormat);
+            }
+            snapshot.epoch = frame.seq;
+        } else {
+            let op = decode_op(frame.op, frame.payload)?;
+            snapshot
+                .apply(&op, frame.seq)
+                .map_err(|_| GateError::LogFormat)?;
+        }
 
+        first = false;
         prev = frame.tag;
         expected_seq = expected_seq.checked_add(1).ok_or(GateError::LogFormat)?;
         rest = frame.rest;
@@ -288,29 +337,35 @@ fn encode_op(op: &GateOp) -> (u8, Vec<u8>) {
 }
 
 /// Lesender Zeiger über eine Nutzlast; jede Lesung prüft die Länge.
-struct Cursor<'a>(&'a [u8]);
+pub(crate) struct Cursor<'a>(pub(crate) &'a [u8]);
 
 impl Cursor<'_> {
-    fn take<const N: usize>(&mut self) -> Result<[u8; N], GateError> {
+    pub(crate) fn take<const N: usize>(&mut self) -> Result<[u8; N], GateError> {
         let (head, rest) = self.0.split_at_checked(N).ok_or(GateError::LogFormat)?;
         self.0 = rest;
         <[u8; N]>::try_from(head).map_err(|_| GateError::LogFormat)
     }
 
-    fn u8(&mut self) -> Result<u8, GateError> {
+    pub(crate) fn u8(&mut self) -> Result<u8, GateError> {
         let [b] = self.take::<1>()?;
         Ok(b)
     }
 
-    fn u32(&mut self) -> Result<u32, GateError> {
+    pub(crate) fn u32(&mut self) -> Result<u32, GateError> {
         Ok(u32::from_be_bytes(self.take::<4>()?))
     }
 
-    fn u64(&mut self) -> Result<u64, GateError> {
+    pub(crate) fn u64(&mut self) -> Result<u64, GateError> {
         Ok(u64::from_be_bytes(self.take::<8>()?))
     }
 
-    fn finish(self) -> Result<(), GateError> {
+    pub(crate) fn bytes(&mut self, n: usize) -> Result<&[u8], GateError> {
+        let (head, rest) = self.0.split_at_checked(n).ok_or(GateError::LogFormat)?;
+        self.0 = rest;
+        Ok(head)
+    }
+
+    pub(crate) fn finish(self) -> Result<(), GateError> {
         if self.0.is_empty() {
             Ok(())
         } else {

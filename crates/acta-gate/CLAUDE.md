@@ -15,9 +15,9 @@ acta-gate: ErasedView, GateWriter, Roaring-Mengen, ErasureLayer, LayerAck.
 - **Referenz im Quelltext:** Level L1 · Budget 1200 LOC · Spezifikation docs/SPEC.md Kap. 3.7, 5.3
 
 ## Status
-- **Stand:** Kern umgesetzt (Zustand, Log, Schreiber, Verträge); Verdichtung und Persistenz offen
-- **Produktionscode (ohne Tests/Leerzeilen/Kommentare):** 836 LOC (Budget 1200)
-- **Tests:** `tests/gate_state.rs` (11), `tests/gate_writer.rs` (10), `tests/gate_model.rs` (2, Proptest gegen Referenzmodell). Alle grün; Clippy `-D warnings` und `fmt` sauber.
+- **Stand:** Kern und Verdichtung umgesetzt (Zustand, Log, Schreiber, Verträge, Snapshot 0x08); Datei-Persistenz offen
+- **Produktionscode (ohne Leerzeilen/Kommentare, grob gezählt):** 1030 LOC (Budget 1200)
+- **Tests:** `tests/gate_state.rs` (11), `tests/gate_writer.rs` (10), `tests/gate_model.rs` (2, Proptest gegen Referenzmodell), `tests/gate_compact.rs` (9, Verdichtung). Alle grün; Clippy `-D warnings` und `fmt` sauber.
 - **Umgesetzt:** `GateState`, `LineageHit` (Rangfolge Erased > Redacted > Restricted > Superseded), `Lineage` (Z13), `TargetSet`, `GateSnapshot` mit Roaring-Mengen und Epoche, `ErasedView` (fail-closed bei nicht lesbarer Sperre), Gate-Log mit HMAC-Kette `[seq][op][len][payload][tag]` für die Operationen 0x01 bis 0x07, `GateWriter` mit Z4-Reihenfolge (RAM zuerst, dann Anhängen und `fsync`, Fehler vergiftet), `ErasureLayer`-Vertrag, `LayerAck`, Gründe und Codes (8.1, 8.2).
 - **Abweichungen (begründet):**
   - HMAC direkt über `hmac`/`sha2`, nicht über `acta-crypto`: beide liegen auf Level 1, G1 verbietet die Kante. Der Schlüssel wird vom Aufrufer aus `HKDF(k_idx, "acta/gate/v1" ‖ TenantId)` abgeleitet und als `GateKey` übergeben.
@@ -26,8 +26,8 @@ acta-gate: ErasedView, GateWriter, Roaring-Mengen, ErasureLayer, LayerAck.
   - Herkunft (`Lineage`) trägt `VerOrd` und `KOrd`; `SubjOrd` läuft über die Versionen.
   - Die Sperre einer nicht lesbaren Sperre meldet fail-closed (`Erased`, `Epoche = u64::MAX`).
   - Ein abgeschnittener letzter Rahmen wird verworfen. Restrisiko: Eine beschädigte Längenangabe im letzten Rahmen ist vom abgeschnittenen Schreibvorgang nicht zu unterscheiden. Beschädigung in der Mitte wird über die Kette erkannt.
+- **Verdichtung (5.3, C23):** `GateWriter::compact` schreibt eine Snapshot-Datei (`AGSN`, HMAC `acta/gate/snap/v1`, enthält Mengen, Gründe, Hochwasser, Epoche) und ein neues Log, das mit dem Kopfrahmen `0x08` an den Snapshot gebunden ist (Kette setzt beim Snapshot-Tag fort). Der Austausch liegt im Port `GateSink::install_snapshot` (atomar, Archivierung des alten Logs durch den Sink; Standard lehnt ab). Fehler lassen den alten Stand gültig und vergiften nicht. Öffnen: `GateWriter::recover_with_snapshot`. Die wöchentliche Planung (Anhang A) gehört in `acta-node`.
 - **Offen:**
-  - Verdichtung (5.3, `0x08 Snapshot`, C23) nicht umgesetzt; Log wächst bis dahin.
   - Linearisierungstest `T-CONC-GATE` (loom) und Crash-Punkte C-Liste (`T-CRASH`) fehlen.
   - Keine Erasure-Schicht implementiert; Verträge stehen nur. Messung von Rückständen mit Positivkontrolle (Z11) gehört in den Crate, der sie ausführt.
   - Datei-Sink (`GateSink` auf `DurableVfs`) fehlt; wird mit `acta-node` verdrahtet.

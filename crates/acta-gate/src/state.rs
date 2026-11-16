@@ -129,14 +129,14 @@ pub struct TargetSet {
 /// Ein Stand des Gates. Jede Änderung erzeugt einen neuen Stand (Zeigertausch, 5.3).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct GateSnapshot {
-    epoch: u64,
-    erased_subjects: RoaringBitmap,
-    erased_vers: RoaringBitmap,
-    restricted_vers: RoaringBitmap,
-    restrict_reasons: BTreeMap<u32, RestrictReason>,
-    superseded_vers: RoaringBitmap,
-    redacted_k: RoaringTreemap,
-    high_water: [u64; 3],
+    pub(crate) epoch: u64,
+    pub(crate) erased_subjects: RoaringBitmap,
+    pub(crate) erased_vers: RoaringBitmap,
+    pub(crate) restricted_vers: RoaringBitmap,
+    pub(crate) restrict_reasons: BTreeMap<u32, RestrictReason>,
+    pub(crate) superseded_vers: RoaringBitmap,
+    pub(crate) redacted_k: RoaringTreemap,
+    pub(crate) high_water: [u64; 3],
 }
 
 impl GateSnapshot {
