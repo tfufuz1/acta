@@ -18,6 +18,7 @@ members = [
     "crates/acta-history",
     "crates/acta-text",
     "crates/acta-vec",
+    "crates/acta-graph",
     "crates/acta-erasure",
     "crates/acta-decision",
     "crates/acta-rag",
@@ -52,6 +53,7 @@ default-members = [
     "crates/acta-history",
     "crates/acta-text",
     "crates/acta-vec",
+    "crates/acta-graph",
     "crates/acta-erasure",
     "crates/acta-decision",
     "crates/acta-rag",
@@ -120,6 +122,7 @@ acta-pstore = { path = "crates/acta-pstore" }
 acta-history = { path = "crates/acta-history" }
 acta-text = { path = "crates/acta-text" }
 acta-vec = { path = "crates/acta-vec" }
+acta-graph = { path = "crates/acta-graph" }
 acta-erasure = { path = "crates/acta-erasure" }
 acta-decision = { path = "crates/acta-decision" }
 acta-rag = { path = "crates/acta-rag" }

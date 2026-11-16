@@ -154,6 +154,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "acta-graph"
+version = "0.1.0"
+dependencies = [
+ "acta-base",
+ "acta-crypto",
+ "acta-gate",
+ "acta-seg",
+ "acta-testkit",
+ "acta-vault",
+ "proptest",
+ "roaring",
+ "thiserror",
+]
+
+[[package]]
 name = "acta-history"
 version = "0.1.0"
 dependencies = [
