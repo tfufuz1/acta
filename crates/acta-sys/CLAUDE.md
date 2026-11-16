@@ -15,9 +15,27 @@ acta-sys: einzige Stelle mit `unsafe` (G-UNSAFE; jeder Block mit `// SAFETY:`).
 - **Referenz im Quelltext:** Level L1 · Budget 1600 LOC · Spezifikation docs/SPEC.md Kap. 4.6, 13.1, 13.2.
 
 ## Status
-- **Stand:** Gerüst (nur Fehlertyp)
-- **Produktionscode (ohne Tests/Leerzeilen/Kommentare):** 1 LOC
-- **Archiv-Quelle:** `archive/acta-sys/` (siehe `archive/acta-sys/MANIFEST.md`)
+- **Stand:** implementiert (Teil)
+- **Produktionscode (ohne Tests/Leerzeilen/Kommentare):** 182 LOC von 1600 Budget
+- **Umgesetzt:**
+  - `SecureBuf`: jeder Puffer in eigener anonymer, seitenausgerichteter Abbildung (`mmap`), `mlock` und `MADV_DONTDUMP` fail-closed, Nullung vor `munlock`/`munmap` in `Drop`. Feste Kapazität. Kein `Default`, `Clone`, `Debug`, `Serialize`. Konstruktoren `zeroed`, `from_slice`, `random` (Entropiefehler → `Err`, nie ein Ersatzpuffer).
+  - `harden_process`: `RLIMIT_CORE` hart auf 0, `PR_SET_DUMPABLE` auf 0 (SPEC 13.1). `memlock_soft_limit` für den Selbsttest.
+  - Ports: `SystemClock` (`Clock`), `OsCryptoRng` (`CryptoRng`, Quelle `getrandom`).
+  - `SysError` (HR-4): Klassen `Policy` für Host- und Speicherverweigerung, `Crypto` für Entropie, Codes ohne Werte.
+- **Tests:** Einheitstests in `error.rs`; `tests/secure_buf.rs` (Funktion, Entropiefehler, Uhr, Zufall); `tests/mlock_control.rs` als Positivkontrolle über `VmLck` in `/proc/self/status` (eigenes Testbinary, da Sperrzustand prozessweit ist); `tests/harden.rs`.
+- **Abweichungen von Archiv und Spec (bewusst):**
+  - Archiv `mlock.rs` mit Richtlinie `Tolerant` (Warnung statt Fehler) **nicht übernommen**: verletzt Z10 (kein Fallback im Sicherheitspfad).
+  - Kein `libc`, kein `tracing`: nicht auf der Whitelist (SPEC 3.8). Umgesetzt über `rustix` (Features `mm`, `process` aus der Whitelist) und `getrandom`.
+  - Seitengröße 4096 als Annahme [A-PAGE]; `rustix::param` bräuchte das Feature `param`, das nicht auf der Whitelist steht.
+  - `SystemClock`: Der Port liefert `u64` ohne Fehler. Eine Systemuhr vor 1970 wird auf 0 abgebildet (dokumentiert, Rücksprung-Erkennung liegt beim Knoten).
+  - Jeder `SecureBuf` liegt auf eigenen Seiten. Dadurch hebt `munlock` nie die Sperre eines anderen Geheimnisses auf. Der Archiv-Ansatz (Vec auf dem Heap) hätte geteilte Seiten zugelassen.
+- **Offen:**
+  - Hostprüfungen (SPEC 13.1, 14.1: Swap, Core-Pattern, Dateisystemtyp, `O_DIRECT`). Die Funktionen fehlen noch.
+  - Sandbox (Landlock, seccomp) nach 13.2. Sie gehört zum Worker-Prozess (`acta-parse-worker` nutzt `acta-sys`), noch nicht begonnen.
+  - SIMD-Kerne (Archiv `simd/`, ca. 3 000 Zeilen mit Gleitkomma): nicht überführt. Der Archivordner bleibt deshalb bestehen.
+  - Gate G3 (keine ungeprüfte Zeit- oder Zufallsquelle) ist noch nicht in `xtask` umgesetzt; `SystemClock` nutzt `SystemTime::now` als einzige zugelassene Stelle.
+  - Der Test `mlock_control.rs` liest `/proc/self/status` mit `std::fs`. G-FS erlaubt Dateizugriffe nur in `acta-fs`; die Ausnahme gilt nur für Tests. Die Gate-Regel ist noch nicht implementiert.
+- **Archiv-Quelle:** `archive/acta-sys/` (siehe `archive/acta-sys/MANIFEST.md`). Der Archivordner bleibt bestehen, bis SIMD, Sandbox und Hostprüfungen überführt oder per ADR verworfen sind.
 
 ## Regeln für diesen Crate
 - Abhängigkeiten nur nach unten: `level(A) > level(B)`; keine Querkanten (G1).
