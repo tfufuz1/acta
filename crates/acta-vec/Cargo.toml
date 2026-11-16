@@ -18,6 +18,7 @@ acta-vault.workspace = true
 acta-seg.workspace = true
 thiserror.workspace = true
 roaring.workspace = true
+zeroize.workspace = true
 
 [dev-dependencies]
 acta-testkit.workspace = true

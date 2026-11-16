@@ -461,6 +461,7 @@ dependencies = [
  "proptest",
  "roaring",
  "thiserror",
+ "zeroize",
 ]
 
 [[package]]
