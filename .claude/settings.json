@@ -37,8 +37,7 @@
       "Read(./target/**)",
       "Bash(rustup toolchain install:*)",
       "Bash(rustup update:*)",
-      "Bash(cargo update:*)",
-      "Bash(git push:*)"
+      "Bash(cargo update:*)"
     ]
   },
   "hooks": {
