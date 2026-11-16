@@ -4,7 +4,7 @@
 //!
 //! Umgesetzt: `SecureBuf` (mlock, MADV_DONTDUMP, feste Kapazität, Nullung), Prozesshärtung
 //! (`RLIMIT_CORE`, `PR_SET_DUMPABLE`), Ports `SystemClock` und `OsCryptoRng`.
-//! Offen: Hostprüfungen (13.1, 14.1), Sandbox (Landlock, seccomp; SPEC 13.2 gehört in den Worker),
+//! Hostprüfungen als reine Auswertung (`host`). Offen: Dateilesen der Prüfwerte im Knoten, Sandbox (Landlock, seccomp; SPEC 13.2 gehört in den Worker),
 //! SIMD-Kerne (Archiv `simd/`, Abschnitt Überführung).
 //!
 //! Extraktionsarchiv: `archive/acta-sys/MANIFEST.md`.
@@ -13,11 +13,13 @@
 pub mod clock;
 pub mod error;
 pub mod harden;
+pub mod host;
 pub mod rng;
 pub mod secure_buf;
 
 pub use clock::SystemClock;
 pub use error::SysError;
 pub use harden::{harden_process, memlock_soft_limit};
+pub use host::{check_core_pattern, check_memlock, check_ptrace_scope, check_swap};
 pub use rng::OsCryptoRng;
 pub use secure_buf::SecureBuf;

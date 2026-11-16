@@ -27,15 +27,37 @@ pub enum SysError {
     /// Die Entropiequelle hat versagt; es entsteht kein Puffer mit Zufall.
     #[error("entropy source failed")]
     Entropy(#[source] EntropyError),
+    /// Aktiver Swap ohne deklarierte Verschlüsselung (SPEC 13.1).
+    #[error("active swap without declared encryption")]
+    HostSwapActive,
+    /// Core-Dumps werden an ein Programm weitergeleitet (`core_pattern` beginnt mit `|`).
+    #[error("core dumps are piped to a program")]
+    HostCorePipe,
+    /// `kernel.yama.ptrace_scope` ist 0 (SPEC 13.1 verlangt mindestens 1).
+    #[error("ptrace scope is below the required minimum")]
+    HostPtraceScope,
+    /// Das weiche Limit `RLIMIT_MEMLOCK` reicht nicht für den Schlüsselspeicher.
+    #[error("memlock soft limit is below the required amount")]
+    HostMemlockLimit,
+    /// Eingabe eines Hostprüfungswertes ist nicht lesbar oder nicht erwartbar; fail-closed.
+    #[error("host probe value is unreadable or malformed")]
+    HostProbeInvalid,
 }
 
 impl ClassifiedError for SysError {
     fn class(&self) -> ErrorClass {
         match self {
-            Self::Map | Self::Mlock | Self::DontDump | Self::CoreLimit | Self::Dumpable => {
-                ErrorClass::Policy
-            }
+            Self::Map
+            | Self::Mlock
+            | Self::DontDump
+            | Self::CoreLimit
+            | Self::Dumpable
+            | Self::HostSwapActive
+            | Self::HostCorePipe
+            | Self::HostPtraceScope
+            | Self::HostMemlockLimit => ErrorClass::Policy,
             Self::Entropy(_) => ErrorClass::Crypto,
+            Self::HostProbeInvalid => ErrorClass::Invalid,
         }
     }
 
@@ -47,6 +69,11 @@ impl ClassifiedError for SysError {
             Self::CoreLimit => "sys.core_limit",
             Self::Dumpable => "sys.dumpable",
             Self::Entropy(_) => "sys.entropy",
+            Self::HostSwapActive => "sys.host.swap",
+            Self::HostCorePipe => "sys.host.core_pipe",
+            Self::HostPtraceScope => "sys.host.ptrace_scope",
+            Self::HostMemlockLimit => "sys.host.memlock",
+            Self::HostProbeInvalid => "sys.host.invalid",
         }
     }
 }
@@ -67,6 +94,31 @@ mod tests {
                 SysError::Entropy(EntropyError),
                 "sys.entropy",
                 ErrorClass::Crypto,
+            ),
+            (
+                SysError::HostSwapActive,
+                "sys.host.swap",
+                ErrorClass::Policy,
+            ),
+            (
+                SysError::HostCorePipe,
+                "sys.host.core_pipe",
+                ErrorClass::Policy,
+            ),
+            (
+                SysError::HostPtraceScope,
+                "sys.host.ptrace_scope",
+                ErrorClass::Policy,
+            ),
+            (
+                SysError::HostMemlockLimit,
+                "sys.host.memlock",
+                ErrorClass::Policy,
+            ),
+            (
+                SysError::HostProbeInvalid,
+                "sys.host.invalid",
+                ErrorClass::Invalid,
             ),
         ];
         for (e, code, class) in cases {
