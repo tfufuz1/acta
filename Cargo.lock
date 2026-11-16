@@ -145,9 +145,12 @@ version = "0.1.0"
 dependencies = [
  "acta-base",
  "acta-testkit",
+ "hmac",
  "proptest",
  "roaring",
+ "sha2",
  "thiserror",
+ "zeroize",
 ]
 
 [[package]]
