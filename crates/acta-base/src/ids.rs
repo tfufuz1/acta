@@ -67,6 +67,37 @@ handle16!(/// Zufaelliges Handle auf eine Identitaet in P.
     ActorRef);
 handle16!(/// Loeschvorgang (UUIDv7).
     ErasureId);
+handle16!(/// Schluessel-Tag eines Betroffenen (SPEC 2.4): HMAC, nur als versiegelte Tresor-ID und im Verzeichnis.
+    SubjectTag);
+handle16!(/// Lokalitaetsgruppe in Segmenten (SPEC 2.4): nicht gespeichert, nur mit `SubjectKey` berechenbar.
+    ClusterId);
+handle16!(/// Index-Generation (SPEC 2.4, 9.2): Grundlage eines Indexsatzes.
+    IndexGen);
+
+/// Objekt-Identitaet der Ebene K (SPEC 2.4): SHA-256 ueber kanonische Bytes, 32 Byte.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ObjectId(pub [u8; 32]);
+
+impl ObjectId {
+    /// Aus Rohbytes.
+    #[must_use]
+    pub const fn from_bytes(b: [u8; 32]) -> Self {
+        Self(b)
+    }
+
+    /// Rohbytes.
+    #[must_use]
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+}
+
+impl core::fmt::Debug for ObjectId {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        // Kein Inhalt im Log (Z15).
+        f.write_str("ObjectId(..)")
+    }
+}
 
 ordinal!(/// Dichte Mandantennummer; 0 ist fuer Systeminterna reserviert.
     TenantOrd, u32);
@@ -130,18 +161,21 @@ ordinal!(/// Dichte K-Objektnummer je Mandant.
 mod tests {
     use super::*;
 
+    // SPEC: 2.4 (Ordinale)
     #[test]
     fn ordinal_overflow_is_none() {
         assert_eq!(VerOrd(u32::MAX).next(), None);
         assert_eq!(VerOrd(1).next(), Some(VerOrd(2)));
     }
 
+    // SPEC: 2.4 (TenantOrd)
     #[test]
     fn tenant_ord_zero_is_system() {
         assert!(TenantOrd::SYSTEM.is_system());
         assert!(!TenantOrd(1).is_system());
     }
 
+    // SPEC: 2.4 (ErasureId, UUIDv7)
     #[test]
     fn uuid_v7_layout() {
         let id = ErasureId::from_v7(0x0123_4567_89ab, [0xff; 10]);
@@ -158,6 +192,7 @@ mod tests {
         assert_eq!(e.map(|i| i.v7_ms()), Some(1_700_000_000_000));
     }
 
+    // SPEC: 2.4 (ErasureId)
     #[test]
     fn uuid_v7_is_time_ordered() {
         let a = ErasureId::from_v7(10, [0xff; 10]);
@@ -165,6 +200,7 @@ mod tests {
         assert!(a < b);
     }
 
+    // SPEC: 2.4, Z10
     #[test]
     fn random_handle_uses_port_and_fails_closed() {
         struct Fixed(u8);
@@ -185,9 +221,31 @@ mod tests {
         assert_eq!(DocRef::from_bytes([3; 16]).as_bytes(), &[3; 16]);
     }
 
+    // SPEC: Z15
     #[test]
     fn debug_hides_content() {
         let s = format!("{:?}", TenantId([7; 16]));
         assert!(!s.contains('7'));
+    }
+}
+
+// SPEC: 2.4 (Identifikatoren, die acta-base als Newtypes führt). Rot, bis die Typen existieren.
+#[cfg(test)]
+mod spec_2_4_newtypes {
+    use super::*;
+
+    #[test]
+    fn subject_tag_cluster_index_gen_are_16_byte_handles() {
+        let t = SubjectTag::from_bytes([1; 16]);
+        assert_eq!(t.as_bytes(), &[1; 16]);
+        assert_eq!(ClusterId::from_bytes([2; 16]).as_bytes(), &[2; 16]);
+        assert_eq!(IndexGen::from_bytes([3; 16]).as_bytes(), &[3; 16]);
+    }
+
+    #[test]
+    fn object_id_is_32_bytes_and_hides_content_in_debug() {
+        let o = ObjectId::from_bytes([7; 32]);
+        assert_eq!(o.as_bytes(), &[7; 32]);
+        assert!(!format!("{o:?}").contains('7'));
     }
 }

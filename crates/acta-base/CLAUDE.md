@@ -15,9 +15,16 @@ acta-base: Newtypes, Fehlerklassen, Ports, Festkomma.
 - **Referenz im Quelltext:** Level L0 · Budget 2500 LOC · Spezifikation docs/SPEC.md Kap. 2.2, 2.4, 3.5, 3.7, 4.6, 5.1.
 
 ## Status
-- **Stand:** implementiert: Ids und Ordinale (inkl. `random`, UUIDv7 fuer `ErasureId`), Klassen, Fehler (`BaseError`), Ports, kanonische Kodierung (`canon::Reader`/`Writer`), Festkomma inkl. `fx_ln` mit Goldvektoren (`tests/fx_golden.rs`), Grenzwerte (`limits`, Anhang A). Archiv-Ordner bewusst noch nicht entfernt, siehe unten.
-- **Produktionscode (ohne Tests/Leerzeilen/Kommentare):** ca. 520 LOC (Budget 2500; Gate g-hub gruen)
-- **Archiv-Quelle:** `archive/acta-base/` (siehe `archive/acta-base/MANIFEST.md`)
+- **Stand:** implementiert (Teil)
+- **Produktionscode (ohne Tests/Leerzeilen/Kommentare):** 603 LOC von 2500 Budget
+- **Umgesetzt:** Ids und Ordinale inkl. `random` und UUIDv7 für `ErasureId`; SPEC 2.4-Newtypes `SubjectTag`, `ClusterId`, `IndexGen`, `ObjectId` (32 Byte); Klassen (`DataClass` mit Ebenenzuordnung); `BaseError` und `ClassifiedError`; Ports `Clock` und `CryptoRng` (fallibel); kanonische Kodierung (`canon::Reader`/`Writer`, geprüfte Längen vor Allokation, atomarer Schreiber); Festkomma `fx` (Q32.32, `fx_ln`, `isqrt`); Grenzwerte `limits` (Anhang A.1 bis A.4, Teilmenge, siehe unten).
+- **Goldvektoren T-TT-FX (Z7):** 18 Werte in `tests/fx_golden.rs` sind mit dem unabhängigen Orakel `tests/golden/fx_ln_oracle.py` (100-stellige Dezimalarithmetik, half-even) reproduziert: 0 Abweichungen. Der BM25-Wert ist ebenfalls bestätigt. Die Positivkontrolle `golden_check_detects_a_wrong_value` ist aktiv.
+- **Proptests (`tests/proptest_base.rs`, 12 Eigenschaften):** kanonische Hin- und Rückumwandlung aller Feldtypen, Blob-Grenze, keine Panik bei beliebiger Eingabe, Schreiber-Obergrenze und Atomarität, UUIDv7-Zeitordnung, streng monotone Ordinale, Monotonie und Determinismus von `fx_ln`, Sättigung von Addition und Subtraktion gegen eine i128-Referenz, Algebra der Multiplikation und Division, `isqrt`.
+- **Offen und nicht geprüft:**
+  - **aarch64:** Die Abnahme verlangt Goldvektoren auf x86_64 und aarch64 (Z7). Hier liegen weder ein aarch64-Target noch qemu vor, deshalb ist der aarch64-Lauf **nicht geprüft**. Die Arithmetik ist ganzzahlig und ohne Gleitkomma, eine Abweichung ist aber nicht ausgeschlossen, bis der Lauf stattgefunden hat.
+  - **Anhang A unvollständig:** Nicht aufgenommen sind alle A.5–A.9 sowie A.2 (`erase_registry_sink`, `access_log_retention`), A.3 (`bridge_threads`, abhängig von der Kernzahl) und die Monatsparameter (`split_retest_interval`, `actor_handle_epoch`, deren Einheit „Monate“ ist). Ergänzung nach Bedarf der Crates, die sie brauchen.
+  - **SPEC-Parameter ohne Startwert** (`T_BACKUP`, `anchor_destroy_max`, `support_min`, `inference_budget`) bleiben absichtlich ohne Konstante (0.4 Regel 1).
+- **Archiv-Quelle:** `archive/acta-base/` (siehe `archive/acta-base/MANIFEST.md`). Der Archivordner wird **nicht** entfernt: die Id-Tests aus `archive/acta-base/ids/tests/` sind noch nicht als Orakel überführt.
 
 ## Regeln für diesen Crate
 - Abhängigkeiten nur nach unten: `level(A) > level(B)`; keine Querkanten (G1).

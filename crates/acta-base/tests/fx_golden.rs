@@ -25,6 +25,7 @@ const GOLDEN: &[(i64, i64)] = &[
     (5_153_960_755, 783_065_124),
 ];
 
+// SPEC: T-TT-FX, Z7
 #[test]
 fn ln_matches_golden_vectors() {
     for (raw, want) in GOLDEN {
@@ -37,6 +38,7 @@ fn ln_matches_golden_vectors() {
 }
 
 /// Positivkontrolle (16.4): der Test ist faehig zu scheitern, wenn die Implementierung abweicht.
+// SPEC: 16.4 (Positivkontrolle)
 #[test]
 fn golden_check_detects_a_wrong_value() {
     let wrong = GOLDEN.iter().any(|(raw, want)| {
@@ -45,6 +47,7 @@ fn golden_check_detects_a_wrong_value() {
     assert!(wrong);
 }
 
+// SPEC: Z7
 #[test]
 fn ln_is_monotonic_over_a_dense_sweep() {
     let mut prev = i64::MIN;
@@ -60,6 +63,7 @@ fn ln_is_monotonic_over_a_dense_sweep() {
 }
 
 /// idf(t) = ln(1 + (N - df + 0,5) / (df + 0,5)) (9.2): fuer N=1000, df=10.
+// SPEC: 9.2 (BM25-idf)
 #[test]
 fn bm25_idf_example() {
     // (1000 - 10 + 0,5) / (10 + 0,5) = 990,5 / 10,5 = 1981 / 21

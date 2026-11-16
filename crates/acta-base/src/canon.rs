@@ -248,20 +248,23 @@ impl Writer {
 mod tests {
     use super::*;
 
+    // SPEC: 0.3 (Big-Endian)
     #[test]
-    fn fields_are_big_endian() {
+    fn fields_are_big_endian() -> Result<(), BaseError> {
         let mut w = Writer::with_limit(64);
-        w.put_u8(0x01).unwrap_or_default();
-        w.put_u16(0x0203).unwrap_or_default();
-        w.put_u32(0x0405_0607).unwrap_or_default();
-        w.put_u64(0x0809_0a0b_0c0d_0e0f).unwrap_or_default();
-        w.put_i32(-2).unwrap_or_default();
+        w.put_u8(0x01)?;
+        w.put_u16(0x0203)?;
+        w.put_u32(0x0405_0607)?;
+        w.put_u64(0x0809_0a0b_0c0d_0e0f)?;
+        w.put_i32(-2)?;
         assert_eq!(
             w.into_bytes(),
             [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0xff, 0xff, 0xff, 0xfe]
         );
+        Ok(())
     }
 
+    // SPEC: 0.3, 3.3
     #[test]
     fn roundtrip_all_types() -> Result<(), BaseError> {
         let mut w = Writer::with_limit(1024);
@@ -284,6 +287,7 @@ mod tests {
         r.finish()
     }
 
+    // SPEC: 3.3 (Kodierung), 15.1 (Invalid)
     #[test]
     fn truncated_fields_fail() {
         let mut r = Reader::new(&[1, 2, 3]);
@@ -294,6 +298,7 @@ mod tests {
         assert_eq!(r.u16(), Err(BaseError::Truncated));
     }
 
+    // SPEC: 3.6 (Speicherbudget)
     #[test]
     fn blob_length_is_checked_before_allocation() {
         // Laengenfeld behauptet 4 GiB, Rest hat 2 Bytes.
@@ -309,6 +314,7 @@ mod tests {
         assert_eq!(r.blob(8), Err(BaseError::Truncated));
     }
 
+    // SPEC: 3.3 (Kodierung)
     #[test]
     fn trailing_bytes_are_rejected() {
         let mut r = Reader::new(&[1, 2]);
@@ -316,6 +322,7 @@ mod tests {
         assert_eq!(r.finish(), Err(BaseError::TrailingBytes));
     }
 
+    // SPEC: 3.6 (Speicherbudget)
     #[test]
     fn writer_limit_is_enforced_and_atomic() {
         let mut w = Writer::with_limit(6);
@@ -329,6 +336,7 @@ mod tests {
         assert!(!w.is_empty());
     }
 
+    // SPEC: 0.3
     #[test]
     fn array_reads_fixed_fields() {
         let mut r = Reader::new(&[9, 8, 7, 6]);

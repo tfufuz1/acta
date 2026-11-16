@@ -143,6 +143,89 @@ pub const QUARANTINE_PURGE_AFTER_BOUNDS: Bounds = Bounds {
     max: 30 * DAY_MS,
 };
 
+/// A.2 `commit_epoch` (6.2): Startwert 30 Tage.
+pub const COMMIT_EPOCH_MS: u64 = 30 * DAY_MS;
+/// A.2 `commit_epoch`: Bereich 7 bis 90 Tage.
+pub const COMMIT_EPOCH_BOUNDS: Bounds = Bounds {
+    min: 7 * DAY_MS,
+    max: 90 * DAY_MS,
+};
+/// A.2 `commit_key_retention` (6.2, 15.4): Startwert 90 Tage.
+pub const COMMIT_KEY_RETENTION_START_MS: u64 = 90 * DAY_MS;
+/// R-RETMAX (15.4): Obergrenze 3 Jahre, hier zu 1 095 Tagen gerechnet.
+pub const COMMIT_KEY_RETENTION_MAX_MS: u64 = 1_095 * DAY_MS;
+/// A.2 `ops_log_retention` (13.5): Startwert 90 Tage.
+pub const OPS_LOG_RETENTION_MS: u64 = 90 * DAY_MS;
+/// A.2 `ops_log_retention`: Bereich 7 bis 365 Tage.
+pub const OPS_LOG_RETENTION_BOUNDS: Bounds = Bounds {
+    min: 7 * DAY_MS,
+    max: 365 * DAY_MS,
+};
+/// A.3 `wal_max_age` (5.1): Startwert 30 s.
+pub const WAL_MAX_AGE_MS: u64 = 30 * SECOND_MS;
+/// A.3 `wal_max_age`: Bereich 1 s bis 10 min.
+pub const WAL_MAX_AGE_BOUNDS: Bounds = Bounds {
+    min: SECOND_MS,
+    max: 10 * MINUTE_MS,
+};
+/// A.3 `cluster_seg_min` (5.1): Startwert 4 MiB.
+pub const CLUSTER_SEG_MIN_BYTES: u64 = 4 * MIB;
+/// A.3 `cluster_seg_min`: Bereich 256 KiB bis 64 MiB.
+pub const CLUSTER_SEG_MIN_BOUNDS: Bounds = Bounds {
+    min: 256 * KIB,
+    max: 64 * MIB,
+};
+/// A.3 `dp_cluster_min_bytes` (5.5): Startwert 1 MiB.
+pub const DP_CLUSTER_MIN_BYTES: u64 = MIB;
+/// A.3 `dp_cluster_min_bytes`: Bereich 64 KiB bis 16 MiB.
+pub const DP_CLUSTER_MIN_BOUNDS: Bounds = Bounds {
+    min: 64 * KIB,
+    max: 16 * MIB,
+};
+/// A.3 `ingest_idem_ttl` (5.4): Startwert 7 Tage.
+pub const INGEST_IDEM_TTL_MS: u64 = 7 * DAY_MS;
+/// A.3 `ingest_idem_ttl`: Bereich 1 bis 30 Tage.
+pub const INGEST_IDEM_TTL_BOUNDS: Bounds = Bounds {
+    min: DAY_MS,
+    max: 30 * DAY_MS,
+};
+/// A.4 `erase_sla_B` (8.7): Startwert 24 h.
+pub const ERASE_SLA_B_MS: u64 = 24 * HOUR_MS;
+/// A.4 `erase_sla_B`: Bereich 1 bis 72 h.
+pub const ERASE_SLA_B_BOUNDS: Bounds = Bounds {
+    min: HOUR_MS,
+    max: 72 * HOUR_MS,
+};
+/// A.4 `multi_review_max` (8.9): Startwert 10 Werktage.
+pub const MULTI_REVIEW_MAX_WORKDAYS: u64 = 10;
+/// A.4 `multi_review_max`: Bereich 1 bis 20 Werktage.
+pub const MULTI_REVIEW_MAX_BOUNDS: Bounds = Bounds { min: 1, max: 20 };
+/// A.4 `measure_retries` (8.5): Startwert 3.
+pub const MEASURE_RETRIES: u64 = 3;
+/// A.4 `measure_retries`: Bereich 1 bis 10.
+pub const MEASURE_RETRIES_BOUNDS: Bounds = Bounds { min: 1, max: 10 };
+/// A.4 `hold_review_interval` (8.4): Startwert 90 Tage.
+pub const HOLD_REVIEW_INTERVAL_MS: u64 = 90 * DAY_MS;
+/// A.4 `hold_review_interval`: Bereich 30 bis 365 Tage.
+pub const HOLD_REVIEW_INTERVAL_BOUNDS: Bounds = Bounds {
+    min: 30 * DAY_MS,
+    max: 365 * DAY_MS,
+};
+/// A.4 `archive_wait_max` (8.4): Startwert 30 Tage.
+pub const ARCHIVE_WAIT_MAX_MS: u64 = 30 * DAY_MS;
+/// A.4 `archive_wait_max`: Bereich 7 bis 180 Tage.
+pub const ARCHIVE_WAIT_MAX_BOUNDS: Bounds = Bounds {
+    min: 7 * DAY_MS,
+    max: 180 * DAY_MS,
+};
+/// A.4 `outbox_ttl` (8.6): Startwert 90 Tage.
+pub const OUTBOX_TTL_MS: u64 = 90 * DAY_MS;
+/// A.4 `outbox_ttl`: Bereich 30 bis 365 Tage.
+pub const OUTBOX_TTL_BOUNDS: Bounds = Bounds {
+    min: 30 * DAY_MS,
+    max: 365 * DAY_MS,
+};
+
 /// A.5 `K_MIN` (7.5): Startwert und Untergrenze 5.
 pub const K_MIN: u64 = 5;
 
@@ -162,11 +245,14 @@ pub const INGEST_PAGES_MAX: u64 = 10_000;
 pub const WORKER_FRAME_MAX_BYTES: u64 = 64 * MIB;
 
 const _: () = assert!(SAGA_BACKOFF_MIN_MS < SAGA_BACKOFF_MAX_MS);
+// R-RETMAX (15.4): Startwert der Schlüsselaufbewahrung liegt unter der Obergrenze.
+const _: () = assert!(COMMIT_KEY_RETENTION_START_MS <= COMMIT_KEY_RETENTION_MAX_MS);
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // SPEC: Anhang A
     #[test]
     fn start_values_lie_inside_their_bounds() {
         let pairs = [
@@ -184,6 +270,13 @@ mod tests {
             (SAGA_RETRY_MAX, SAGA_RETRY_MAX_BOUNDS),
             (QUARANTINE_MAX_MS, QUARANTINE_MAX_BOUNDS),
             (QUARANTINE_PURGE_AFTER_MS, QUARANTINE_PURGE_AFTER_BOUNDS),
+            (
+                COMMIT_KEY_RETENTION_START_MS,
+                Bounds {
+                    min: 0,
+                    max: COMMIT_KEY_RETENTION_MAX_MS,
+                },
+            ),
         ];
         for (v, b) in pairs {
             assert!(b.min <= b.max);
@@ -191,6 +284,7 @@ mod tests {
         }
     }
 
+    // SPEC: Anhang A
     #[test]
     fn bounds_are_inclusive_and_reject_outside() {
         let b = Bounds { min: 2, max: 5 };
@@ -198,6 +292,7 @@ mod tests {
         assert!(!b.contains(1) && !b.contains(6));
     }
 
+    // SPEC: Anhang A
     #[test]
     fn unit_constants() {
         assert_eq!(DAY_MS, 86_400_000);

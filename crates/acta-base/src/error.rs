@@ -67,6 +67,7 @@ impl ClassifiedError for BaseError {
 mod tests {
     use super::*;
 
+    // SPEC: 3.5 (Fehlerarchitektur), Z15
     #[test]
     fn codes_are_stable_and_class_is_invalid() {
         let all = [

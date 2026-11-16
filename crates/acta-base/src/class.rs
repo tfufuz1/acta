@@ -28,3 +28,19 @@ impl DataClass {
         )
     }
 }
+
+// SPEC: 2.2 (Datenklassen, Ebene). Rot, bis `is_personal_layer` die Ebenenzuordnung belegt.
+#[cfg(test)]
+mod tests {
+    use super::DataClass;
+
+    #[test]
+    fn only_personal_classes_are_in_layer_p() {
+        assert!(DataClass::Personal.is_personal_layer());
+        assert!(DataClass::Besonders.is_personal_layer());
+        assert!(DataClass::Unklassifiziert.is_personal_layer());
+        assert!(!DataClass::Wissen.is_personal_layer());
+        assert!(!DataClass::Beleg.is_personal_layer());
+        assert!(!DataClass::Abgeleitet.is_personal_layer());
+    }
+}

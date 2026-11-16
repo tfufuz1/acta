@@ -171,6 +171,7 @@ pub fn isqrt(n: u64) -> u64 {
 mod tests {
     use super::*;
 
+    // SPEC: 9.2 (Ganzzahlwurzel)
     #[test]
     fn isqrt_exact() {
         for n in [0_u64, 1, 2, 3, 4, 15, 16, 17, 1 << 40, u64::MAX] {
@@ -180,6 +181,7 @@ mod tests {
         }
     }
 
+    // SPEC: 9.2 (Festkomma), Z7
     #[test]
     fn mul_div_roundtrip_simple() {
         let two = Fx::from_int(2);
@@ -189,6 +191,7 @@ mod tests {
         assert_eq!(Fx::ONE.div(Fx::ZERO), None);
     }
 
+    // SPEC: 9.2, Z7
     #[test]
     fn ln_basic_points() {
         assert_eq!(fx_ln(Fx::ONE), Some(Fx::ZERO));
@@ -199,6 +202,7 @@ mod tests {
         assert_eq!(fx_ln(Fx(1 << 31)), Some(Fx::LN2.neg()));
     }
 
+    // SPEC: 9.2 (Festkomma)
     #[test]
     fn ratio_and_helpers() {
         assert_eq!(Fx::from_ratio(1, 2), Some(Fx(1 << 31)));
@@ -210,6 +214,7 @@ mod tests {
         assert_eq!(Fx(i64::MIN).abs(), Fx(i64::MAX));
     }
 
+    // SPEC: 9.2 (Rundung), Z7
     #[test]
     fn half_even_rounding() {
         // 0.5 * 0.5 = 0.25 exakt
