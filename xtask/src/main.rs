@@ -1,7 +1,7 @@
 //! `cargo xtask gates`: Architektur- und Hygienepruefungen (Spec 16.6).
 //!
-//! Umgesetzt: G1, G-DEF, G-HUB, G-UNSAFE, G-NOTOKIO, G-LINT (Konfiguration), G-WORD.
-//! Offen (Archiv `archive/xtask/`): G2, G3, G-CRY, G-FS, G-ERA, G-READ, G-NOSERDE-DISK, G-SUPPLY, G-ZUSAGE.
+//! Umgesetzt: G1, G-DEF, G-HUB, G-UNSAFE, G-NOTOKIO, G-LINT (Konfiguration), G-WORD, G-CRY.
+//! Offen (Archiv `archive/xtask/`): G2, G3, G-FS, G-ERA, G-READ, G-NOSERDE-DISK, G-SUPPLY, G-ZUSAGE.
 #![forbid(unsafe_code)]
 
 use std::collections::BTreeMap;
@@ -22,6 +22,7 @@ const GATES: &[Gate] = &[
     ("g-notokio", g_notokio),
     ("g-lint", g_lint),
     ("g-word", g_word),
+    ("g-cry", g_cry),
 ];
 
 struct Ctx {
@@ -300,6 +301,106 @@ fn g_word(c: &Ctx) -> Res {
     Ok(bad)
 }
 
+/// Crates, in denen `unwrap_or_default()` und `let _ =` verboten sind (Spec 16.6, G-CRY).
+const CRY_CRATES: &[&str] = &[
+    "acta-crypto",
+    "acta-vault",
+    "acta-seg",
+    "acta-erasure",
+    "acta-history",
+    "acta-pstore",
+];
+const FORBIDDEN_ON_SECRET: &[&str] = &["Default", "Clone", "Debug", "Serialize"];
+
+/// `$name` (Makro-Platzhalter) zaehlt nur in den Krypto-Crates als Geheimnis (`strict`).
+fn is_secret_name(name: &str, strict: bool) -> bool {
+    (strict && name == "$name")
+        || ["Key", "Secret", "Signer"]
+            .iter()
+            .any(|suffix| name.ends_with(suffix))
+}
+
+/// Erster Bezeichner nach `after` in `line`.
+fn ident_after<'a>(line: &'a str, after: &str) -> Option<&'a str> {
+    let rest = line.split(after).nth(1)?;
+    let end = rest
+        .find(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$'))
+        .unwrap_or(rest.len());
+    rest.get(..end).filter(|n| !n.is_empty())
+}
+
+/// Prueft einen Quelltext auf G-CRY. `scan_calls` schaltet `unwrap_or_default` und `let _ =` ein
+/// (nur Produktionscode der Krypto-Crates). Alles ab `#[cfg(test)]` zaehlt als Testcode.
+fn cry_scan(label: &str, text: &str, scan_calls: bool) -> Vec<String> {
+    let mut bad = Vec::new();
+    let mut attrs = String::new();
+    for (i, raw) in text.lines().enumerate() {
+        let t = raw.trim();
+        if t.starts_with("#[cfg(test)]") {
+            break;
+        }
+        if t.starts_with("//") {
+            continue;
+        }
+        if scan_calls && (t.contains("unwrap_or_default(") || t.contains("let _ =")) {
+            bad.push(format!(
+                "{label}:{}: unwrap_or_default/let _ = (G-CRY)",
+                i + 1
+            ));
+        }
+        if t.starts_with("#[") || (!attrs.is_empty() && !attrs.trim_end().ends_with(']')) {
+            attrs.push_str(t);
+            continue;
+        }
+        let secret = ident_after(t, "struct ")
+            .or_else(|| ident_after(t, "enum "))
+            .filter(|n| is_secret_name(n, scan_calls));
+        if let Some(name) = secret {
+            for d in FORBIDDEN_ON_SECRET {
+                if attrs.contains("derive(") && has_word(&attrs, d) {
+                    bad.push(format!(
+                        "{label}:{}: derive({d}) auf Geheimnis {name} (G-CRY)",
+                        i + 1
+                    ));
+                }
+            }
+        }
+        if t.starts_with("impl") && t.contains(" for ") {
+            let target = ident_after(t, " for ");
+            let tr = ident_after(t, "impl ").or_else(|| ident_after(t, "impl<"));
+            if let (Some(tr), Some(name)) = (tr, target) {
+                if FORBIDDEN_ON_SECRET.contains(&tr) && is_secret_name(name, scan_calls) {
+                    bad.push(format!(
+                        "{label}:{}: impl {tr} fuer Geheimnis {name} (G-CRY)",
+                        i + 1
+                    ));
+                }
+            }
+        }
+        if !t.is_empty() {
+            attrs.clear();
+        }
+    }
+    bad
+}
+
+fn g_cry(c: &Ctx) -> Res {
+    let mut bad = Vec::new();
+    let mut files = Vec::new();
+    rs_files(&c.root.join("crates"), &mut files);
+    for f in files {
+        if is_test_path(&f) || !f.components().any(|x| x.as_os_str() == "src") {
+            continue;
+        }
+        let in_cry = CRY_CRATES
+            .iter()
+            .any(|n| f.components().any(|x| x.as_os_str() == *n));
+        let text = fs::read_to_string(&f).map_err(|e| e.to_string())?;
+        bad.extend(cry_scan(&f.display().to_string(), &text, in_cry));
+    }
+    Ok(bad)
+}
+
 fn main() -> ExitCode {
     let arg = std::env::args().nth(1).unwrap_or_else(|| "gates".into());
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -343,5 +444,28 @@ fn main() -> ExitCode {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
+    }
+}
+
+#[cfg(test)]
+mod cry_tests {
+    use super::cry_scan;
+
+    #[test]
+    fn flags_forbidden_patterns_positive_control() {
+        let src = "#[derive(Debug, Clone)]\npub struct DataKey { b: u8 }\n\
+                   impl Default for MasterKey {}\n\
+                   fn f() { let _ = g(); x.unwrap_or_default(); }\n\
+                   #[derive(\n    Serialize)]\npub struct IndexSecret;\n";
+        let hits = cry_scan("t.rs", src, true);
+        assert_eq!(hits.len(), 5, "{hits:?}");
+    }
+
+    #[test]
+    fn accepts_clean_code_and_test_modules() {
+        let src = "pub struct DataKey { b: u8 }\n#[derive(Debug, Clone)]\npub struct SealCtx;\n\
+                   // let _ = comment\n#[cfg(test)]\nmod t { fn f() { let _ = 1; } }\n";
+        assert!(cry_scan("t.rs", src, true).is_empty());
+        assert!(cry_scan("t.rs", "fn f(){ let _ = 1; }", false).is_empty());
     }
 }

@@ -20,7 +20,7 @@ pub mod private {
     pub trait Sealed {}
 }
 
-macro_rules! secret_key {
+macro_rules! secret_core {
     ($(#[$doc:meta])* $name:ident) => {
         $(#[$doc])*
         pub struct $name {
@@ -54,6 +54,16 @@ macro_rules! secret_key {
 
         impl private::Sealed for $name {}
 
+        // Das Material liegt in `Zeroizing`, der Typ wird beim Verwerfen überschrieben.
+        impl zeroize::ZeroizeOnDrop for $name {}
+    };
+}
+
+/// Schlüssel, der AEAD-Umschläge versiegeln darf.
+macro_rules! secret_key {
+    ($(#[$doc:meta])* $name:ident) => {
+        secret_core!($(#[$doc])* $name);
+
         impl crate::aead::SealKey for $name {
             fn cipher(&self) -> Result<chacha20poly1305::XChaCha20Poly1305, CryptoError> {
                 use chacha20poly1305::KeyInit;
@@ -61,6 +71,13 @@ macro_rules! secret_key {
                     .map_err(|_| CryptoError::Internal)
             }
         }
+    };
+}
+
+/// Schlüssel nur für MAC und Ableitungen. Kein `SealKey`: er kann keinen Umschlag versiegeln.
+macro_rules! mac_key {
+    ($(#[$doc:meta])* $name:ident) => {
+        secret_core!($(#[$doc])* $name);
     };
 }
 
@@ -88,6 +105,26 @@ secret_key!(
     /// Geheimnis für Tags und Dedup-Salze (`k_idx`, Spec 2.4). Ohne Standardwert.
     IndexSecret
 );
+
+secret_key!(
+    /// Zugriffsprotokoll-Schlüssel `LogKey(m)` je Monat (Spec 4.2, 6.5). Ablauf der Frist vernichtet ihn.
+    LogKey
+);
+mac_key!(
+    /// Commitment-Schlüssel `CommitKey(e)` je Epoche (Spec 2.7, 4.2). Nur für HMAC.
+    CommitKey
+);
+mac_key!(
+    /// Dedup-Schlüssel `K_dedup(t)` je Mandant (Spec 2.4, 4.2). Nur für das Blob-Salz.
+    DedupKey
+);
+
+impl DedupKey {
+    /// Abgeleiteter Dedup-Schlüssel aus einer Ableitung in diesem Crate.
+    pub(crate) fn from_derived(bytes: Zeroizing<[u8; KEY_LEN]>) -> Self {
+        Self { bytes }
+    }
+}
 
 impl DataKey {
     /// Abgeleiteter Datenschlüssel aus einer Ableitung in diesem Crate.

@@ -5,7 +5,9 @@
 
 use crate::domain;
 use crate::error::CryptoError;
-use crate::key::{DataKey, DocumentKey, IndexSecret, MasterKey, SubjectKey, KEY_LEN};
+use crate::key::{
+    CommitKey, DataKey, DedupKey, DocumentKey, IndexSecret, MasterKey, SubjectKey, KEY_LEN,
+};
 use crate::mac::hmac_sha256;
 use hkdf::Hkdf;
 use sha2::Sha256;
@@ -149,6 +151,40 @@ pub fn derive_subject_tag(
     let key = derive_tag_key(index, tenant)?;
     let nfc: String = ext_id.nfc().collect();
     let full = hmac_sha256(key.expose(), &[domain::TAG, &[kind], nfc.as_bytes()])?;
+    let head = full.get(..16).ok_or(CryptoError::Internal)?;
+    <[u8; 16]>::try_from(head).map_err(|_| CryptoError::Internal)
+}
+
+/// Dedup-Schlüssel K_dedup(t) = `HKDF(k_idx, salt = TenantId, info = "acta/dedup/v1")`.
+///
+/// **[A] Auslegung:** SPEC 2.4 schreibt `HKDF(k_idx, "acta/dedup/v1" ‖ TenantId)` ohne
+/// Rollenangabe. Hier gilt das Muster von `K_tag(t)` (Mandant als Salz, Präfix als Info).
+///
+/// # Errors
+/// [`CryptoError::Internal`] nur bei internem Fehler der HKDF-Ausgabe.
+pub fn derive_dedup_key(index: &IndexSecret, tenant: &[u8; 16]) -> Result<DedupKey, CryptoError> {
+    let okm = hkdf_sha256(&[index.expose()], tenant, domain::DEDUP)?;
+    Ok(DedupKey::from_derived(okm))
+}
+
+/// Blob-Salz `HMAC-SHA256(K_dedup(t), Inhalt)[..16]` (Spec 2.4). Ohne `K_dedup` nicht prüfbar.
+///
+/// # Errors
+/// [`CryptoError::Internal`] nur bei internem Fehler der HMAC-Berechnung.
+pub fn blob_salt(key: &DedupKey, content: &[u8]) -> Result<[u8; 16], CryptoError> {
+    truncate16(&hmac_sha256(key.expose(), &[content])?)
+}
+
+/// Commitment `HMAC-SHA256(CommitKey(e), "acta/cmt/v1" ‖ KeyId)[..16]` (Spec 2.7).
+/// `KeyId` ist `SubjectTag`, `VerRef` oder Segment-`file_id` (je 16 Byte).
+///
+/// # Errors
+/// [`CryptoError::Internal`] nur bei internem Fehler der HMAC-Berechnung.
+pub fn commitment(key: &CommitKey, key_id: &[u8; 16]) -> Result<[u8; 16], CryptoError> {
+    truncate16(&hmac_sha256(key.expose(), &[domain::CMT, key_id])?)
+}
+
+fn truncate16(full: &[u8; 32]) -> Result<[u8; 16], CryptoError> {
     let head = full.get(..16).ok_or(CryptoError::Internal)?;
     <[u8; 16]>::try_from(head).map_err(|_| CryptoError::Internal)
 }

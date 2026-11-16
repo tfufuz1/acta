@@ -38,7 +38,7 @@ cargo check --workspace --all-targets --locked
 cargo test --workspace --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo fmt --all -- --check
-cargo xtask gates          # G1, G-DEF, G-HUB, G-UNSAFE, G-NOTOKIO, G-LINT, G-WORD
+cargo xtask gates          # G1, G-DEF, G-HUB, G-UNSAFE, G-NOTOKIO, G-LINT, G-WORD, G-CRY
 cargo nextest run --workspace --locked      # schneller Testlauf
 cargo deny check           # G-SUPPLY (Teil): licenses und bans derzeit rot, siehe docs/UMGEBUNG.md
 ```

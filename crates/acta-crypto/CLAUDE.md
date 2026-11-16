@@ -16,21 +16,23 @@ acta-crypto: AEAD, HKDF, HMAC, Ed25519, Sealed<P>, Schluesseltypen, HashChain, P
 
 ## Status
 - **Stand:** implementiert (Teil)
-- **Produktionscode (ohne Tests/Leerzeilen/Kommentare):** 530 LOC von 4200 Budget
+- **Produktionscode:** per G-HUB geprüft (grün)
 - **Umgesetzt (neu nach SPEC 4.1, 4.2, 4.5, 6.2 bzw. 2.4):**
   - `aead`: Umschlag v1 (XChaCha20-Poly1305, Nonce aus `CryptoRng`, Ebenen `Personal`/`Knowledge`/`Derived` als Typen, AAD mit Ebene, Mandant, Keyspace, Datensatz, Version). Der Trait `SealKey` ist versiegelt und liefert nur den Cipher, nie das Schlüsselmaterial.
   - `key`: Geheimnistypen `DataKey`, `SubjectKey`, `DocumentKey`, `SegmentKey`, `MasterKey`, `IndexSecret`. Ohne `Default`, `Clone`, `Debug`, `Serialize`. `Zeroizing`-Speicher.
   - `kdf`: HKDF-SHA256, DEK(v) mit Sortierung nach Tag und Dublettenprüfung, HK(v), DirKey, ClusterId, VK(t,g), K_tag(t), `SubjectTag` mit NFC-Normalisierung.
   - `pad`: Größenklassen nach 4.5 (Vielfaches von 256 bis 4096, darüber 2^(k-3)); Eigenschaften per Proptest.
   - `mac`: HMAC-SHA256 mit Konstantzeit-Vergleich. `hash`: SHA-256 und `HashChain` (mehrere Instanzen).
-  - `sign`: Ed25519 mit Domänenpräfix (`acta/report/v1`, `acta/checkpoint/v1`).
+  - `sign`: Ed25519 mit Domänenpräfix (`acta/report/v1`, `acta/checkpoint/v1`), Prüfung mit `verify_strict` (Kleinordnungspunkte werden abgelehnt, Test mit Positivkontrolle).
+  - `key`/`kdf`: `LogKey(m)` (versiegelt), `CommitKey(e)` und `DedupKey` (nur MAC, kein `SealKey`); `derive_dedup_key`, `blob_salt` (2.4), `commitment` (2.7). Alle Geheimnistypen implementieren `ZeroizeOnDrop`.
   - `domain`: alle 23 Präfixe aus 4.1, geprüft auf Eindeutigkeit.
 - **Abweichungen von der Spezifikation (bewusst):**
   - `seal`/`open` nehmen `K: SealKey` statt `&DataKey` (3.7). Sonst bräuchten `SegmentKey` und andere Schlüsselarten einen Umweg. Die Grenze bleibt: kein rohes Material nach außen.
   - Betroffenenzahl pro Version auf 255 begrenzt (`u8` in der DEK-Formel). Anhang A nennt bis 256. Das ist ein Widerspruch im Spec-Text, der zu klären ist.
   - `HashChain`: Genesis-Vorgänger ist der Nullwert, Eintrag = SHA-256(LEDGER ‖ chain_id ‖ prev ‖ canonical). Die Festlegung der Eingaberreihenfolge trifft die Spec nicht vollständig.
 - **Festwerte und Tests:** RFC 5869 (HKDF), RFC 4231 (HMAC), RFC 8032 (Ed25519, Test 1) übernommen bzw. geprüft. Umschlag-Festwert aus PyNaCl/libsodium (XChaCha20-Poly1305). Ableitungs-Festwerte aus einer unabhängigen Python-Referenz. Mutationsprüfung: Entfernen des Klassenbytes aus der AAD und der Sortierung der DEK-Betroffenen lässt die Tests scheitern.
-- **Offen:** Schlüssel `K_dedup`, Log-Schlüssel, Commitment-Schlüssel `CommitKey` (gehören zu `acta-ledger` und `acta-vault`). Argon2id in `acta-vault`. Der Gate G-CRY (kein `Default`/`Clone`/`Debug`/`Serialize` auf Geheimnissen, keine `let _ =`) ist in `xtask` noch nicht implementiert. Die Einhaltung ist hier durch Konstruktion und Prüfung von Hand erreicht.
+- **Offen [A]:** SPEC 2.4 schreibt `K_dedup(t) = HKDF(k_idx, "acta/dedup/v1" ‖ TenantId)` ohne Rollen für Salz und Info. Umgesetzt ist das Muster von `K_tag(t)` (Salz = TenantId, Info = Präfix). Klärung in der SPEC nötig; Änderung bricht das Blob-Salz (Hash-Identität). Ferner: `SigningKey`-Domänen sind weiter `&[u8]` (RFC-8032-Test 1 braucht leere Domäne); ein Aufzählungstyp wäre strenger. Argon2id bleibt in `acta-vault`.
+- **G-CRY:** in `xtask` umgesetzt (Textscan: `derive`/`impl` von `Default`/`Clone`/`Debug`/`Serialize` auf Typen mit Endung `Key`/`Secret`/`Signer`, in den Krypto-Crates auch `unwrap_or_default` und `let _ =` im Produktionscode vor `#[cfg(test)]`). Grenze: Textmuster, keine Typprüfung; `tests/secret_types.rs` prüft die Merkmale zur Übersetzungszeit.
 - **Archiv-Quelle:** `archive/acta-crypto/` (siehe `archive/acta-crypto/MANIFEST.md`). Übernommen: RFC-Testvektoren aus `crypto/tests/rfc_vectors.rs` (ohne AES-GCM-SIV). Der Archivordner bleibt bestehen, bis das Crate vollständig überführt ist.
 
 ## Regeln für diesen Crate

@@ -6,7 +6,7 @@
 use crate::error::CryptoError;
 use crate::key::KEY_LEN;
 use acta_base::CryptoRng;
-use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use zeroize::Zeroizing;
 
 /// Länge eines öffentlichen Schlüssels in Byte.
@@ -18,6 +18,9 @@ pub const SIGNATURE_LEN: usize = 64;
 pub struct NotarySigner {
     key: SigningKey,
 }
+
+// `SigningKey` überschreibt sein Material beim Verwerfen (Feature `zeroize` von ed25519-dalek).
+impl zeroize::ZeroizeOnDrop for NotarySigner {}
 
 impl NotarySigner {
     /// Erzeugt einen Schlüssel aus dem Zufall des Ports.
@@ -52,7 +55,9 @@ impl NotarySigner {
     }
 }
 
-/// Prüft eine Signatur über `domain ‖ msg`.
+/// Prüft eine Signatur über `domain ‖ msg` strikt (`verify_strict`): Schlüssel und R von
+/// kleiner Ordnung sowie nicht kanonische Kodierungen werden abgelehnt. Die Nachricht muss
+/// in kanonischer Form vorliegen (JCS, RFC 8785); das stellt der Aufrufer.
 ///
 /// # Errors
 /// [`CryptoError::Malformed`] bei ungültigem öffentlichem Schlüssel,
@@ -66,6 +71,6 @@ pub fn verify(
     let key = VerifyingKey::from_bytes(public).map_err(|_| CryptoError::Malformed)?;
     let signature = Signature::from_bytes(sig);
     let message = [domain, msg].concat();
-    key.verify(&message, &signature)
+    key.verify_strict(&message, &signature)
         .map_err(|_| CryptoError::SignatureInvalid)
 }
