@@ -24,3 +24,36 @@ impl ClassifiedError for FsyncFailed {
         "fs.fsync_failed"
     }
 }
+
+/// Fehler der zusammengesetzten Dateioperationen dieses Crates (`atomic`).
+///
+/// Die Ports `Vfs` und `VFile` melden `io::Error` und [`FsyncFailed`], so schreibt es
+/// Spec 3.7 vor; dieser Typ gehört den Operationen darüber.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum FsError {
+    /// E/A-Fehler ohne Fsync-Versagen. Der Zielpfad hat entweder den alten oder den vollen
+    /// neuen Inhalt; ein erneuter Aufruf ist zulässig.
+    #[error("file operation failed")]
+    Io(#[source] std::io::Error),
+    /// `FsyncFailed` auch auf der Ersatzdatei: kein Ersatz mehr, der Bereich ist zu
+    /// vergiften (Spec 15.2, Tenant). Der Zielpfad behält den alten Inhalt.
+    #[error("fsync failed without replacement; area must be poisoned")]
+    Poisoned,
+}
+
+impl ClassifiedError for FsError {
+    fn class(&self) -> ErrorClass {
+        match self {
+            Self::Io(_) => ErrorClass::Transient,
+            Self::Poisoned => ErrorClass::Integrity,
+        }
+    }
+
+    fn code(&self) -> &'static str {
+        match self {
+            Self::Io(_) => "fs.io",
+            Self::Poisoned => "fs.poisoned",
+        }
+    }
+}

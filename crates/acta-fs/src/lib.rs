@@ -6,6 +6,7 @@
 //! API und wurden nicht übernommen; Verhalten und Fehlerbilder sind neu nach Spec gebaut.
 #![forbid(unsafe_code)]
 
+pub mod atomic;
 pub mod error;
 pub mod vfs;
 

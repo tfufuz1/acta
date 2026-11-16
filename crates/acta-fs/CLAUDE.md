@@ -16,16 +16,19 @@ acta-fs: Vfs-Port, DurableVfs, FaultVfs, Scrub, O_DIRECT-Ruecklesen.
 
 ## Status
 - **Stand:** implementiert (Teil)
-- **Produktionscode (ohne Tests/Leerzeilen/Kommentare):** 437 LOC von 2500 Budget
+- **Produktionscode (ohne Leerzeilen/Kommentare, grob gezählt):** 510 LOC von 2500 Budget
 - **Umgesetzt nach SPEC 3.7 (neu geschrieben, nicht aus dem Archiv übernommen):**
   - `vfs`: Ports `Vfs` und `VFile` mit den Signaturen aus Kap. 3.7.
   - `error`: `FsyncFailed` (Klasse `Integrity`, Code `fs.fsync_failed`).
   - `durable`: `DurableVfs` mit atomarem Ersetzen (rename + Verzeichnis-fsync, WP-5), Scrub (WP-6), `O_DIRECT`-Rücklesen auf 4096-Byte-Blöcken mit ausgerichtetem Puffer und fsync-Entwertung (WP-7). Nur hier steht `std::fs` (G-FS).
   - `fault`: `FaultVfs<V>` mit Plan (`FaultPoint`, `FaultAction`: Fehlerbild, zerrissener Schreibvorgang, Absturz).
-- **Tests:** `tests/durable_vfs.rs` (8), `tests/fault_vfs.rs` (5, u. a. Absturzmatrix über Erstellen, Schreiben, Sync, Umbenennen; Fsync-Entwertung; ENOSPC; zerrissener Schreibvorgang).
-- **Mutationsprüfung:** Entfernen der Fsync-Entwertung und der `O_DIRECT`-Ausrichtung lässt die jeweiligen Tests scheitern.
+  - `atomic`: `write_atomic` (WP-5, WP-7, 15.2): Ersatzdatei, `sync_data`, `rename_atomic`; nach `FsyncFailed` ein Ersatz in einer **neuen** Datei, scheitert auch dieser `FsError::Poisoned` (Tenant-Vergiftung liegt beim Aufrufer). Andere Fehler werden nicht wiederholt; Ersatzdateien werden entfernt, verwaiste aus Abstürzen ersetzt.
+  - `error`: zusätzlich `FsError` (`Io`, `Poisoned`) für die Operationen über den Ports; die Ports selbst behalten `io::Error` und `FsyncFailed` (3.7).
+  - `fault`: `arm_also` für mehrere Pläne nacheinander (`skip` zählt gegen die Gesamtzahl der Aufrufe des Punkts).
+- **Tests:** `tests/conformance.rs` (2, dieselbe Suite gegen `DurableVfs` und `FaultVfs` ohne Plan), `tests/crash_matrix.rs` (6: Matrix über Erstellen, Schreiben, Sync, Rename × Absturz, zerrissener Schreibvorgang, ENOSPC mit Positivkontrolle; Fsync einmal und zweimal; Scrub-Absturz; verwaiste Ersatzdatei), `tests/durable_vfs.rs` (8), `tests/fault_vfs.rs` (5, u. a. Absturzmatrix über Erstellen, Schreiben, Sync, Umbenennen; Fsync-Entwertung; ENOSPC; zerrissener Schreibvorgang).
+- **Mutationsprüfung:** Ersatzversuch entfernt oder Fsync-Fehler als Erfolg gewertet lässt `single_fsync_…` und `double_fsync_…` scheitern. Zuvor: Entfernen der Fsync-Entwertung und der `O_DIRECT`-Ausrichtung lässt die jeweiligen Tests scheitern.
 - **Annahmen:** `O_DIRECT`-Wert `0o40000` gilt für x86_64 und aarch64 (Linux). Auf aarch64 ist das auf Hardware nicht geprüft [A]. Andere Architekturen liefern `Unsupported`.
-- **Offen:** Scrub gegen Flash-Reste bleibt Annahme A-FLASH. Journal (`durable-fs/src/journal.rs`), Gesundheitszustand und Fault-Injektor-Matrix aus dem Archiv sind nicht übernommen; sie gehören in acta-seg bzw. werden neu gebaut.
+- **Offen:** Scrub gegen Flash-Reste bleibt Annahme A-FLASH: Überschreiben ist auf SSD und COW kein Löschnachweis, der Crate misst das nicht und behauptet es nicht; die Ausweisung als Restrisiko gehört in den Bericht (20.3). Absturz zwischen `rename` und Verzeichnis-`fsync` ist nur über den Plan `Crash` vor dem Rename abgedeckt, nicht innerhalb des Aufrufs [A]. Journal (`durable-fs/src/journal.rs`), Gesundheitszustand und Fault-Injektor-Matrix aus dem Archiv sind nicht übernommen; sie gehören in acta-seg bzw. werden neu gebaut.
 - **Archiv-Quelle:** `archive/acta-fs/` (siehe `archive/acta-fs/MANIFEST.md`). Der Archivordner bleibt bestehen, bis das Crate vollständig überführt ist.
 
 ## Regeln für diesen Crate

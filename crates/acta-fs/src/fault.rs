@@ -61,7 +61,7 @@ pub struct FaultPlan {
 /// Zustand, den Wrapper und Dateihandles teilen.
 #[derive(Debug, Default)]
 struct Shared {
-    plan: Mutex<Option<FaultPlan>>,
+    plans: Mutex<Vec<FaultPlan>>,
     counts: Mutex<BTreeMap<FaultPoint, u64>>,
     crashed: AtomicBool,
 }
@@ -85,14 +85,14 @@ impl Shared {
             *entry += 1;
             before
         };
-        let mut plan = lock(&self.plan);
-        if let Some(p) = *plan {
-            if p.point == point && seen == p.skip {
-                *plan = None;
-                return Ok(Some(p.action));
-            }
+        let mut plans = lock(&self.plans);
+        match plans
+            .iter()
+            .position(|p| p.point == point && p.skip == seen)
+        {
+            Some(i) => Ok(Some(plans.remove(i).action)),
+            None => Ok(None),
         }
-        Ok(None)
     }
 
     fn crash(&self) {
@@ -116,9 +116,16 @@ impl<V: Vfs> FaultVfs<V> {
         }
     }
 
-    /// Setzt den Plan. Ein zuvor gesetzter, noch nicht ausgelöster Plan wird ersetzt.
+    /// Setzt den Plan. Zuvor gesetzte, noch nicht ausgelöste Pläne werden ersetzt.
     pub fn arm(&self, plan: FaultPlan) {
-        *lock(&self.shared.plan) = Some(plan);
+        *lock(&self.shared.plans) = vec![plan];
+    }
+
+    /// Fügt einen weiteren Plan hinzu. `skip` zählt gegen die Gesamtzahl der bisherigen
+    /// Aufrufe des Punkts (siehe `count`), so lassen sich mehrere Störungen nacheinander
+    /// deterministisch festlegen, etwa zwei fehlschlagende `sync_data`.
+    pub fn arm_also(&self, plan: FaultPlan) {
+        lock(&self.shared.plans).push(plan);
     }
 
     /// Ist der Zustand abgestürzt? Nach `true` scheitert jede weitere Operation.
