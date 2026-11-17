@@ -161,3 +161,24 @@ fn entropy_failure_produces_no_envelope() -> io::Result<()> {
     assert!(ok.is_ok());
     Ok(())
 }
+
+/// Mindestlänge beim Laden: genau Kopf + Tag (43 Byte) ist strukturell zulässig, 42 nicht.
+/// Das Öffnen eines solchen Umschlags scheitert an der Authentisierung. Tötet `<` → `<=`.
+#[test]
+fn from_bytes_minimum_length_boundary() {
+    let mut min = vec![0_u8; 43];
+    min[..3].copy_from_slice(&[0x01, 0x01, 0x01]);
+    let ok = Sealed::<Personal>::from_bytes(min.clone());
+    assert!(ok.is_ok());
+    if let Ok(sealed) = ok {
+        assert!(matches!(
+            open(&key(), &ctx(), &sealed),
+            Err(CryptoError::DecryptionFailed)
+        ));
+    }
+    min.pop();
+    assert!(matches!(
+        Sealed::<Personal>::from_bytes(min),
+        Err(CryptoError::Malformed)
+    ));
+}

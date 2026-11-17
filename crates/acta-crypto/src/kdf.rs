@@ -126,6 +126,20 @@ pub fn derive_vault_key(
     Ok(DataKey::from_derived(okm))
 }
 
+/// Sicherungsschlüssel VKb(t,e) = `HKDF(M_bk(e), salt = TenantId, info = "acta/vaultbk/v1")` (Spec 4.3).
+///
+/// Die Epoche `e` steckt im Epochenschlüssel `M_bk(e)`, nicht in `info`.
+///
+/// # Errors
+/// [`CryptoError::Internal`] nur bei internem Fehler der HKDF-Ausgabe.
+pub fn derive_vault_backup_key(
+    backup_master: &MasterKey,
+    tenant: &[u8; 16],
+) -> Result<DataKey, CryptoError> {
+    let okm = hkdf_sha256(&[backup_master.expose()], tenant, domain::VAULT_BK)?;
+    Ok(DataKey::from_derived(okm))
+}
+
 /// Tag-Schlüssel K_tag(t) = `HKDF(k_idx, salt = TenantId, info = "acta/tag-key/v1")` (Spec 2.4).
 ///
 /// # Errors

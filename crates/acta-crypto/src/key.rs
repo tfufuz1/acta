@@ -7,6 +7,7 @@
 //! ([`crate::aead::SealKey`]) und die Ableitungen in [`crate::kdf`].
 
 use crate::error::CryptoError;
+use crate::mac::{hmac_sha256, verify_hmac_sha256};
 use acta_base::CryptoRng;
 use zeroize::Zeroizing;
 
@@ -98,6 +99,11 @@ secret_key!(
     SegmentKey
 );
 secret_key!(
+    /// Schlüssel eines Löschvorgangs (`ScopeKey`, Spec 4.2, 8.2). Kurzlebig: versiegelt die
+    /// Arbeitsdaten (Keyspaces `0x0040`, `0x0060`) und bildet die Messmuster (8.5).
+    ScopeKey
+);
+secret_key!(
     /// Generationsgeheimnis des Schlüsselankers (`MasterKey`, Spec 4.2).
     MasterKey
 );
@@ -118,6 +124,27 @@ mac_key!(
     /// Dedup-Schlüssel `K_dedup(t)` je Mandant (Spec 2.4, 4.2). Nur für das Blob-Salz.
     DedupKey
 );
+
+impl ScopeKey {
+    /// HMAC-SHA256 über die konkatenierten `parts` unter dem `ScopeKey`.
+    ///
+    /// Die Messmuster nach Spec 8.5 sind `HMAC(ScopeKey, 32-Byte-Fenster)`, also
+    /// `key.mac(&[fenster])`. Das Schlüsselmaterial verlässt das Crate dabei nicht.
+    ///
+    /// # Errors
+    /// [`CryptoError::Internal`] nur bei internem Fehler der HMAC-Berechnung.
+    pub fn mac(&self, parts: &[&[u8]]) -> Result<[u8; 32], CryptoError> {
+        hmac_sha256(self.expose(), parts)
+    }
+
+    /// Prüft ein HMAC-Tag unter dem `ScopeKey` in konstanter Zeit. Ungleiche Längen ergeben `false`.
+    ///
+    /// # Errors
+    /// Wie [`ScopeKey::mac`].
+    pub fn verify_mac(&self, parts: &[&[u8]], tag: &[u8]) -> Result<bool, CryptoError> {
+        verify_hmac_sha256(self.expose(), parts, tag)
+    }
+}
 
 impl DedupKey {
     /// Abgeleiteter Dedup-Schlüssel aus einer Ableitung in diesem Crate.

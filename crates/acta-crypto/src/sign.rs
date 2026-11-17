@@ -30,7 +30,9 @@ impl NotarySigner {
     pub fn generate(rng: &dyn CryptoRng) -> Result<Self, CryptoError> {
         let mut seed = Zeroizing::new([0_u8; KEY_LEN]);
         rng.try_fill(seed.as_mut_slice())?;
-        Ok(Self::from_seed(*seed))
+        Ok(Self {
+            key: SigningKey::from_bytes(&seed),
+        })
     }
 
     /// Schlüssel aus einem 32-Byte-Seed (etwa aus dem Anker).

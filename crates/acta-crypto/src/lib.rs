@@ -14,6 +14,8 @@ pub mod error;
 pub mod hash;
 pub mod kdf;
 pub mod key;
+pub mod keyspace;
 pub mod mac;
 pub mod pad;
 pub mod sign;
+pub mod vault;

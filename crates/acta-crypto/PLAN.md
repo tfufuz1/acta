@@ -3,6 +3,18 @@
 > **Status:** verbindlich für die Crate-Überführung · **Paket:** 1 (L1)
 > **Vorgaben:** [docs/spec/04_kryptografie.md](../../docs/spec/04_kryptografie.md) (4.1 bis 4.7) · [docs/spec/03_systemarchitektur.md](../../docs/spec/03_systemarchitektur.md) (3.7) · [docs/spec/anhang_a_parameter.md](../../docs/spec/anhang_a_parameter.md) · [CLAUDE.md](CLAUDE.md) · [archive/acta-crypto/MANIFEST.md](../../archive/acta-crypto/MANIFEST.md)
 
+## Fortschritt (Nachtrag)
+| AP | Stand |
+|---|---|
+| 1 | Entscheidungen offen, Vorschlag in `docs/ADR-VORSCHLAG-crypto.md` (keine Änderung an Ableitungen) |
+| 2 | erledigt: `tests/fail_closed.rs` (Codes, Klassen, `T-RNG`, `T-NOFALLBACK`, kein `Erased`) |
+| 3 | teilweise: übernommen sind die RFC-Vektoren (RFC 4231 Fälle 3 bis 7, RFC 5869 Fall 3) und die Verhaltensinvarianten; die übrigen Archivtests setzen die alte Passphrasen-API voraus und sind ohne Orakelwert für Umschlag v1 |
+| 4 | ausgeführt (114 Mutanten, Randfälle geschlossen) |
+| 5 | erledigt: `z14_no_shared_dek.rs`, `z2_no_plaintext.rs` (Positivkontrollen) |
+| 6 | Merkmalsprüfung erweitert; `trybuild`-Compile-Fail offen |
+| 7 | nicht ausgeführt, siehe ADR-Vorschlag (Archivteile für `acta-vault`/`acta-ledger`/`acta-reports` bleiben) |
+| neu | `ScopeKey`, VKb, Tresor-Rahmen (4.3), Keyspaces (4.5) |
+
 ## 0. Verifikationsstand dieser Planung
 - Ist-Stand laut `CLAUDE.md` des Crates und `pub`-Oberfläche. **Build und Tests wurden in dieser Planung nicht ausgeführt** (Toolchain 1.89.0 nicht verfügbar).
 - Die Abweichungen in Abschnitt 5 sind aus CLAUDE.md und Spec-Text abgeleitet und vor Abschluss am Quelltext zu bestätigen.

@@ -2,8 +2,8 @@
 //! Orakel: Merkmalsprüfung zur Übersetzungszeit (Inherent-Const-Vorrang), mit Positivkontrolle.
 
 use acta_crypto::key::{
-    CommitKey, DataKey, DedupKey, DocumentKey, IndexSecret, LogKey, MasterKey, SegmentKey,
-    SubjectKey,
+    CommitKey, DataKey, DedupKey, DocumentKey, IndexSecret, LogKey, MasterKey, ScopeKey,
+    SegmentKey, SubjectKey,
 };
 use acta_crypto::sign::NotarySigner;
 use std::fmt::Debug;
@@ -54,6 +54,10 @@ fn secrets_have_no_clone_debug_default() {
         SegmentKey,
         MasterKey,
         IndexSecret,
+        ScopeKey,
+        LogKey,
+        CommitKey,
+        DedupKey,
         NotarySigner
     );
 }
@@ -66,6 +70,7 @@ fn secrets_are_zeroized_on_drop() {
     wiped_on_drop::<SegmentKey>();
     wiped_on_drop::<MasterKey>();
     wiped_on_drop::<IndexSecret>();
+    wiped_on_drop::<ScopeKey>();
     wiped_on_drop::<LogKey>();
     wiped_on_drop::<CommitKey>();
     wiped_on_drop::<DedupKey>();
@@ -88,6 +93,7 @@ fn mac_only_keys_cannot_seal() {
         std::hint::black_box(<Probe<LogKey>>::SEAL),
         "Positivkontrolle"
     );
+    assert!(std::hint::black_box(<Probe<ScopeKey>>::SEAL));
     assert!(!std::hint::black_box(<Probe<CommitKey>>::SEAL));
     assert!(!std::hint::black_box(<Probe<DedupKey>>::SEAL));
 }
