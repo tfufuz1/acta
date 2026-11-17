@@ -15,9 +15,12 @@ acta-vault: Mandantentresore, KeyAnchor, FileAnchor, Wurzelrotation, Sicherungse
 - **Referenz im Quelltext:** Level L2 · Budget 5500 LOC · Spezifikation docs/SPEC.md Kap. 4.3, 4.4
 
 ## Status
-- **Stand:** Gerüst (nur Fehlertyp)
-- **Produktionscode (ohne Tests/Leerzeilen/Kommentare):** 17 LOC
-- **Archiv-Quelle:** `archive/acta-vault/` (siehe `archive/acta-vault/MANIFEST.md`)
+- **Stand:** Arbeitspaket 2 (Teil): Klartextlayout des Eintrags, Rahmen und Positions-AAD (`entry.rs`, SPEC 4.3). 8 Tests grün, Clippy `-D warnings` sauber, `cargo xtask gates` grün.
+- **Umgesetzt:** Art (`Kind`, Codes 0x01 bis 0x07) und Status (`Status`, aktiv und Grabstein), Eintrag mit Vernichtung (Schlüssel wird genullt), Klartext `[kind][status][id][key]` mit strikter Längen- und Wertprüfung, Rahmen `[len u16][nonce 24][ct 50][tag 16]` = 92 Byte, Positions-AAD `acta/vault/v1 ‖ TenantId ‖ generation u32 ‖ slot u64` (Big-Endian).
+- **Nicht umgesetzt:** Versiegelung unter dem Tresorschlüssel, Tresordatei, Speicherindex, `vault_freeze`, Wurzelrotation (4.3, Schritte 1 bis 4), Sicherungsexport (4.3), `KeyAnchor`/`FileAnchor`-Traits (4.4), Schlüsselableitungen.
+- **Offene Entscheidung (blockiert die Versiegelung):** `acta-crypto` stellt den Umschlag v1 bereit. Er hat Größenklassen-Padding und ein Klassenbyte, sein Layout ist `ver · alg · class · nonce · ct · tag`. Kapitel 4.3 verlangt dagegen einen festen 92-Byte-Rahmen ohne Padding. Entweder erhält `acta-crypto` eine Funktion für den festen Rahmen, oder Kapitel 4.3 wird präzisiert. Außerdem sind die Abhängigkeitsvorgaben (3.8) für die AEAD-Crate im Vault zu klären (ADR nötig).
+- **Hinweis:** `Entry` trägt keine `Debug`- und `Clone`-Ableitung (Schlüsseltyp). `zeroize` ist als Abhängigkeit gelistet, wird aber noch nicht genutzt; die Nullung erfolgt manuell.
+
 
 ## Regeln für diesen Crate
 - Abhängigkeiten nur nach unten: `level(A) > level(B)`; keine Querkanten (G1).

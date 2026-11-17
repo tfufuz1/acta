@@ -1,21 +1,29 @@
 //! Fehlertyp von acta-vault (HR-4: ein Fehlertyp je Crate, kein `Other(String)`).
+//!
+//! Meldungen enthalten weder Schlüsselmaterial noch Kennungen (Z15).
 
 use acta_base::{ClassifiedError, ErrorClass};
 
-/// Fehler von acta-vault. Platzhalter bis zur Umsetzung der Archiv-Extraktion.
+/// Fehler von acta-vault.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum VaultError {
-    /// Funktion ist noch nicht umgesetzt (nie als Erfolg zu melden, Z11).
-    #[error("not implemented")]
-    Unimplemented,
+    /// Ein Tresor-Eintrag hat eine unerwartete Länge oder einen unbekannten Wert. Das ist ein
+    /// Integritätsfehler (Vergiftung, SPEC 15.2), kein Ersatzwert (Z10).
+    #[error("vault entry malformed")]
+    Malformed,
 }
 
 impl ClassifiedError for VaultError {
     fn class(&self) -> ErrorClass {
-        ErrorClass::Invalid
+        match self {
+            Self::Malformed => ErrorClass::Integrity,
+        }
     }
+
     fn code(&self) -> &'static str {
-        "vault.unimplemented"
+        match self {
+            Self::Malformed => "vault.malformed",
+        }
     }
 }

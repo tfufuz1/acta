@@ -18,7 +18,7 @@ acta-vec: Segmentierter exakter i8-Vektorindex mit Lineage.
 - **Stand:** Überführung AP 1 bis 4 umgesetzt (Quantisierung, exakte Ähnlichkeit, segmentierter Index mit parallelem Scan, Sichtklasse und Gate-Filter, Löschung über `ErasureLayer`, ANN-Schnittstelle mit exaktem Nachrang, Qualitätsmessung).
 - **Offen:**
   - `t_vec_recall_1_accuracy_and_quality_report` schlägt fehl: Recall@10 = 0,85 statt ≥ 0,99. Ursache: der synthetische Testkorpus (verschobene Sinuskurven) hat Kosinusabstände an der Top-10-Grenze von rund 3·10⁻⁵, der i8-Quantisierungsfehler liegt bei bis zu 1,7·10⁻³. Auf unkorreliertem 768-d-Zufallskorpus misst dieselbe Implementierung 0,99. Entscheidung über Korpus oder Abnahmekriterium ausstehend (siehe PLAN 3 und 7).
-  - Messbericht AP 5 (p95 150 ms, 1 Mio. × 768, 8 Kerne) ist nicht erstellt. Gemessen auf 1 Kern, 100 000 × 768, Filter 50 %: Median 33 ms, p95 35 ms.
+  - Messbericht AP 5 (p95 150 ms, 1 Mio. × 768, 8 Kerne) ist nicht erstellt. Gemessen auf 1 Kern (Release, Filter 50 %): 1 Mio. × 768 Median 352 ms, p95 483 ms; 100 000 × 768 Median 33 ms, p95 35 ms. Die Messung auf 8 Kernen steht aus (VM hat einen Kern).
 - **Produktionscode (ohne Tests/Leerzeilen/Kommentare):** 884 LOC (Budget 4000)
 - **Archiv-Quelle:** `archive/acta-vec/` bleibt bis der SIMD-Teil nach `archive/acta-sys/` verlegt ist (PLAN AP 6).
 
