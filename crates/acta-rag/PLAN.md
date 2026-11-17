@@ -29,10 +29,13 @@
 ## 3. Umbau- und Implementierungsschritte
 
 1. **Hybridsuche & RRF:** Parallele Abfrage von Text, Vektor und Graph; 6-Listen-Fusion gemaess SPEC 9.4
+   - **Stand:** RRF in Ganzzahl und Auswahl nach Reranker sind umgesetzt (`fusion`). Die Abfrage selbst wartet auf `acta-text`, `acta-vec` und `acta-graph`.
 2. Reranker-Anbindung mit Rundung auf Q32.32 an der Portgrenze
 3. **Kontextaufbau:** Budgetierung (ctx_len), Belegklammerung mit Zufallstoken gegen Prompt-Injection (T7)
 4. **Belegpruefung (Z17):** Lexikalische und semantische Stuetzungspruefung; Enthaltung wenn nicht belegt
 5. **ErasureLayer:** Implementierung fuer Antwort- und Sitzungscaches
+
+**Zusätzlich umgesetzt (SPEC 6.3, 9.7):** Gültigkeitszeit (`validity`), Bewertungskennzahlen (`metrics`) und Regressionsprüfung mit `QualityDrift` (`quality`).
 
 ---
 

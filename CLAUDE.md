@@ -86,7 +86,7 @@ Die Überführungsreihenfolge und Arbeitspakete stehen in `README.md` (Abschnitt
 
 ## Stand der Implementierung
 
-- **Implementiert:** `acta-base` (Teil: Ids, Klassen, Fehler, Ports, Festkomma), `acta-testkit` (Teil), `acta-fs` (Teil: Vfs/VFile-Ports, DurableVfs, FaultVfs), `acta-crypto` (Teil: Umschlag v1, Ableitungen, HashChain, Padding, Ed25519), `acta-sys` (Teil: SecureBuf, Prozesshärtung, Ports SystemClock/OsCryptoRng), `acta-gate` (Teil: Gate-Zustand, Gate-Log mit HMAC-Kette, GateWriter nach Z4, ErasureLayer-Vertrag; Verdichtung offen), `xtask` (sieben Gates).
+- **Implementiert:** `acta-base` (Teil: Ids, Klassen, Fehler, Ports, Festkomma), `acta-testkit` (Teil), `acta-fs` (Teil: Vfs/VFile-Ports, DurableVfs, FaultVfs), `acta-crypto` (Teil: Umschlag v1, Ableitungen, HashChain, Padding, Ed25519), `acta-sys` (Teil: SecureBuf, Prozesshärtung, Ports SystemClock/OsCryptoRng), `acta-gate` (Teil: Gate-Zustand, Gate-Log mit HMAC-Kette, GateWriter nach Z4, ErasureLayer-Vertrag; Verdichtung offen), `acta-rag` (Teil: Ganzzahl-RRF, Auswahl nach Reranker, Gültigkeitszeit, Recall@k/MRR/nDCG, Regressionsprüfung `QualityDrift`; Kalibrierung und Hybridsuche offen), `xtask` (sieben Gates).
 - **Gerüst mit Fehlertyp:** die übrigen Crates.
 - **Offene Gates:** G2, G3, G-CRY, G-FS, G-ERA, G-READ, G-NOSERDE-DISK, G-SUPPLY, G-ZUSAGE.
 

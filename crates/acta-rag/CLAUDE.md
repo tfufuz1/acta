@@ -15,9 +15,16 @@ acta-rag: Abrufpipeline: Hybridsuche, RRF, Reranking, Kontextaufbau, Belegpruefu
 - **Referenz im Quelltext:** Level L4 · Budget 7000 LOC · Spezifikation docs/SPEC.md Kap. 9.4-9.7
 
 ## Status
-- **Stand:** Gerüst (nur Fehlertyp)
-- **Produktionscode (ohne Tests/Leerzeilen/Kommentare):** 17 LOC
-- **Archiv-Quelle:** `archive/acta-rag/` (siehe `archive/acta-rag/MANIFEST.md`)
+- **Stand:** Teil. Umgesetzt sind die Rechenkerne des Rank-Moduls, neu nach SPEC gebaut (nicht Archivcode kopiert):
+  - `fusion`: RRF in Ganzzahl (`floor(2^32 / (rrf_k + rang))`, Summe über Listen), Gleichstand Score absteigend, Schlüssel aufsteigend; Auswahl nach Reranker mit `max_chunks_per_doc` und `rerank_keep` (SPEC 9.4).
+  - `validity`: Gültigkeitszeit `[valid_from, valid_to)` mit `Option`-Präsenz statt `0` (SPEC 6.3, Filter `valid_at` in 9.4).
+  - `metrics`: Recall@k, MRR, nDCG über `fx_ln` in Q32.32, Latenzperzentile nach Nächster-Rang-Verfahren (SPEC 9.7).
+  - `quality`: Regressionsgrenzen nach Anhang A (Recall@10 −0,02; Zitiergenauigkeit −0,02; Enthaltungsgenauigkeit −0,03; Latenz p95 +20 %) und Status `QualityDrift`, der die Aktivierung verhindert (SPEC 9.7, 14).
+- **Nicht umgesetzt (kein Spezifikationseintrag, SPEC 0.4 Regel 3):** Platt-, Isotonic- und Conformal-Kalibrierung, Drift über Score-Verteilungen, DiBud, Erklärungsbericht, Resonanz-Bonus, die alte `ScoredItem`-API mit `f32`-Scores.
+- **Offen (abhängig von anderen Crates oder Neubau):** Hybridsuche (BM25 aus `acta-text`, Vektor aus `acta-vec`, PPR aus `acta-graph`), Kontextaufbau, Belegprüfung (Z17), Reranker-Anbindung über `acta-infer`, `ErasureLayer`.
+- **Produktionscode (ohne Tests/Leerzeilen/Kommentare):** 365 LOC (Budget 7000).
+- **Tests:** 32 Unit-Tests, 6 Property-Tests (proptest, je 256 Fälle), Positivkontrolle durch gezielte Mutationen geprüft (Tie-Break und Latenzgrenze werden erkannt).
+- **Archiv-Quelle:** `archive/acta-rag/rank/` bleibt bis zur vollständigen Überführung erhalten (siehe `archive/acta-rag/MANIFEST.md`). Der Archivordner wird erst nach vollständiger Überführung entfernt.
 
 ## Regeln für diesen Crate
 - Abhängigkeiten nur nach unten: `level(A) > level(B)`; keine Querkanten (G1).
