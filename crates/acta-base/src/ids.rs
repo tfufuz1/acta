@@ -1,4 +1,6 @@
-//! Identifikatoren (Spec 2.4). Ordinale sind dicht, nie wiederverwendet und nur intern sichtbar.
+//! Identifikatoren (Spec 2.4, 6.2). Ordinale sind dicht, nie wiederverwendet und nur intern sichtbar.
+
+use crate::ports::{CryptoRng, EntropyError};
 
 macro_rules! handle16 {
     ($(#[$m:meta])* $name:ident) => {
@@ -17,22 +19,56 @@ macro_rules! handle16 {
             pub fn as_bytes(&self) -> &[u8; 16] {
                 &self.0
             }
+        }
+        impl core::fmt::Debug for $name {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                // Kein Inhalt im Log (Z15).
+                f.write_str(concat!(stringify!($name), "(..)"))
+            }
+        }
+    };
+}
 
+// Zufaellige Bildung (SPEC 2.4) nur fuer Handles, deren Bildung "zufaellig" lautet.
+macro_rules! random_handle {
+    ($name:ident) => {
+        impl $name {
             /// Zufaelliges Handle ohne Inhaltsbezug (Z10: ein Entropiefehler liefert nie einen
             /// Ersatzwert).
             ///
             /// # Errors
             /// `EntropyError`, wenn die Quelle nicht liefern kann.
-            pub fn random(rng: &dyn crate::ports::CryptoRng) -> Result<Self, crate::ports::EntropyError> {
+            pub fn random(rng: &dyn CryptoRng) -> Result<Self, EntropyError> {
                 let mut b = [0_u8; 16];
                 rng.try_fill(&mut b)?;
                 Ok(Self(b))
             }
         }
+    };
+}
+
+macro_rules! handle32 {
+    ($(#[$m:meta])* $name:ident) => {
+        $(#[$m])*
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+        pub struct $name(pub [u8; 32]);
+        impl $name {
+            /// Aus Rohbytes.
+            #[must_use]
+            pub const fn from_bytes(b: [u8; 32]) -> Self {
+                Self(b)
+            }
+
+            /// Rohbytes.
+            #[must_use]
+            pub fn as_bytes(&self) -> &[u8; 32] {
+                &self.0
+            }
+        }
         impl core::fmt::Debug for $name {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 // Kein Inhalt im Log (Z15).
-                write!(f, concat!(stringify!($name), "(..)"))
+                f.write_str(concat!(stringify!($name), "(..)"))
             }
         }
     };
@@ -65,39 +101,26 @@ handle16!(/// Vorgang.
     CaseId);
 handle16!(/// Zufaelliges Handle auf eine Identitaet in P.
     ActorRef);
-handle16!(/// Loeschvorgang (UUIDv7).
+handle16!(/// Loeschvorgang (UUIDv7, Bildung ueber `from_v7`).
     ErasureId);
-handle16!(/// Schluessel-Tag eines Betroffenen (SPEC 2.4): HMAC, nur als versiegelte Tresor-ID und im Verzeichnis.
+handle16!(/// Schluessel-Tag eines Betroffenen (SPEC 2.4): HMAC, nur als versiegelte Tresor-ID und im Verzeichnis. Bildung in `acta-crypto`.
     SubjectTag);
-handle16!(/// Lokalitaetsgruppe in Segmenten (SPEC 2.4): nicht gespeichert, nur mit `SubjectKey` berechenbar.
+handle16!(/// Lokalitaetsgruppe in Segmenten (SPEC 2.4): nicht gespeichert, nur mit `SubjectKey` berechenbar. Bildung in `acta-crypto`.
     ClusterId);
-handle16!(/// Index-Generation (SPEC 2.4, 9.2): Grundlage eines Indexsatzes.
+handle16!(/// Index-Generation (SPEC 2.4, 9.2): Grundlage eines Indexsatzes. Bildung bei der Index-Generation (11.4).
     IndexGen);
 
-/// Objekt-Identitaet der Ebene K (SPEC 2.4): SHA-256 ueber kanonische Bytes, 32 Byte.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ObjectId(pub [u8; 32]);
+random_handle!(TenantId);
+random_handle!(DocRef);
+random_handle!(VerRef);
+random_handle!(PersonalRef);
+random_handle!(CaseId);
+random_handle!(ActorRef);
 
-impl ObjectId {
-    /// Aus Rohbytes.
-    #[must_use]
-    pub const fn from_bytes(b: [u8; 32]) -> Self {
-        Self(b)
-    }
-
-    /// Rohbytes.
-    #[must_use]
-    pub fn as_bytes(&self) -> &[u8; 32] {
-        &self.0
-    }
-}
-
-impl core::fmt::Debug for ObjectId {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        // Kein Inhalt im Log (Z15).
-        f.write_str("ObjectId(..)")
-    }
-}
+handle32!(/// Objekt-Identitaet der Ebene K (SPEC 2.4): SHA-256 ueber kanonische Bytes, 32 Byte.
+    ObjectId);
+handle32!(/// Kettenkennung (SPEC 6.2): 32 Byte. Die Bildung `SHA-256(TenantId || Kennbuchstabe)` liegt in `acta-ledger`.
+    ChainId);
 
 ordinal!(/// Dichte Mandantennummer; 0 ist fuer Systeminterna reserviert.
     TenantOrd, u32);
@@ -217,6 +240,13 @@ mod tests {
             }
         }
         assert_eq!(DocRef::random(&Fixed(9)), Ok(DocRef([9; 16])));
+        assert_eq!(TenantId::random(&Fixed(1)), Ok(TenantId([1; 16])));
+        assert_eq!(VerRef::random(&Fixed(2)), Ok(VerRef([2; 16])));
+        assert_eq!(PersonalRef::random(&Fixed(3)), Ok(PersonalRef([3; 16])));
+        assert_eq!(CaseId::random(&Fixed(4)), Ok(CaseId([4; 16])));
+        assert_eq!(ActorRef::random(&Fixed(5)), Ok(ActorRef([5; 16])));
+        assert_eq!(TenantId::random(&Broken), Err(crate::ports::EntropyError));
+        assert_eq!(ActorRef::random(&Broken), Err(crate::ports::EntropyError));
         assert_eq!(DocRef::random(&Broken), Err(crate::ports::EntropyError));
         assert_eq!(DocRef::from_bytes([3; 16]).as_bytes(), &[3; 16]);
     }
@@ -247,5 +277,77 @@ mod spec_2_4_newtypes {
         let o = ObjectId::from_bytes([7; 32]);
         assert_eq!(o.as_bytes(), &[7; 32]);
         assert!(!format!("{o:?}").contains('7'));
+    }
+}
+
+// SPEC: 2.4, 6.2 (Groessen und Debug aller Handles)
+#[cfg(test)]
+mod spec_2_4_sizes {
+    use super::*;
+    use core::mem::size_of;
+
+    #[test]
+    fn handles_are_16_bytes_and_object_and_chain_ids_are_32() {
+        assert_eq!(size_of::<TenantId>(), 16);
+        assert_eq!(size_of::<DocRef>(), 16);
+        assert_eq!(size_of::<VerRef>(), 16);
+        assert_eq!(size_of::<PersonalRef>(), 16);
+        assert_eq!(size_of::<CaseId>(), 16);
+        assert_eq!(size_of::<ActorRef>(), 16);
+        assert_eq!(size_of::<ErasureId>(), 16);
+        assert_eq!(size_of::<SubjectTag>(), 16);
+        assert_eq!(size_of::<ClusterId>(), 16);
+        assert_eq!(size_of::<IndexGen>(), 16);
+        assert_eq!(size_of::<ObjectId>(), 32);
+        assert_eq!(size_of::<ChainId>(), 32);
+    }
+
+    #[test]
+    fn every_handle_debug_hides_content() {
+        let all = [
+            format!("{:?}", TenantId([7; 16])),
+            format!("{:?}", DocRef([7; 16])),
+            format!("{:?}", VerRef([7; 16])),
+            format!("{:?}", PersonalRef([7; 16])),
+            format!("{:?}", CaseId([7; 16])),
+            format!("{:?}", ActorRef([7; 16])),
+            format!("{:?}", ErasureId([7; 16])),
+            format!("{:?}", SubjectTag([7; 16])),
+            format!("{:?}", ClusterId([7; 16])),
+            format!("{:?}", IndexGen([7; 16])),
+            format!("{:?}", ObjectId([7; 32])),
+            format!("{:?}", ChainId([7; 32])),
+        ];
+        for s in all {
+            assert!(!s.contains('7'), "{s}");
+            assert!(s.ends_with("(..)"), "{s}");
+        }
+        assert_eq!(format!("{:?}", ChainId([0; 32])), "ChainId(..)");
+    }
+
+    #[test]
+    fn chain_id_roundtrips_bytes_and_orders_bytewise() {
+        let c = ChainId::from_bytes([9; 32]);
+        assert_eq!(c.as_bytes(), &[9; 32]);
+        assert!(ChainId([1; 32]) < ChainId([2; 32]));
+        assert_ne!(ChainId([1; 32]), ChainId([2; 32]));
+    }
+
+    // Positivkontrolle (16.4): die Monotonie-Pruefung kann scheitern.
+    #[test]
+    fn ordinals_are_strictly_monotone_and_none_at_max() {
+        assert_eq!(TenantOrd::SYSTEM.next(), Some(TenantOrd(1)));
+        assert_eq!(TenantOrd(u32::MAX).next(), None);
+        assert_eq!(SubjOrd(u32::MAX).next(), None);
+        assert_eq!(KOrd(u64::MAX).next(), None);
+        assert_eq!(KOrd(u64::MAX - 1).next(), Some(KOrd(u64::MAX)));
+        let mut o = SubjOrd(0);
+        for _ in 0..1000 {
+            let n = o.next();
+            assert!(n.is_some_and(|n| n > o));
+            o = n.unwrap_or(o);
+        }
+        assert_eq!(o, SubjOrd(1000));
+        assert!(VerOrd(2) > VerOrd(1));
     }
 }

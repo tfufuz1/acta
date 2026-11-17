@@ -20,21 +20,24 @@ pub enum VecError {
     /// Leere Herkunft (Z13: Ableitungen ohne Herkunft unzulässig).
     #[error("empty lineage")]
     EmptyLineage,
-    /// Segmentkapazität überschritten.
+    /// Segmentkapazität oder Ganzzahlbereich überschritten.
     #[error("segment capacity exceeded")]
     CapacityExceeded,
     /// Zugriff durch Gate gesperrt.
     #[error("gate violation")]
     GateViolation,
-    /// Segmentdaten beschädigt.
+    /// Segmentdaten beschädigt oder Sperre vergiftet.
     #[error("corrupted segment data")]
     CorruptedSegment,
     /// Positivkontrolle der Canary-Messung fehlgeschlagen (Z11).
     #[error("canary measurement failed")]
     CanaryFailed,
-    /// Funktion ist noch nicht umgesetzt.
-    #[error("not implemented")]
-    Unimplemented,
+    /// Konfiguration ungültig (Dimension, Segmentgröße oder `k` null).
+    #[error("invalid configuration")]
+    InvalidConfig,
+    /// Schlüssel ist im Index bereits vorhanden.
+    #[error("duplicate vector key")]
+    DuplicateKey,
 }
 
 impl ClassifiedError for VecError {
@@ -46,7 +49,8 @@ impl ClassifiedError for VecError {
             | Self::EmptyLineage
             | Self::CapacityExceeded
             | Self::CanaryFailed
-            | Self::Unimplemented => ErrorClass::Invalid,
+            | Self::InvalidConfig
+            | Self::DuplicateKey => ErrorClass::Invalid,
             Self::GateViolation => ErrorClass::Erased,
             Self::CorruptedSegment => ErrorClass::Integrity,
         }
@@ -62,7 +66,8 @@ impl ClassifiedError for VecError {
             Self::GateViolation => "vec.gate_violation",
             Self::CorruptedSegment => "vec.corrupted_segment",
             Self::CanaryFailed => "vec.canary_failed",
-            Self::Unimplemented => "vec.unimplemented",
+            Self::InvalidConfig => "vec.invalid_config",
+            Self::DuplicateKey => "vec.duplicate_key",
         }
     }
 }

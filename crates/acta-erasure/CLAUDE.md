@@ -15,9 +15,20 @@ acta-erasure: Loeschkern: Saga, Gate-Journal, Messung, Restore-Schutz, Mehrbetro
 - **Referenz im Quelltext:** Level L4 · Budget 9000 LOC · Spezifikation docs/SPEC.md Kap. 8
 
 ## Status
-- **Stand:** Gerüst (nur Fehlertyp)
-- **Produktionscode (ohne Tests/Leerzeilen/Kommentare):** 17 LOC
-- **Archiv-Quelle:** `archive/acta-erasure/` (siehe `archive/acta-erasure/MANIFEST.md`)
+- **Stand:** Arbeitspaket 1 abgeschlossen: reine Logik ohne E/A. Tests grün (35), Clippy `-D warnings` sauber, `cargo fmt --check` sauber, `cargo xtask gates` grün (alle sieben Gates).
+- **Umgesetzt:**
+  - Saga-Automat S0 bis S9 je Weg, Standardpfad und vorgezogener Pfad (`saga.rs`, SPEC 8.3). Wahl des Wegs nach `Besonders` oder SLA ≥ 700 Promille.
+  - Lesesperre und `restricted_read`, Zugriffsrecht ohne Existenzhinweis (`read.rs`, SPEC 8.1, Z1, Z16).
+  - Messung mit Positivkontrolle: ungültiger Lauf zählt nie als bestanden (`measure.rs`, SPEC 8.5, Z11).
+  - Erfüllungsklassen G, B, K, M, kumulativ, nur `reached` oder `not_reached` (`classes.rs`, SPEC 8.7).
+  - Trockenlauf für Mitbetroffene mit Modusauswahl; nie automatisches `DeleteAll` nach Fristablauf (`multi.rs`, SPEC 8.9, Z3).
+- **Nicht umgesetzt (Ausführung und Speicherung):** Schritte mit Seiteneffekten (Gate-Sperre durabel in S1, Bereinigung S3, Schlüsselvernichtung S5, Rotation S6, Sicherungsfenster S7), Messverfahren selbst (8.5), Restore-Schutz (8.8), Ausgangskorb und Kopienregister (8.6), `ArchiveHook` (8.4), Schwärzung für `RedactSplit`.
+- **Blockiert durch Gerüste:** `acta-vault`, `acta-seg`, `acta-ledger` und `acta-pstore` enthalten nur Fehlertypen (je ca. 25 Zeilen). Die Ausführung der Schritte kann erst nach deren Umsetzung folgen.
+- **Offene Widersprüche in der Spezifikation:**
+  - Anhang B.1 nennt `Requested → Planned` und `Planned → Gated`. Kapitel 8.3 nennt `S1 → Gated` und `S2 → Planned`. Der Automat folgt 8.3, weil Kapitel 8 das Verfahren beschreibt. Entscheidung durch den Nutzer nötig.
+  - 8.7 sagt, die Klassen bauen aufeinander auf. Der Crate setzt daher B ⇒ G, K ⇒ B, M ⇒ K voraus. Bestätigung durch den Nutzer nötig.
+- **Archiv:** `archive/acta-erasure/` bleibt bestehen, bis die Überführung vollständig ist (siehe Regeln unten).
+- **Schnittstelle:** Gate-Zustände und Gründe kommen aus `acta-gate` (`GateState`, `RestrictReason`, `EraseReason`). Eigene Duplikate gibt es nicht.
 
 ## Regeln für diesen Crate
 - Abhängigkeiten nur nach unten: `level(A) > level(B)`; keine Querkanten (G1).

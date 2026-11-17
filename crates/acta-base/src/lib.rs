@@ -1,8 +1,11 @@
 //! acta-base: Newtypes, Fehlerklassen, Ports, Festkomma.
 //!
-//! Level L0 · Budget 2500 LOC · Spezifikation docs/SPEC.md Kap. 2.2, 2.4, 3.5, 3.7, 4.6, 5.1.
+//! Level L0 · Budget 2500 LOC · Spezifikation docs/SPEC.md Kap. 2.2, 2.4, 3.5, 3.7, 4.6, 6.2, 15.2.
 //!
-//! Extraktionsarchiv: `archive/acta-base/MANIFEST.md`.
+//! Module: `canon`, `class`, `error`, `fx`, `ids`, `limits`, `ports`. Wiederausgefuehrt sind nur
+//! `DataClass`, `BaseError`, `ClassifiedError`, `ErrorClass`, `Clock`, `CryptoRng` und
+//! `EntropyError`; alle weiteren Typen (z. B. `ids::ChainId`, `error::PoisonScope`) liegen in
+//! ihrem Modul. Der Crate enthaelt keine Schluessel, keine Platten-E/A, keine Sperre.
 #![forbid(unsafe_code)]
 
 pub mod canon;

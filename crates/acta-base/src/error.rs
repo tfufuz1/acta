@@ -18,6 +18,23 @@ pub enum ErrorClass {
     Invalid,
 }
 
+/// Bereich einer Vergiftung (SPEC 15.2), aufsteigend nach Reichweite.
+///
+/// Dieser Crate speichert keinen Vergiftungszustand; den fuehrt `acta-node`. Vergiftung
+/// schliesst den kleinsten nachweislich isolierenden Bereich.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[non_exhaustive]
+pub enum PoisonScope {
+    /// Ein Umschlag mit Authentisierungsfehler bei vorhandenem Schluessel.
+    Document,
+    /// Kopf-MAC oder Pruefsumme eines Segments.
+    Segment,
+    /// Tresor, Manifest, Gate-Log, Ledger-Kette, Senkenwiderspruch, `FsyncFailed` ohne Ersatz.
+    Tenant,
+    /// Anker, Uhr, Zufall, Ordinalueberlauf.
+    Node,
+}
+
 /// Klassifizierbarer Fehler. `Display` und `code()` enthalten keine Personendaten (Z15).
 pub trait ClassifiedError: std::error::Error {
     /// Fehlerklasse.
@@ -80,5 +97,32 @@ mod tests {
             assert_eq!(e.code(), code);
             assert_eq!(e.class(), ErrorClass::Invalid);
         }
+    }
+
+    // SPEC: 15.2, Z15
+    #[test]
+    fn display_texts_carry_no_values_and_codes_are_distinct() {
+        let all = [
+            BaseError::Truncated,
+            BaseError::LengthOutOfBounds,
+            BaseError::TrailingBytes,
+            BaseError::OutOfRange,
+        ];
+        for (i, a) in all.iter().enumerate() {
+            assert!(!a.to_string().chars().any(|c| c.is_ascii_digit()));
+            for b in all.iter().skip(i + 1) {
+                assert_ne!(a.code(), b.code());
+                assert_ne!(a.to_string(), b.to_string());
+            }
+        }
+    }
+
+    // SPEC: 15.2 (Reichweite waechst von Document bis Node)
+    #[test]
+    fn poison_scope_is_ordered_by_reach() {
+        assert!(PoisonScope::Document < PoisonScope::Segment);
+        assert!(PoisonScope::Segment < PoisonScope::Tenant);
+        assert!(PoisonScope::Tenant < PoisonScope::Node);
+        assert_ne!(PoisonScope::Document, PoisonScope::Node);
     }
 }
