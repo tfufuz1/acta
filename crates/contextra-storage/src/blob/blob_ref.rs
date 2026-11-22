@@ -99,6 +99,22 @@ pub struct BlobRef {
 }
 
 impl BlobRef {
+    /// Erstellt eine geschredderte Referenz (blob_no = 0) nach SPEC §12.1.
+    pub const fn shredded(domain: u32) -> Self {
+        Self {
+            blob_no: 0,
+            offset: 0,
+            len: 0,
+            crc32c: 0,
+            domain,
+        }
+    }
+
+    /// Prüft, ob der Körper vernichtet ist (blob_no = 0).
+    pub const fn is_shredded(&self) -> bool {
+        self.blob_no == 0
+    }
+
     /// Kodiert die BlobRef in 28 Bytes (SPEC §9.5, Golden A.6).
     pub fn encode(&self) -> [u8; BLOB_REF_LEN] {
         let mut buf = [0u8; BLOB_REF_LEN];

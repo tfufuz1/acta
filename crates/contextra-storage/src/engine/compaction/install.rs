@@ -110,10 +110,10 @@ pub fn install_compaction(
     }
 
     edit.reserve = Some((
-        id_reserve.run_id_hwm(),
-        id_reserve.blob_no_hwm(),
-        id_reserve.segment_id_hwm(),
-        id_reserve.tmp_id_hwm(),
+        id_reserve.run_id_hwm,
+        id_reserve.blob_no_hwm,
+        id_reserve.segment_id_hwm,
+        id_reserve.tmp_id_hwm,
         current_state.keys_generation_min,
     ));
 

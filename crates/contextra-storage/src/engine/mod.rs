@@ -1,22 +1,26 @@
 //! # Storage Engine
 //!
-//! SPEC §12, §13, §16:
-//! - `flush`: 5-Schritte-Schreibübergabe aus eingefrorenen Memtables
-//! - `recovery`: 11-Schritte-Wiederanlauf nach Absturz als Zustandsmaschine
-//! - `compaction`: Leveled-Kompaktion mit reiner Planung und Versionenaufbewahrung
+//! Normative Referenzen: SPEC §10, §16.
+//! - `memtable`: `RwLock<BTreeMap<InternalKey, Slot>>` mit 64-Op-Unterbatches (H-S7)
+//! - `version`: Unveränderliche Versionen mit Nanosekunden-Austausch
+//! - `views`: Sichtbarkeitsprotokoll und Leseordnung (INV-VIS-1, INV-VIS-2, INV-VIS-3)
+//! - `retention`: Reine Versionenaufbewahrung nach §12.2 (INV-RET-1)
+//! - `registry`: Sichten, Halteregeln, Konsumenten, Untergrenze und Claims (INV-CLAIM-1)
+//! - `committer`: Flat-Combining Group-Commit mit Leiterwahl und Gegendruck (E-4, SD-49, SD-53)
 
-pub mod compaction;
-pub mod flush;
-pub mod recovery;
+pub mod committer;
+pub mod memtable;
+pub mod registry;
+pub mod retention;
+pub mod version;
+pub mod views;
 
-pub use compaction::{
-    execute_compaction, install_compaction, plan, retain_key_versions, Claims,
-    CompactionEntry, CompactionExecutionResult, CompactionInstallError, CompactionParams,
-    CompactionPlan, RetainResult,
+pub use committer::{
+    BackpressureLevel, BackpressureSource, Change, CommitError, Committer, Durability, Guard,
+    GuardPrewarmer, Op, Receipt, RedoWriter, Ticket,
 };
-pub use flush::{
-    flush_memtable, CommitterSync, FlushError, FrozenMemtable, MemtableEntry,
-};
-pub use recovery::{
-    recover_instance, RecoveryError, RecoveryResult, RecoveryStep,
-};
+pub use memtable::{Memtable, Slot, MEMTABLE_SUBBATCH_LIMIT};
+pub use registry::{Claim, Consumer, Hold, Registry, RegistryError};
+pub use retention::{retain, RetainItem};
+pub use version::{BlobHandle, FileHandle, SpaceState, Version, VersionState};
+pub use views::{create_view, create_view_inverted_order_buggy, View};

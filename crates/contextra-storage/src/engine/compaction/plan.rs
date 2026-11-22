@@ -160,8 +160,8 @@ pub fn plan(
 
                     if !l1_conflict {
                         // Erweitere Schlüsselbereich um überlappende L1-Runs
-                        let mut final_min = l0_min;
-                        let mut final_max = l0_max;
+                        let final_min = l0_min;
+                        let final_max = l0_max;
                         for r in &overlapping_l1 {
                             update_bounds(
                                 &mut Some(final_min.clone()),
@@ -320,7 +320,7 @@ fn update_bounds(
     r_min: &[u8],
     r_max: &[u8],
 ) {
-    if let Some(ref mut cur_min) = min_k {
+    if let Some(cur_min) = min_k {
         if r_min < cur_min.as_slice() {
             *cur_min = r_min.to_vec();
         }
@@ -328,7 +328,7 @@ fn update_bounds(
         *min_k = Some(r_min.to_vec());
     }
 
-    if let Some(ref mut cur_max) = max_k {
+    if let Some(cur_max) = max_k {
         if r_max > cur_max.as_slice() {
             *cur_max = r_max.to_vec();
         }

@@ -7,7 +7,7 @@
 
 use crate::catalog::reserve::IdReserve;
 use crate::catalog::types::{CatalogFileKind, CatalogSpaceOptions, FileMeta};
-use crate::codec::tag::{Tag, TagKind};
+use crate::codec::tag::TagKind;
 use crate::engine::compaction::plan::CompactionPlan;
 use crate::engine::compaction::retain::{retain_key_versions, CompactionEntry};
 use crate::run::blob_ref::BlobRef;
@@ -71,7 +71,7 @@ pub fn execute_compaction(
 
         // Lese alle Datenblöcke sequenziell
         let index = reader.index();
-        let num_blocks = index.entries().len();
+        let num_blocks = index.entries.len();
 
         for block_idx in 0..num_blocks {
             let block_data = reader.load_data_block(block_idx)
@@ -79,7 +79,9 @@ pub fn execute_compaction(
             let db_reader = crate::run::data::DataBlockReader::new(&block_data)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
-            for entry in db_reader.iter() {
+            for entry_res in db_reader.iter() {
+                let entry = entry_res
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
                 let user_key = entry.user_key;
                 let tag = entry.tag;
                 let val_bytes = entry.value;
@@ -149,7 +151,8 @@ pub fn execute_compaction(
 
     // 3. Ausgabe-Runs über den RunBuilder bauen
     let mut created_runs = Vec::new();
-    let mut current_run_id = id_reserve.alloc_run_id();
+    let mut current_run_id = id_reserve.ensure_run_id()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
     let mut current_builder = create_builder(plan.space, current_run_id, space_options, now_ms);
     let mut current_temp_path = base_dir.join(format!("{}.building", run_file_name(current_run_id)));
     let mut current_approx_bytes: u64 = 0;
@@ -189,7 +192,8 @@ pub fn execute_compaction(
             )?;
             created_runs.push((meta, path));
 
-            current_run_id = id_reserve.alloc_run_id();
+            current_run_id = id_reserve.ensure_run_id()
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
             current_builder = create_builder(plan.space, current_run_id, space_options, now_ms);
             current_temp_path = base_dir.join(format!("{}.building", run_file_name(current_run_id)));
             current_approx_bytes = 0;
@@ -275,16 +279,17 @@ fn finish_run(
         space,
         level,
         tier: 0,
+        flags: 0,
         bytes: len_u64,
-        entries_count: 0,
+        entries: 0,
+        generation: 0,
+        segment_kind: 0,
         min_stamp: 0,
         max_stamp: 0,
         min_key: Vec::new(),
         max_key: Vec::new(),
         blob_no_min: 0,
         blob_no_max: 0,
-        range_markers: 0,
-        erase_markers: 0,
     };
 
     Ok((meta, temp_path.to_path_buf()))

@@ -77,6 +77,15 @@ impl IdReserve {
         }
     }
 
+    /// Allokiert eine neue run_id und reserviert bei Bedarf einen neuen Block.
+    pub fn ensure_run_id(&mut self) -> Result<u64, IdError> {
+        if self.next_run_id >= self.run_id_hwm {
+            let (new_r, _, _, _, _) = self.plan_reservation()?;
+            self.run_id_hwm = new_r;
+        }
+        self.alloc_run_id()
+    }
+
     /// Allokiert eine neue run_id.
     pub fn alloc_run_id(&mut self) -> Result<u64, IdError> {
         if self.next_run_id >= self.run_id_hwm {
@@ -88,6 +97,15 @@ impl IdReserve {
         let id = self.next_run_id;
         self.next_run_id = self.next_run_id.checked_add(1).ok_or(IdError::Exhausted)?;
         Ok(id)
+    }
+
+    /// Allokiert eine neue blob_no und reserviert bei Bedarf einen neuen Block.
+    pub fn ensure_blob_no(&mut self) -> Result<u64, IdError> {
+        if self.next_blob_no >= self.blob_no_hwm {
+            let (_, new_b, _, _, _) = self.plan_reservation()?;
+            self.blob_no_hwm = new_b;
+        }
+        self.alloc_blob_no()
     }
 
     /// Allokiert eine neue blob_no.

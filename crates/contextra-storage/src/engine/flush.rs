@@ -133,7 +133,8 @@ pub fn flush_memtable(
     }
 
     // Schritt 1: Run (und ggf. Blob) bauen (.building)
-    let run_id = id_reserve.alloc_run_id();
+    let run_id = id_reserve.ensure_run_id()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
     let run_building = base_dir.join(format!("{}.building", run_file_name(run_id)));
 
     let has_separate = (space_opts.flags & 1) != 0;
@@ -190,7 +191,8 @@ pub fn flush_memtable(
         if separate {
             // Lazy Initialisierung der Blob-Datei (.building)
             if blob_opt.is_none() {
-                let b_no = id_reserve.alloc_blob_no();
+                let b_no = id_reserve.ensure_blob_no()
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
                 let b_path = base_dir.join(format!("BLOB-{b_no:06}.0000.building"));
                 let b_file = fs.open(&b_path, OpenMode::CreateNew(Perm::Private))?;
                 let mut b_writer = BlobWriter::new(b_no, 0, memtable.space_id, 0);
@@ -213,25 +215,30 @@ pub fn flush_memtable(
 
             let final_bref = if let Some(shredded_ref) = bref_opt {
                 shredded_ref
-            } else if let Some((b_no, ref mut writer, _, ref b_file, ref mut live_bytes)) = blob_opt {
-                let rec = BlobRecord {
-                    key: key.clone(),
-                    stamp: tag.stamp(),
-                    domain: domain_val,
-                    body: entry.body.clone(),
-                };
-                let bref = writer.append(&**b_file, &rec, None, None, cipher, mac, kdf)
+            } else if let Some((_, ref mut writer, _, ref b_file, ref mut live_bytes)) = blob_opt {
+                let rec = BlobRecord::new_body(
+                    domain_val,
+                    tag.stamp(),
+                    key.clone(),
+                    entry.body.clone(),
+                );
+                let bref_res = writer.append(&**b_file, &rec, None, None, cipher, mac, kdf)
                     .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-                *live_bytes = live_bytes.saturating_add(u64::from(bref.len));
-                bref
+                *live_bytes = live_bytes.saturating_add(u64::from(bref_res.len));
+                BlobRef {
+                    blob_no: bref_res.blob_no,
+                    offset: bref_res.offset,
+                    len: bref_res.len,
+                    crc32c: bref_res.crc32c,
+                    domain: bref_res.domain,
+                }
             } else {
                 BlobRef::shredded(domain_val)
             };
 
             let mut val_bytes = entry.header;
             val_bytes.extend_from_slice(&final_bref.encode());
-            let putref_tag = Tag::new(tag.stamp(), TagKind::PutRef)
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+            let putref_tag = Tag::new(tag.stamp(), TagKind::PutRef);
             builder.add(key, putref_tag, &val_bytes)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         } else {
@@ -258,16 +265,17 @@ pub fn flush_memtable(
         space: memtable.space_id,
         level: 0,
         tier: 0,
+        flags: 0,
         bytes: u64::try_from(run_bytes.len()).unwrap_or(0),
-        entries_count: 0,
+        entries: 0,
+        generation: 0,
+        segment_kind: 0,
         min_stamp: 0,
         max_stamp: max_s,
         min_key: Vec::new(),
         max_key: Vec::new(),
         blob_no_min: 0,
         blob_no_max: 0,
-        range_markers: 0,
-        erase_markers: 0,
     }];
 
     let mut blob_live_delta = Vec::new();
@@ -283,16 +291,17 @@ pub fn flush_memtable(
             space: memtable.space_id,
             level: 0,
             tier: 0,
+            flags: 0,
             bytes: live_b,
-            entries_count: 0,
+            entries: 0,
+            generation: 0,
+            segment_kind: 0,
             min_stamp: 0,
             max_stamp: max_s,
             min_key: Vec::new(),
             max_key: Vec::new(),
             blob_no_min: b_no,
             blob_no_max: b_no,
-            range_markers: 0,
-            erase_markers: 0,
         });
 
         blob_live_delta.push((b_no, i64::try_from(live_b).unwrap_or(0)));
@@ -311,10 +320,10 @@ pub fn flush_memtable(
         durable_stamp,
     ));
     edit.reserve = Some((
-        id_reserve.run_id_hwm(),
-        id_reserve.blob_no_hwm(),
-        id_reserve.segment_id_hwm(),
-        id_reserve.tmp_id_hwm(),
+        id_reserve.run_id_hwm,
+        id_reserve.blob_no_hwm,
+        id_reserve.segment_id_hwm,
+        id_reserve.tmp_id_hwm,
         catalog_state.keys_generation_min,
     ));
 

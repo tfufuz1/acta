@@ -127,9 +127,7 @@ pub fn retain_key_versions(
                             entry.body.clear();
                             entry.blob_ref = None;
                             // Nach DropBody wird der Eintrag als normaler Put geführt
-                            if let Ok(new_tag) = Tag::new(stamp, TagKind::Put) {
-                                entry.tag = new_tag;
-                            }
+                            entry.tag = Tag::new(stamp, TagKind::Put);
                             retained.push(entry);
                         }
                     }

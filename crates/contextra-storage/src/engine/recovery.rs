@@ -10,15 +10,14 @@ use crate::catalog::reserve::IdReserve;
 use crate::catalog::state::CatalogState;
 use crate::catalog::types::{CatalogError, CatalogFileKind, ErasePendingMeta};
 use crate::engine::compaction::exec::run_file_name;
-use crate::redo::driver::segment_file_name;
 use crate::redo::error::RedoError;
-use crate::redo::op::{RedoOp, RedoOpKind};
+use crate::redo::op::{RedoOp, RedoOpKind, OPFLAG_UNBOUNDED_END};
 use crate::redo::replay::{parse_segment_id, recover_redo};
 use contextra_storage_ports::{Cipher, Fs, Kdf, LockGuard, LockMode, Mac, OpenMode, Stamp};
 use std::collections::HashSet;
 use std::fmt;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -114,10 +113,10 @@ impl From<RedoError> for RecoveryError {
     fn from(e: RedoError) -> Self {
         match e {
             RedoError::Corrupt(msg) => Self::Corrupt(msg),
-            RedoError::RedoTruncated { last_stamp, redo_hwm } => {
+            RedoError::CorruptRedoTruncated { last_stamp, redo_hwm } => {
                 Self::CorruptRedoTruncated { last_stamp, redo_hwm }
             }
-            RedoError::Io(io_err) => Self::Io(io_err),
+            RedoError::Io(io_str) => Self::Io(io::Error::new(io::ErrorKind::Other, io_str)),
             _ => Self::Corrupt(format!("{e:?}")),
         }
     }
@@ -212,21 +211,27 @@ pub fn recover_instance<F: Fs + 'static>(
     let mut highest_redo_stamp = replay_res.max_stamp;
 
     for (frame, ops) in replay_res.committed_frames {
+        let stamp = frame.stamp;
         for op in ops {
             let flushed_s = catalog_state.space_flushed.get(&op.space).copied().unwrap_or(0);
-            if op.stamp > flushed_s {
-                if op.stamp > highest_redo_stamp {
-                    highest_redo_stamp = op.stamp;
+            if stamp > flushed_s {
+                if stamp > highest_redo_stamp {
+                    highest_redo_stamp = stamp;
                 }
                 // EraseRange-Ops in die pending-Menge aufnehmen (Schritt 6)
                 if matches!(op.kind, RedoOpKind::EraseRange) {
-                    if !catalog_state.erase_done.contains(&op.stamp) {
+                    if !catalog_state.erase_done.contains(&stamp) {
+                        let end = if (op.opflags & OPFLAG_UNBOUNDED_END) != 0 {
+                            None
+                        } else {
+                            Some(op.value.clone())
+                        };
                         pending_erases.push(ErasePendingMeta {
-                            id: op.stamp,
+                            id: stamp,
                             space: op.space,
                             range: crate::catalog::types::CatalogKeyRange {
                                 start: op.key.clone(),
-                                end: op.end_key.clone(),
+                                end,
                             },
                             level: 0,
                         });
