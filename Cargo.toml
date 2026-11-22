@@ -2,6 +2,7 @@
 members = [
     "crates/contextra-storage-ports",
     "crates/contextra-storage",
+    "crates/contextra-crypto-ref",
 ]
 resolver = "3"
 

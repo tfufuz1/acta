@@ -17,5 +17,5 @@ pub mod redo;
 pub mod run;
 pub mod sync;
 
-#[cfg(feature = "testing")]
+#[cfg(any(test, feature = "testing"))]
 pub mod testing;

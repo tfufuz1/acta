@@ -1,0 +1,19 @@
+[package]
+name = "contextra-crypto-ref"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Reference implementation of Cipher, Mac and Kdf ports"
+
+[lints]
+workspace = true
+
+[dependencies]
+contextra-storage-ports = { path = "../contextra-storage-ports" }
+blake3 = "1.5"
+chacha20poly1305 = { version = "0.10", features = ["alloc"] }
+subtle = "2.5"
+
+[dev-dependencies]
+contextra-storage = { path = "../contextra-storage" }
