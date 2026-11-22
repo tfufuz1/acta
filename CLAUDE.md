@@ -52,7 +52,7 @@ Ergebnisse mit `RUSTUP_TOOLCHAIN=stable` sind **nicht** gegen 1.89.0 verifiziert
 
 ## Git und PRs
 
-Nie direkt auf `main` arbeiten. Feature-Branch, kleine thematische Commits, PR gegen `main`. Details: `docs/dev/git-workflow.md`.
+Nie direkt auf `main` arbeiten. Feature-Branch, kleine thematische Commits, PR gegen `main`. PR per `gh api` (REST), nicht `gh pr create` (GraphQL gesperrt). Details: `docs/dev/git-workflow.md`.
 
 ## Bekannte Blocker (Stand 2026-11-22)
 
