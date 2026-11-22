@@ -68,7 +68,7 @@ pub struct RankedMutex<T, const RANK: u8> {
 
 impl<T, const RANK: u8> RankedMutex<T, RANK> {
     /// Erstellt einen neuen typisierten Mutex.
-    pub const fn new(val: T) -> Self {
+    pub fn new(val: T) -> Self {
         Self {
             inner: Mutex::new(val),
         }
@@ -153,13 +153,13 @@ pub struct RankedMutexGuard<'a, T, const RANK: u8> {
 impl<T, const RANK: u8> std::ops::Deref for RankedMutexGuard<'_, T, RANK> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
-        self._guard.as_ref().unwrap()
+        &**self._guard.as_ref().unwrap()
     }
 }
 
 impl<T, const RANK: u8> std::ops::DerefMut for RankedMutexGuard<'_, T, RANK> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self._guard.as_mut().unwrap()
+        &mut **self._guard.as_mut().unwrap()
     }
 }
 
@@ -179,7 +179,7 @@ pub struct RankedRwLock<T, const RANK: u8> {
 
 impl<T, const RANK: u8> RankedRwLock<T, RANK> {
     /// Erstellt eine neue typisierte RwLock.
-    pub const fn new(val: T) -> Self {
+    pub fn new(val: T) -> Self {
         Self {
             inner: RwLock::new(val),
         }

@@ -73,6 +73,38 @@ pub struct FsCaps {
     pub no_follow_root: bool,
 }
 
+/// Dateisystem-Richtlinie für den Speicher-Kern (SPEC §4, INV-FS-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FsPolicy {
+    /// Strikte Prüfung der FsCaps (Standard). Verlangt alle Pflicht-Caps.
+    #[default]
+    Strict,
+    /// Entspannte Prüfung für Tests und flüchtige Instanzen.
+    Relaxed,
+}
+
+impl FsCaps {
+    /// Prüft die FsCaps gegen eine FsPolicy nach SPEC §4 und INV-FS-1.
+    pub fn verify_policy(&self, policy: FsPolicy) -> io::Result<()> {
+        match policy {
+            FsPolicy::Strict => {
+                if !self.durable_file_sync
+                    || !self.durable_dir_sync
+                    || !self.atomic_rename
+                    || !self.private_perm
+                {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        format!("FsCaps genügen nicht FsPolicy::Strict: {self:?} (INV-FS-1)"),
+                    ));
+                }
+                Ok(())
+            }
+            FsPolicy::Relaxed => Ok(()),
+        }
+    }
+}
+
 /// Dateischnittstelle für wahlfreien Zugriff ohne `mmap`.
 pub trait File: Send + Sync {
     /// Liest ab Offset `off` in den Puffer.

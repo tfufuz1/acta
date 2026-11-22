@@ -4,7 +4,7 @@
 //! Fail-closed auf nicht-unterstützten Plattformen (O-13).
 
 use contextra_storage_ports::Entropy;
-use std::io::{self, Read};
+use std::io;
 
 /// Standard-Entropiequelle über `/dev/urandom`.
 #[derive(Debug, Clone, Copy, Default)]
@@ -13,8 +13,7 @@ pub struct RealEntropy;
 impl Entropy for RealEntropy {
     #[cfg(unix)]
     fn fill(&self, dst: &mut [u8]) -> io::Result<()> {
-        let mut file = std::fs::File::open("/dev/urandom")?;
-        file.read_exact(dst)
+        crate::env::real_fs::RealFs::fill_entropy(dst)
     }
 
     #[cfg(not(unix))]
