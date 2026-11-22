@@ -6,7 +6,6 @@
 //! Unter `cfg(debug_assertions)` erzwingt `Ranked<T, RANK>` die Einhaltung
 //! der Sperrhierarchie (INV-LOCK-1) zur Laufzeit.
 
-#![allow(clippy::indexing_slicing)]
 #![allow(clippy::panic)]
 #![allow(clippy::collapsible_if)]
 

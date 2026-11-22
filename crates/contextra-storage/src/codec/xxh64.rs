@@ -7,7 +7,6 @@
 //! - XXH64("abc", 0) = 0x44BC2CF5AD770999
 //! Keine Integer-Casts (M-02 = 0).
 
-#![allow(clippy::indexing_slicing)]
 
 const PRIME64_1: u64 = 0x9E3779B185EBCA87;
 const PRIME64_2: u64 = 0xC2B2AE3D27D4EB4F;

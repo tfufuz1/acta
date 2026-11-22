@@ -123,7 +123,7 @@ fn test_catalog_edit_all_fields_tlv_roundtrip() {
 fn test_catalog_optional_and_unknown_fields() {
     // Unbekanntes optionales Feld (Bit 0x8000 gesetzt): muss ignoriert werden
     let mut payload = Vec::new();
-    let opt_field_id = 0x9FFF u16; // 0x8000 | 0x1FFF
+    let opt_field_id = 0x9FFF_u16; // 0x8000 | 0x1FFF
     payload.extend_from_slice(&opt_field_id.to_le_bytes());
     payload.push(3); // len varint = 3
     payload.extend_from_slice(b"xyz");
@@ -137,7 +137,7 @@ fn test_catalog_optional_and_unknown_fields() {
 
     // Unbekanntes Pflichtfeld (Bit 0x8000 nicht gesetzt): muss zu Unsupported führen
     let mut bad_payload = Vec::new();
-    let req_field_id = 0x0FFF u16;
+    let req_field_id = 0x0FFF_u16;
     bad_payload.extend_from_slice(&req_field_id.to_le_bytes());
     bad_payload.push(2);
     bad_payload.extend_from_slice(b"ab");

@@ -132,6 +132,18 @@ pub struct CatalogLog {
 }
 
 impl CatalogLog {
+    /// Erstellt einen neuen CatalogLog-Zustand für eine gegebene Katalognummer.
+    pub fn new(catalog_no: u64) -> Self {
+        Self {
+            catalog_no,
+            integrity_mode: 0,
+            offset: CATALOG_HEADER_LEN as u64,
+            record_index: 0,
+            chk_vorher: fold_u64_to_u32(catalog_no),
+            head_mac: [0u8; 16],
+        }
+    }
+
     /// Öffnet eine bestehende Katalog-Datei, liest alle Records und baut den Zustand auf.
     ///
     /// INV-CAT-3: Nur der letzte Record darf Torn Write sein und wird verworfen.

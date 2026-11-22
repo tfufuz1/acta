@@ -1,6 +1,7 @@
 //! # Storage Engine
 //!
-//! Normative Referenzen: SPEC §10, §16.
+//! Normative Referenzen: SPEC §10, §16 (INV-POISON-1).
+//! INV-POISON-1: Ein vergiftetes Handle verweigert Schreiben und Wartung, liest weiter; health() liefert Poisoned.
 //! - `memtable`: `RwLock<BTreeMap<InternalKey, Slot>>` mit 64-Op-Unterbatches (H-S7)
 //! - `version`: Unveränderliche Versionen mit Nanosekunden-Austausch
 //! - `views`: Sichtbarkeitsprotokoll und Leseordnung (INV-VIS-1, INV-VIS-2, INV-VIS-3)

@@ -5,6 +5,7 @@ use contextra_storage::catalog::durable::sync_existing;
 use contextra_storage::catalog::edit::CatalogEdit;
 use contextra_storage::catalog::log::{catalog_file_name, CatalogHeader, CatalogLog, CATALOG_HEADER_LEN};
 use contextra_storage::catalog::rollover::rollover;
+use contextra_storage::catalog::state::CatalogState;
 use contextra_storage::catalog::types::*;
 use contextra_storage::testing::MemFs;
 use contextra_storage_ports::{Fs, OpenMode, Perm};

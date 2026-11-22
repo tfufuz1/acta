@@ -19,6 +19,9 @@ use contextra_storage_ports::{Cipher, Fs, Kdf, Mac, OpenMode, Perm};
 use std::path::Path;
 
 /// Führt einen Rollover zu einer neuen Katalog-Datei durch.
+pub use rollover as rollover_catalog;
+
+/// Führt einen Rollover zu einer neuen Katalog-Datei durch.
 pub fn rollover(
     fs: &dyn Fs,
     root: &Path,

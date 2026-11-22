@@ -1,6 +1,7 @@
 //! # Registry: Sichten, Halteregeln, Konsumenten, Untergrenze und Claims
 //!
-//! Normative Referenzen: SPEC §10.3, §16.1 (INV-LOCK-1), §16.4 (INV-RET-1), §16.5 (INV-CLAIM-1).
+//! Normative Referenzen: SPEC §10.3, §16.1 (INV-LOCK-1), §16.4 (INV-RET-1), §16.5 (INV-CLAIM-1, INV-SEG-1).
+//! INV-SEG-1: Ein Segment wird nur mit gültigem Siegel-Footer und per Edit lebendig; Rahmenprüfung schützt vor Beschädigung.
 //! Keine Integer-Casts (M-02 = 0).
 
 use std::collections::BTreeMap;

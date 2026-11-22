@@ -77,6 +77,27 @@ impl IdReserve {
         }
     }
 
+    /// Erstellt eine Reservierungsinstanz direkt aus Hochwassermarken (z.B. für Tests/Recovery).
+    pub fn recover(
+        run_id_hwm: u64,
+        blob_no_hwm: u64,
+        segment_id_hwm: u64,
+        tmp_id_hwm: u64,
+        keys_generation_min: u64,
+    ) -> Self {
+        Self {
+            next_run_id: run_id_hwm,
+            run_id_hwm,
+            next_blob_no: blob_no_hwm,
+            blob_no_hwm,
+            next_segment_id: segment_id_hwm,
+            segment_id_hwm,
+            next_tmp_id: tmp_id_hwm,
+            tmp_id_hwm,
+            keys_generation_min,
+        }
+    }
+
     /// Allokiert eine neue run_id und reserviert bei Bedarf einen neuen Block.
     pub fn ensure_run_id(&mut self) -> Result<u64, IdError> {
         if self.next_run_id >= self.run_id_hwm {

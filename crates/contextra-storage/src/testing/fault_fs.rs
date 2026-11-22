@@ -12,7 +12,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
-/// Konfiguration für Fehlereinspritzungen.
+/// Konfiguration für Fehlereinspritzungen nach SPEC §19.2.
 #[derive(Default)]
 pub struct FaultConfig {
     /// Vorgabe, nach wie vielen Operationen ein Fehler ausgelöst wird (0 = deaktiviert).
@@ -23,6 +23,18 @@ pub struct FaultConfig {
     pub fail_enospc: AtomicBool,
     /// Simuliert Dateisystemfehler (EIO).
     pub fail_io: AtomicBool,
+    /// Zerreißen von Schreibvorgängen (z.B. max Bytes vor Fehler, 0 = deaktiviert).
+    pub torn_write_limit: AtomicU64,
+    /// Verlorener Schreibvorgang (quittiert, aber nicht geschrieben).
+    pub lost_write: AtomicBool,
+    /// Fehlgeleiteter Schreibvorgang (falscher Offset).
+    pub misdirected_write: AtomicBool,
+    /// Offset-Delta für fehlgeleitete Schreibvorgänge.
+    pub misdirected_offset_delta: AtomicU64,
+    /// Bitfäule beim Lesen aktivieren.
+    pub enable_bit_rot: AtomicBool,
+    /// Offset für Bitfäule beim Lesen.
+    pub bit_rot_offset: AtomicU64,
 }
 
 /// Dateisystem-Wrapper mit gezielter Fehlereinspritzung.
@@ -76,7 +88,18 @@ impl File for FaultFile {
                 "Injected EIO",
             ));
         }
-        self.inner.read_at(buf, off)
+        let n = self.inner.read_at(buf, off)?;
+        if self.config.enable_bit_rot.load(Ordering::Relaxed) {
+            let rot_off = self.config.bit_rot_offset.load(Ordering::Relaxed);
+            let end_off = off.saturating_add(n as u64);
+            if rot_off >= off && rot_off < end_off {
+                let idx = (rot_off - off) as usize;
+                if idx < buf.len() {
+                    buf[idx] ^= 0x01; // Bitfäule: Bit 0 invertieren
+                }
+            }
+        }
+        Ok(n)
     }
 
     fn write_all_at(&self, buf: &[u8], off: u64) -> io::Result<()> {
@@ -92,7 +115,26 @@ impl File for FaultFile {
                 "Injected EIO",
             ));
         }
-        self.inner.write_all_at(buf, off)
+        // Verlorener Schreibvorgang: Quittiert aber nicht geschrieben
+        if self.config.lost_write.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+        // Fehlgeleiteter Schreibvorgang: Schreibt an abweichenden Offset
+        let actual_off = if self.config.misdirected_write.load(Ordering::Relaxed) {
+            off.wrapping_add(self.config.misdirected_offset_delta.load(Ordering::Relaxed))
+        } else {
+            off
+        };
+        // Zerreißen von Schreibvorgängen (z.B. Sektorgröße 512 B / 4 KiB)
+        let torn_limit = self.config.torn_write_limit.load(Ordering::Relaxed) as usize;
+        if torn_limit > 0 && buf.len() > torn_limit {
+            self.inner.write_all_at(&buf[..torn_limit], actual_off)?;
+            return Err(io::Error::new(
+                io::ErrorKind::WriteZero,
+                "Injected torn write",
+            ));
+        }
+        self.inner.write_all_at(buf, actual_off)
     }
 
     fn len(&self) -> io::Result<u64> {

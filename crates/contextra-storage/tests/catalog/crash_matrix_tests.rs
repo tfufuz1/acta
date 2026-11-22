@@ -7,7 +7,6 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
-use contextra_storage::blob::blob_ref::BlobRef;
 use contextra_storage::blob::reader::BlobReader;
 use contextra_storage::blob::record::BlobRecord;
 use contextra_storage::blob::sweep::sweep_blob;
@@ -17,13 +16,18 @@ use contextra_storage::catalog::durable::sync_existing;
 use contextra_storage::catalog::edit::CatalogEdit;
 use contextra_storage::catalog::log::{catalog_file_name, CatalogHeader, CatalogLog};
 use contextra_storage::catalog::reserve::IdReserve;
-use contextra_storage::catalog::rollover::rollover_catalog;
+use contextra_storage::catalog::state::apply_edit;
 use contextra_storage::catalog::types::*;
 use contextra_storage::testing::{FaultConfig, FaultFs, MemFs};
 use contextra_storage_ports::{Fs, OpenMode, Perm};
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+
+fn file_exists(fs: &dyn Fs, path: &Path) -> bool {
+    fs.open(path, OpenMode::Read).is_ok()
+}
 
 #[test]
 fn test_crash_matrix_id_reserve_crash_before_edit() {
@@ -37,10 +41,10 @@ fn test_crash_matrix_id_reserve_crash_before_edit() {
 
     let mut reserve = IdReserve::recover(0, 0, 0, 0, 0);
     // Allokation triggert Reservierungsblock (256)
-    let run_id_1 = reserve.alloc_run_id();
-    assert_eq!(run_id_1, 1);
-    let hwm_run = reserve.run_id_hwm();
+    let run_id_1 = reserve.ensure_run_id().unwrap();
+    let hwm_run = reserve.run_id_hwm;
     assert_eq!(hwm_run, 256);
+    assert!(run_id_1 < hwm_run);
 
     // Absturz vor Edit: Niemals ein Edit geschrieben.
     fault_cfg.fail_sync.store(true, Ordering::Relaxed);
@@ -48,7 +52,7 @@ fn test_crash_matrix_id_reserve_crash_before_edit() {
     // Nach Neustart: Recovery liest den Zustand aus dem letzten dauerhaften Catalog-Stand (hier 0 bzw. HWM).
     // Wenn HWM im Catalog persistiert war (oder nach Recovery von HWM fortgeführt wird):
     let mut recovered_reserve = IdReserve::recover(hwm_run, 0, 0, 0, 0);
-    let next_id = recovered_reserve.alloc_run_id();
+    let next_id = recovered_reserve.ensure_run_id().unwrap();
     // INV-KEY-2: IDs unter HWM werden nie wiederverwendet
     assert!(next_id >= hwm_run);
     assert_eq!(next_id, 256);
@@ -70,8 +74,8 @@ fn test_crash_matrix_id_used_file_created_crash_before_flush_edit() {
     let mut log = CatalogLog::read_and_recover(&*cat_file, 1, 0, None, None, None, None).unwrap().1;
 
     let mut reserve = IdReserve::recover(0, 0, 0, 0, 0);
-    let run_id = reserve.alloc_run_id(); // 1
-    let hwm = reserve.run_id_hwm(); // 256
+    let run_id = reserve.ensure_run_id().unwrap();
+    let hwm = reserve.run_id_hwm; // 256
 
     // Flush beginnt: Run-Datei auf Platte erzeugt
     let run_path = root.join("RUN-000001");
@@ -92,11 +96,11 @@ fn test_crash_matrix_id_used_file_created_crash_before_flush_edit() {
     // b) Verwaisten-Suche (§13.1 Schritt 4, INV-CAT-4):
     // Datei RUN-000001 ist verwaist, da nicht im Catalog genannt -> gelöscht!
     fs.remove_file(&run_path).unwrap();
-    assert!(!fs.exists(&run_path).unwrap());
+    assert!(!file_exists(&fs, &run_path));
 
-    // c) Reserve nach Recovery (INV-KEY-2): HWM wird weitergeführt, ID 1 wird nie wieder vergeben
+    // c) Reserve nach Recovery (INV-KEY-2): HWM wird weitergeführt, vergebene ID wird nie wieder vergeben
     let mut new_reserve = IdReserve::recover(hwm, 0, 0, 0, 0);
-    let next_id = new_reserve.alloc_run_id();
+    let next_id = new_reserve.ensure_run_id().unwrap();
     assert!(next_id >= hwm);
     assert_ne!(next_id, run_id);
 }
@@ -113,7 +117,7 @@ fn test_crash_matrix_blob_sweep_crash_before_edit() {
     // Blob Gen 1 schreiben
     let b1_path = root.join("BLOB-000001.000001");
     let b1_file = fs.open(&b1_path, OpenMode::CreateNew(Perm::Private)).unwrap();
-    let mut writer = BlobWriter::new(&*b1_file, 1, 1, 0, None).unwrap();
+    let mut writer = BlobWriter::new(1, 1, 1, 0);
     let r1 = BlobRecord {
         kind: 0x01,
         domain: 0,
@@ -121,7 +125,7 @@ fn test_crash_matrix_blob_sweep_crash_before_edit() {
         key: b"k1".to_vec(),
         body: b"body1".to_vec(),
     };
-    let ref1 = writer.append(&*b1_file, &r1).unwrap();
+    let ref1 = writer.append(&*b1_file, &r1, None, None, None, None, None).unwrap();
     writer.finish(&*b1_file).unwrap();
     b1_file.sync_all().unwrap();
     fs.sync_dir(root).unwrap();
@@ -159,8 +163,9 @@ fn test_crash_matrix_blob_sweep_crash_before_edit() {
     let b2_path = root.join("BLOB-000001.000002");
     let b1_read = fs.open(&b1_path, OpenMode::Read).unwrap();
     let b2_write = fs.open(&b2_path, OpenMode::CreateNew(Perm::Private)).unwrap();
-    let reader = BlobReader::open(&*b1_read, 1, 1, 0, None).unwrap();
-    sweep_blob(&reader, &*b1_read, &*b2_write, 1, 2, 0, None, |_| false).unwrap();
+    let mut live_offsets = HashSet::new();
+    live_offsets.insert(ref1.offset);
+    sweep_blob(&*b1_read, &*b2_write, &live_offsets, 0, None, None).unwrap();
     b2_write.sync_all().unwrap();
     fs.sync_dir(root).unwrap();
 
@@ -177,16 +182,16 @@ fn test_crash_matrix_blob_sweep_crash_before_edit() {
     assert_eq!(blob_meta.generation, 1);
 
     // Gen 2 ist zusätzliche Generationsdatei -> verwaist -> löschen (INV-CAT-4)
-    if fs.exists(&b2_path).unwrap() {
+    if file_exists(&fs, &b2_path) {
         fs.remove_file(&b2_path).unwrap();
     }
-    assert!(!fs.exists(&b2_path).unwrap());
-    assert!(fs.exists(&b1_path).unwrap());
+    assert!(!file_exists(&fs, &b2_path));
+    assert!(file_exists(&fs, &b1_path));
 
     // Gen 1 weiterhin lesbar (INV-BLOB-1)
-    let r_active = BlobReader::open(&*b1_read, 1, 1, 0, None).unwrap();
-    let rec = r_active.read(&*b1_read, &ref1, b"k1", 10).unwrap();
-    assert_eq!(rec.body, b"body1");
+    let r_active = BlobReader::open(&*b1_read, 0).unwrap();
+    let rec = r_active.read(&*b1_read, &ref1, b"k1", 10, None, None, None, None, None).unwrap();
+    assert_eq!(rec, b"body1");
 }
 
 #[test]
@@ -201,7 +206,7 @@ fn test_crash_matrix_blob_sweep_crash_after_edit_before_unlink() {
     // b1 anlegen
     let b1_path = root.join("BLOB-000001.000001");
     let b1_f = fs.open(&b1_path, OpenMode::CreateNew(Perm::Private)).unwrap();
-    let mut w1 = BlobWriter::new(&*b1_f, 1, 1, 0, None).unwrap();
+    let mut w1 = BlobWriter::new(1, 1, 1, 0);
     let rec = BlobRecord {
         kind: 0x01,
         domain: 0,
@@ -209,15 +214,16 @@ fn test_crash_matrix_blob_sweep_crash_after_edit_before_unlink() {
         key: b"k".to_vec(),
         body: b"v".to_vec(),
     };
-    let ref1 = w1.append(&*b1_f, &rec).unwrap();
+    let ref1 = w1.append(&*b1_f, &rec, None, None, None, None, None).unwrap();
     w1.finish(&*b1_f).unwrap();
     b1_f.sync_all().unwrap();
 
     // b2 sweepen
     let b2_path = root.join("BLOB-000001.000002");
     let b2_f = fs.open(&b2_path, OpenMode::CreateNew(Perm::Private)).unwrap();
-    let r1 = BlobReader::open(&*b1_f, 1, 1, 0, None).unwrap();
-    sweep_blob(&r1, &*b1_f, &*b2_f, 1, 2, 0, None, |_| false).unwrap();
+    let mut live_offsets = HashSet::new();
+    live_offsets.insert(ref1.offset);
+    sweep_blob(&*b1_f, &*b2_f, &live_offsets, 0, None, None).unwrap();
     b2_f.sync_all().unwrap();
     fs.sync_dir(root).unwrap();
 
@@ -228,7 +234,25 @@ fn test_crash_matrix_blob_sweep_crash_after_edit_before_unlink() {
     let mut log = CatalogLog::read_and_recover(&*cat_f, 1, 0, None, None, None, None).unwrap().1;
 
     let mut e1 = CatalogEdit::default();
-    e1.blob_replace.push((1, 2)); // blob 1, neue generation 2
+    e1.add_files.push(FileMeta {
+        kind: CatalogFileKind::Blob,
+        id: 1,
+        space: 1,
+        level: 0,
+        tier: 0,
+        flags: 0,
+        min_stamp: 20,
+        max_stamp: 20,
+        bytes: 200,
+        entries: 1,
+        generation: 1,
+        segment_kind: 0,
+        blob_no_min: 1,
+        blob_no_max: 1,
+        min_key: Vec::new(),
+        max_key: Vec::new(),
+    });
+    e1.blob_replace.push((1, 1, 2)); // blob 1, alt gen 1, neu gen 2
     let synced = sync_existing(&fs, &*cat_f, root, e1).unwrap();
     log.commit(&*cat_f, synced, None, None, None, None).unwrap();
     cat_f.sync_all().unwrap();
@@ -247,14 +271,14 @@ fn test_crash_matrix_blob_sweep_crash_after_edit_before_unlink() {
     // Verwaisten-Suche löscht alte Generation b1 (INV-CAT-4)
     fs.remove_file(&b1_path).unwrap();
 
-    assert!(!fs.exists(&b1_path).unwrap());
-    assert!(fs.exists(&b2_path).unwrap());
+    assert!(!file_exists(&fs, &b1_path));
+    assert!(file_exists(&fs, &b2_path));
 
     // Gen 2 enthält Daten an exakt gleicher BlobRef (INV-BLOB-3)
     let b2_r = fs.open(&b2_path, OpenMode::Read).unwrap();
-    let reader2 = BlobReader::open(&*b2_r, 1, 2, 0, None).unwrap();
-    let read_rec = reader2.read(&*b2_r, &ref1, b"k", 20).unwrap();
-    assert_eq!(read_rec.body, b"v");
+    let reader2 = BlobReader::open(&*b2_r, 0).unwrap();
+    let read_rec = reader2.read(&*b2_r, &ref1, b"k", 20, None, None, None, None, None).unwrap();
+    assert_eq!(read_rec, b"v");
 }
 
 #[test]
@@ -271,24 +295,28 @@ fn test_crash_matrix_catalog_rollover_crash_before_current() {
     let cat1_path = root.join(catalog_file_name(1));
     let cat1_file = fs.open(&cat1_path, OpenMode::CreateNew(Perm::Private)).unwrap();
     cat1_file.write_all_at(&CatalogHeader::new(1).encode(), 0).unwrap();
-    let mut log = CatalogLog::read_and_recover(&*cat1_file, 1, 0, None, None, None, None).unwrap().1;
+    let (mut state1, mut log) = CatalogLog::read_and_recover(&*cat1_file, 1, 0, None, None, None, None).unwrap();
 
     let mut e1 = CatalogEdit::default();
-    e1.space_options.push(CatalogSpaceOptions {
-        space_id: 42,
-        key_format: 1,
-        body_mode: 0,
-    });
-    let synced = sync_existing(&fs, &*cat1_file, root, e1).unwrap();
+    e1.spaces_add.push((42, b"space42".to_vec(), CatalogSpaceOptions {
+        header_len: 0,
+        weights_k: 0,
+        flags: 0,
+        separate_threshold: 0,
+        prefix_filter: 0,
+        locality_prefix: 0,
+    }));
+    let synced = sync_existing(&fs, &*cat1_file, root, e1.clone()).unwrap();
     log.commit(&*cat1_file, synced, None, None, None, None).unwrap();
+    state1 = apply_edit(&state1, &e1).unwrap();
     cat1_file.sync_all().unwrap();
     fs.sync_dir(root).unwrap();
 
-    // Rollover beginnt: neue Datei catalog-0000000000000002.log wird geschrieben und gesynct
+    // Rollover beginnt: neue Datei catalog-000002 wird geschrieben und gesynct
     let cat2_path = root.join(catalog_file_name(2));
     let cat2_file = fs.open(&cat2_path, OpenMode::CreateNew(Perm::Private)).unwrap();
     cat2_file.write_all_at(&CatalogHeader::new(2).encode(), 0).unwrap();
-    let snap = log.state().to_snapshot_edit();
+    let snap = state1.to_snapshot_edit();
     let mut log2 = CatalogLog::new(2);
     let snap_synced = sync_existing(&fs, &*cat2_file, root, snap).unwrap();
     log2.commit(&*cat2_file, snap_synced, None, None, None, None).unwrap();
@@ -305,13 +333,13 @@ fn test_crash_matrix_catalog_rollover_crash_before_current() {
 
     // Alte Datei ist gültig
     let r1 = fs.open(&cat1_path, OpenMode::Read).unwrap();
-    let (state1, _) = CatalogLog::read_and_recover(&*r1, 1, 0, None, None, None, None).unwrap();
-    assert_eq!(state1.space_options.len(), 1);
+    let (recovered_state1, _) = CatalogLog::read_and_recover(&*r1, 1, 0, None, None, None, None).unwrap();
+    assert_eq!(recovered_state1.spaces.len(), 1);
 
     // Neue Datei ist verwaist und wird von der Verwaisten-Suche gelöscht (INV-CAT-4)
     fs.remove_file(&cat2_path).unwrap();
-    assert!(!fs.exists(&cat2_path).unwrap());
-    assert!(fs.exists(&cat1_path).unwrap());
+    assert!(!file_exists(&fs, &cat2_path));
+    assert!(file_exists(&fs, &cat1_path));
 }
 
 #[test]
@@ -327,16 +355,20 @@ fn test_crash_matrix_catalog_rollover_crash_after_current_before_delete() {
     let cat1_path = root.join(catalog_file_name(1));
     let cat1_file = fs.open(&cat1_path, OpenMode::CreateNew(Perm::Private)).unwrap();
     cat1_file.write_all_at(&CatalogHeader::new(1).encode(), 0).unwrap();
-    let mut log = CatalogLog::read_and_recover(&*cat1_file, 1, 0, None, None, None, None).unwrap().1;
+    let (mut state1, mut log) = CatalogLog::read_and_recover(&*cat1_file, 1, 0, None, None, None, None).unwrap();
 
     let mut e1 = CatalogEdit::default();
-    e1.space_options.push(CatalogSpaceOptions {
-        space_id: 99,
-        key_format: 2,
-        body_mode: 1,
-    });
-    let synced = sync_existing(&fs, &*cat1_file, root, e1).unwrap();
+    e1.spaces_add.push((99, b"space99".to_vec(), CatalogSpaceOptions {
+        header_len: 0,
+        weights_k: 0,
+        flags: 0,
+        separate_threshold: 0,
+        prefix_filter: 0,
+        locality_prefix: 0,
+    }));
+    let synced = sync_existing(&fs, &*cat1_file, root, e1.clone()).unwrap();
     log.commit(&*cat1_file, synced, None, None, None, None).unwrap();
+    state1 = apply_edit(&state1, &e1).unwrap();
     cat1_file.sync_all().unwrap();
     fs.sync_dir(root).unwrap();
 
@@ -344,7 +376,7 @@ fn test_crash_matrix_catalog_rollover_crash_after_current_before_delete() {
     let cat2_path = root.join(catalog_file_name(2));
     let cat2_file = fs.open(&cat2_path, OpenMode::CreateNew(Perm::Private)).unwrap();
     cat2_file.write_all_at(&CatalogHeader::new(2).encode(), 0).unwrap();
-    let snap = log.state().to_snapshot_edit();
+    let snap = state1.to_snapshot_edit();
     let mut log2 = CatalogLog::new(2);
     let snap_synced = sync_existing(&fs, &*cat2_file, root, snap).unwrap();
     log2.commit(&*cat2_file, snap_synced, None, None, None, None).unwrap();
@@ -353,7 +385,7 @@ fn test_crash_matrix_catalog_rollover_crash_after_current_before_delete() {
     // CURRENT auf 2 umschalten
     write_current(&fs, root, 2).unwrap();
 
-    // Absturz vor Löschen von catalog-0000000000000001.log! Beide Dateien vorhanden!
+    // Absturz vor Löschen von catalog 1! Beide Dateien vorhanden!
     fault_cfg.fail_sync.store(true, Ordering::Relaxed);
 
     // Neustart / Recovery:
@@ -363,11 +395,11 @@ fn test_crash_matrix_catalog_rollover_crash_after_current_before_delete() {
     // Neue Datei ist gültig und aktiv
     let r2 = fs.open(&cat2_path, OpenMode::Read).unwrap();
     let (state2, _) = CatalogLog::read_and_recover(&*r2, 2, 0, None, None, None, None).unwrap();
-    assert_eq!(state2.space_options.len(), 1);
-    assert_eq!(state2.space_options.get(&99).unwrap().key_format, 2);
+    assert_eq!(state2.spaces.len(), 1);
+    assert!(state2.spaces.contains_key(&99));
 
     // Alte Datei catalog 1 ist verwaist und wird von Verwaisten-Suche aufgeräumt (INV-CAT-4)
     fs.remove_file(&cat1_path).unwrap();
-    assert!(!fs.exists(&cat1_path).unwrap());
-    assert!(fs.exists(&cat2_path).unwrap());
+    assert!(!file_exists(&fs, &cat1_path));
+    assert!(file_exists(&fs, &cat2_path));
 }

@@ -37,13 +37,14 @@ fn test_id_reserve_blocks_and_exhaustion() {
 fn test_id_reservation_survives_crash_and_no_reuse() {
     // INV-KEY-2: IDs werden erst nach dauerhaftem Hochwassermarken-Edit benutzt und nie wiederverwendet.
     let mut state = CatalogState::default();
+    let mut reserve_before_crash = IdReserve::new(&state);
 
     // 1. Reservierungs-Edit commiten (HWM = 256)
+    let (r_hwm, b_hwm, s_hwm, t_hwm, k_gen) = reserve_before_crash.plan_reservation().unwrap();
     let mut edit = CatalogEdit::default();
-    edit.reserve = Some((256, 256, 256, 256, 1));
+    edit.reserve = Some((r_hwm, b_hwm, s_hwm, t_hwm, k_gen));
     state = apply_edit(&state, &edit).unwrap();
-
-    let mut reserve_before_crash = IdReserve::new(&state);
+    reserve_before_crash.apply_reservation(&state);
 
     // 2. Ein paar IDs vergeben
     let id0 = reserve_before_crash.alloc_run_id().unwrap();

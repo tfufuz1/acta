@@ -239,10 +239,61 @@ impl Fs for MemFs {
         Ok(entries)
     }
 
-    fn sync_dir(&self, _p: &Path) -> io::Result<()> {
+    fn sync_dir(&self, p: &Path) -> io::Result<()> {
         let mut inner = self.inner.write().unwrap();
-        inner.durable_files = inner.files.keys().cloned().collect();
-        inner.durable_dirs = inner.dirs.clone();
+        inner.durable_dirs.insert(p.to_path_buf());
+        // Nur Dateien und Verzeichnisse, die direkt in `p` liegen, dauerhaft machen (SPEC §19.2)
+        let to_add_files: Vec<PathBuf> = inner
+            .files
+            .keys()
+            .filter(|f_path| match f_path.parent() {
+                Some(parent) => parent == p || (p == Path::new(".") && parent == Path::new("")),
+                None => p == Path::new(".") || p == Path::new(""),
+            })
+            .cloned()
+            .collect();
+        for f in to_add_files {
+            inner.durable_files.insert(f);
+        }
+
+        let existing_files: BTreeSet<PathBuf> = inner.files.keys().cloned().collect();
+        inner.durable_files.retain(|f_path| {
+            let in_dir = match f_path.parent() {
+                Some(parent) => parent == p || (p == Path::new(".") && parent == Path::new("")),
+                None => p == Path::new(".") || p == Path::new(""),
+            };
+            if in_dir {
+                existing_files.contains(f_path)
+            } else {
+                true
+            }
+        });
+
+        let to_add_dirs: Vec<PathBuf> = inner
+            .dirs
+            .iter()
+            .filter(|d| match d.parent() {
+                Some(parent) => parent == p || (p == Path::new(".") && parent == Path::new("")),
+                None => p == Path::new(".") || p == Path::new(""),
+            })
+            .cloned()
+            .collect();
+        for d in to_add_dirs {
+            inner.durable_dirs.insert(d);
+        }
+
+        let existing_dirs = inner.dirs.clone();
+        inner.durable_dirs.retain(|d| {
+            let in_dir = match d.parent() {
+                Some(parent) => parent == p || (p == Path::new(".") && parent == Path::new("")),
+                None => p == Path::new(".") || p == Path::new(""),
+            };
+            if in_dir {
+                existing_dirs.contains(d)
+            } else {
+                true
+            }
+        });
         Ok(())
     }
 

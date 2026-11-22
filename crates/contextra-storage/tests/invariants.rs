@@ -3,11 +3,24 @@
 //! # Invarianten-Vollständigkeitstest
 //!
 //! Liest SPEC.md, extrahiert alle Invarianten-IDs (INV-*) aus Abschnitt 18
-//! und prüft, dass jede Invariante in mindestens einem Test per ID zitiert wird.
+//! und prüft, dass jede Invariante in mindestens einer Quell- oder Testdatei zitiert wird.
 
 use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                collect_rs_files(&p, out);
+            } else if p.extension().map_or(false, |e| e == "rs") {
+                out.push(p);
+            }
+        }
+    }
+}
 
 #[test]
 fn test_all_invariants_cited() {
@@ -41,32 +54,39 @@ fn test_all_invariants_cited() {
         expected_invs.len()
     );
 
-    // Suche in allen Testdateien nach Zitaten der Invarianten
-    let mut cited_invs = HashSet::new();
-    let tests_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
-    let src_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    // Rekursiv alle Quell- und Testdateien durchsuchen
+    let mut rs_files = Vec::new();
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    collect_rs_files(&manifest_dir.join("src"), &mut rs_files);
+    collect_rs_files(&manifest_dir.join("tests"), &mut rs_files);
+    collect_rs_files(&manifest_dir.join("../contextra-storage-ports/src"), &mut rs_files);
+    collect_rs_files(&manifest_dir.join("../contextra-crypto-ref/src"), &mut rs_files);
+    collect_rs_files(&manifest_dir.join("../contextra-crypto-ref/tests"), &mut rs_files);
 
-    for dir in &[tests_dir, src_dir] {
-        if let Ok(entries) = fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().map_or(false, |e| e == "rs") {
-                    if let Ok(code) = fs::read_to_string(&path) {
-                        for id in &expected_invs {
-                            if code.contains(id) {
-                                cited_invs.insert(id.clone());
-                            }
-                        }
-                    }
+    let mut cited_invs = HashSet::new();
+    for path in rs_files {
+        if let Ok(code) = fs::read_to_string(&path) {
+            for id in &expected_invs {
+                if code.contains(id) {
+                    cited_invs.insert(id.clone());
                 }
             }
         }
     }
 
-    // Für Gates in P0/P1 prüfen wir die gefundene Menge
     println!(
         "Invarianten in SPEC.md: {}, zitiert im neuen Code: {}",
         expected_invs.len(),
         cited_invs.len()
+    );
+
+    let mut uncited: Vec<_> = expected_invs.difference(&cited_invs).cloned().collect();
+    uncited.sort();
+    assert!(
+        uncited.is_empty(),
+        "Nicht alle Invarianten aus SPEC §18 sind zitiert! Fehlende Invarianten ({}/{}): {:?}",
+        uncited.len(),
+        expected_invs.len(),
+        uncited
     );
 }

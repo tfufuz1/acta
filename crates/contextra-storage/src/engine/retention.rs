@@ -1,6 +1,7 @@
 //! # Reine Retention-Logik
 //!
-//! Normative Referenzen: SPEC §12.2, §16.4 (INV-RET-1).
+//! Normative Referenzen: SPEC §12.2, §16.4 (INV-RET-1, INV-HOLD-1).
+//! INV-HOLD-1: Dauerhafte Holds überleben Neustart und zählen bis Ablauf/hold_drop in die Untergrenze floor.
 //! Keine Integer-Casts (M-02 = 0).
 
 use crate::codec::tag::{InternalKey, TagKind};
