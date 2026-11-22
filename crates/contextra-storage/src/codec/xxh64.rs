@@ -5,6 +5,7 @@
 //! - XXH64("", 0) = 0xEF46DB3751D8E999
 //! - XXH64("a", 0) = 0xD24EC4F1A98C6E5B
 //! - XXH64("abc", 0) = 0x44BC2CF5AD770999
+//! Keine Integer-Casts (M-02 = 0).
 
 #![allow(clippy::indexing_slicing)]
 
@@ -39,13 +40,20 @@ pub fn xxh64(data: &[u8], seed: u64) -> u64 {
         let mut v3 = seed;
         let mut v4 = seed.wrapping_sub(PRIME64_1);
 
-        let mut offset = 0;
-        while offset + 32 <= len {
-            v1 = round(v1, read_u64_le(&data[offset..offset + 8]));
-            v2 = round(v2, read_u64_le(&data[offset + 8..offset + 16]));
-            v3 = round(v3, read_u64_le(&data[offset + 16..offset + 24]));
-            v4 = round(v4, read_u64_le(&data[offset + 24..offset + 32]));
-            offset += 32;
+        let mut offset = 0usize;
+        while offset.saturating_add(32) <= len {
+            if let (Some(s1), Some(s2), Some(s3), Some(s4)) = (
+                data.get(offset..offset + 8),
+                data.get(offset + 8..offset + 16),
+                data.get(offset + 16..offset + 24),
+                data.get(offset + 24..offset + 32),
+            ) {
+                v1 = round(v1, read_u64_le(s1));
+                v2 = round(v2, read_u64_le(s2));
+                v3 = round(v3, read_u64_le(s3));
+                v4 = round(v4, read_u64_le(s4));
+            }
+            offset = offset.saturating_add(32);
         }
 
         h64 = v1.rotate_left(1)
@@ -61,36 +69,43 @@ pub fn xxh64(data: &[u8], seed: u64) -> u64 {
         h64 = seed.wrapping_add(PRIME64_5);
     }
 
-    h64 = h64.wrapping_add(len as u64);
+    let len_u64 = u64::try_from(len).unwrap_or(0);
+    h64 = h64.wrapping_add(len_u64);
 
     let mut rem = len % 32;
-    let mut offset = len - rem;
+    let mut offset = len.saturating_sub(rem);
 
     while rem >= 8 {
-        let k1 = round(0, read_u64_le(&data[offset..offset + 8]));
-        h64 = (h64 ^ k1)
-            .rotate_left(27)
-            .wrapping_mul(PRIME64_1)
-            .wrapping_add(PRIME64_4);
-        offset += 8;
-        rem -= 8;
+        if let Some(slice) = data.get(offset..offset + 8) {
+            let k1 = round(0, read_u64_le(slice));
+            h64 = (h64 ^ k1)
+                .rotate_left(27)
+                .wrapping_mul(PRIME64_1)
+                .wrapping_add(PRIME64_4);
+        }
+        offset = offset.saturating_add(8);
+        rem = rem.saturating_sub(8);
     }
 
     if rem >= 4 {
-        let k1 = (read_u32_le(&data[offset..offset + 4]) as u64).wrapping_mul(PRIME64_1);
-        h64 = (h64 ^ k1)
-            .rotate_left(23)
-            .wrapping_mul(PRIME64_2)
-            .wrapping_add(PRIME64_3);
-        offset += 4;
-        rem -= 4;
+        if let Some(slice) = data.get(offset..offset + 4) {
+            let k1 = u64::from(read_u32_le(slice)).wrapping_mul(PRIME64_1);
+            h64 = (h64 ^ k1)
+                .rotate_left(23)
+                .wrapping_mul(PRIME64_2)
+                .wrapping_add(PRIME64_3);
+        }
+        offset = offset.saturating_add(4);
+        rem = rem.saturating_sub(4);
     }
 
     while rem > 0 {
-        let k1 = (data[offset] as u64).wrapping_mul(PRIME64_5);
-        h64 = (h64 ^ k1).rotate_left(11).wrapping_mul(PRIME64_1);
-        offset += 1;
-        rem -= 1;
+        if let Some(&byte) = data.get(offset) {
+            let k1 = u64::from(byte).wrapping_mul(PRIME64_5);
+            h64 = (h64 ^ k1).rotate_left(11).wrapping_mul(PRIME64_1);
+        }
+        offset = offset.saturating_add(1);
+        rem = rem.saturating_sub(1);
     }
 
     // Avalanche
@@ -118,6 +133,7 @@ fn read_u32_le(bytes: &[u8]) -> u32 {
 }
 
 #[cfg(test)]
+#[allow(clippy::indexing_slicing)]
 mod tests {
     use super::*;
 

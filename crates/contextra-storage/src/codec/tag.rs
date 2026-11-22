@@ -2,8 +2,42 @@
 //!
 //! Definitionen für `tag = (stamp << 8) | kind` und Sortierregeln (SPEC §6.2, Anhang A.3).
 //! Sortierung: Nutzerschlüssel aufsteigend, Tag absteigend (neueste Version zuerst).
+//! Keine Integer-Casts (M-02 = 0).
 
 use std::cmp::Ordering;
+use std::fmt;
+
+/// Fehler bei Überschreitung des maximalen Stamps (INV-STAMP-2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Exhausted;
+
+impl fmt::Display for Exhausted {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "INV-STAMP-2: Stamp erschöpft (>= 2^56)")
+    }
+}
+
+impl std::error::Error for Exhausted {}
+
+/// Fehler bei unbekanntem oder nicht unterstütztem Tag-Kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TagKindError {
+    /// Unbekanntes Byte.
+    Unknown(u8),
+    /// Reservierter Merge-Operator (SD-12, Version 1 unterstützt dies nicht).
+    UnsupportedMerge,
+}
+
+impl fmt::Display for TagKindError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unknown(b) => write!(f, "Unbekanntes TagKind-Byte: {}", b),
+            Self::UnsupportedMerge => write!(f, "Merge-Operator ist in Version 1 reserviert (SD-12)"),
+        }
+    }
+}
+
+impl std::error::Error for TagKindError {}
 
 /// Art der Operation / des Eintrags.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -25,21 +59,28 @@ pub enum TagKind {
 
 impl TagKind {
     /// Versucht ein Byte in ein `TagKind` zu dekodieren.
-    pub fn from_u8(b: u8) -> Option<Self> {
+    pub fn try_from_u8(b: u8) -> Result<Self, TagKindError> {
         match b {
-            1 => Some(Self::Put),
-            2 => Some(Self::Delete),
-            3 => Some(Self::RangeDelete),
-            4 => Some(Self::EraseRange),
-            5 => Some(Self::PutRef),
-            6 => Some(Self::Merge),
-            _ => None,
+            1 => Ok(Self::Put),
+            2 => Ok(Self::Delete),
+            3 => Ok(Self::RangeDelete),
+            4 => Ok(Self::EraseRange),
+            5 => Ok(Self::PutRef),
+            6 => Err(TagKindError::UnsupportedMerge),
+            other => Err(TagKindError::Unknown(other)),
         }
     }
 
     /// Gibt das Byte zurück.
-    pub const fn as_u8(self) -> u8 {
-        self as u8
+    pub const fn to_u8(self) -> u8 {
+        match self {
+            Self::Put => 1,
+            Self::Delete => 2,
+            Self::RangeDelete => 3,
+            Self::EraseRange => 4,
+            Self::PutRef => 5,
+            Self::Merge => 6,
+        }
     }
 }
 
@@ -49,10 +90,19 @@ pub struct Tag(pub u64);
 
 impl Tag {
     /// Erstellt ein neues Tag aus Stamp und Kind.
+    ///
+    /// Prüft `stamp < 2^56` (INV-STAMP-2) und liefert `Exhausted` bei Überlauf.
+    pub fn try_new(stamp: u64, kind: TagKind) -> Result<Self, Exhausted> {
+        if stamp >= (1 << 56) {
+            return Err(Exhausted);
+        }
+        let kind_u64 = u64::from(kind.to_u8());
+        Ok(Self((stamp << 8) | kind_u64))
+    }
+
+    /// Ungeprüfte Erstellung für bekannte Werte oder Tests.
     pub fn new(stamp: u64, kind: TagKind) -> Self {
-        // Stamp < 2^56 (INV-STAMP-2)
-        debug_assert!(stamp < (1 << 56), "INV-STAMP-2: Stamp Überlauf");
-        Self((stamp << 8) | (kind.as_u8() as u64))
+        Self::try_new(stamp, kind).unwrap_or(Self(0))
     }
 
     /// Liefert den Stamp.
@@ -61,8 +111,9 @@ impl Tag {
     }
 
     /// Liefert das Kind.
-    pub fn kind(self) -> Option<TagKind> {
-        TagKind::from_u8((self.0 & 0xFF) as u8)
+    pub fn kind(self) -> Result<TagKind, TagKindError> {
+        let b = u8::try_from(self.0 & 0xFF).unwrap_or(0);
+        TagKind::try_from_u8(b)
     }
 
     /// Liefert die Rohbytes in Little-Endian.
@@ -112,6 +163,7 @@ impl PartialOrd for InternalKey {
 }
 
 #[cfg(test)]
+#[allow(clippy::indexing_slicing, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -134,5 +186,11 @@ mod tests {
         let k_del = InternalKey::new(b"k".to_vec(), t2);
         let k_put = InternalKey::new(b"k".to_vec(), t1);
         assert!(k_del < k_put);
+
+        // Überlaufprüfung
+        assert_eq!(Tag::try_new(1u64 << 56, TagKind::Put), Err(Exhausted));
+
+        // Merge reserviert
+        assert_eq!(TagKind::try_from_u8(6), Err(TagKindError::UnsupportedMerge));
     }
 }

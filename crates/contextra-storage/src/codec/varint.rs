@@ -5,6 +5,7 @@
 //! - Keine überflüssigen Fortsetzungen (`0x80 ... 0x00`).
 //! - Das zehnte Byte darf ausschließlich `0x01` sein.
 //! - Höchstens 10 Bytes; Dekodierung ist total (P-4).
+//! - Keine Integer-Casts (M-02 = 0).
 
 use std::fmt;
 
@@ -33,18 +34,19 @@ impl std::error::Error for VarintError {}
 
 /// Kodiert einen `u64` kanonisch in den Puffer und gibt die Anzahl der geschriebenen Bytes zurück.
 pub fn encode_u64(mut val: u64, buf: &mut [u8]) -> usize {
-    let mut i = 0;
+    let mut i: usize = 0;
     while val >= 0x80 {
         if let Some(b) = buf.get_mut(i) {
-            *b = ((val as u8) & 0x7F) | 0x80;
+            let lower = u8::try_from(val & 0x7F).unwrap_or(0);
+            *b = lower | 0x80;
         }
         val >>= 7;
-        i += 1;
+        i = i.saturating_add(1);
     }
     if let Some(b) = buf.get_mut(i) {
-        *b = val as u8;
+        *b = u8::try_from(val & 0xFF).unwrap_or(0);
     }
-    i + 1
+    i.saturating_add(1)
 }
 
 /// Dekodiert einen kanonischen Varint total aus dem Slice.
@@ -60,20 +62,22 @@ pub fn decode_u64(buf: &[u8]) -> Result<(u64, usize), VarintError> {
     let mut consumed: usize = 0;
 
     for &byte in buf.iter().take(10) {
-        consumed += 1;
-        let val = (byte & 0x7F) as u64;
+        consumed = consumed.saturating_add(1);
+        let val = u64::from(byte & 0x7F);
 
         if consumed == 10 {
             // Das 10. Byte darf nur 0x01 sein (INV-FMT-1)
             if byte != 0x01 {
                 return Err(VarintError::NonCanonical);
             }
-            result |= val << shift;
+            let shifted = val.checked_shl(shift).ok_or(VarintError::Overflow)?;
+            result |= shifted;
             return Ok((result, consumed));
         }
 
-        result |= val << shift;
-        shift += 7;
+        let shifted = val.checked_shl(shift).ok_or(VarintError::Overflow)?;
+        result |= shifted;
+        shift = shift.saturating_add(7);
 
         if (byte & 0x80) == 0 {
             // Ende erreicht. Prüfe Kanonizität:
