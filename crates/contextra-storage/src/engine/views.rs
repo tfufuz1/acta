@@ -105,20 +105,3 @@ pub fn create_view(visible_stamp: &AtomicU64, state: &VersionState) -> View {
     let version = Arc::clone(&*state.read());
     View::new(version, stamp)
 }
-
-/// Fehlerhafte Gegenbeispiel-Implementierung mit vertauschter Reihenfolge (zur Prüfung in Tests).
-///
-/// Liest ZUERST Version, DANN visible_stamp.
-/// Warum dies fehlerhaft ist (SPEC §16.3 Gegenbeispiel):
-/// Liest ein Leser zuerst V0 (aktive Memtable M), rotiert der Leiter dann M und setzt M2 als aktiv,
-/// fügt Einträge mit Stamp s in M2 ein und veröffentlicht s, lädt der Leser danach v = s:
-/// V0 kennt M2 nicht, die View verliert Einträge <= v!
-pub fn create_view_inverted_order_buggy(
-    visible_stamp: &AtomicU64,
-    state: &VersionState,
-) -> View {
-    // FEHLER: Vertauschte Reihenfolge!
-    let version = Arc::clone(&*state.read());
-    let stamp = visible_stamp.load(Ordering::Acquire);
-    View::new(version, stamp)
-}
