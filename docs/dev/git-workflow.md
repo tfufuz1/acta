@@ -9,6 +9,10 @@ Stand: 2026-11-22.
 - Die Historie hat rund 76 Commits. Davon heißen ~70 nur „Shell-Commit“. Diese Sammel-Snapshots sind nicht umzuschreiben (sie sind öffentlich). Neue Arbeit folgt dem Muster unten.
 - Es gibt keine aktiven Git-Hooks, kein `.github/`, keine CI, kein PR-Template, keine CODEOWNERS.
 
+## Erlaubnis
+
+Push und PR-Erstellung nur mit ausdrücklicher Freigabe des Nutzers; fehlt sie im Auftrag, vorher fragen und die Antwort abwarten. Die Freigabe gilt nur für den genannten Branch und PR. Nie selbst mergen, nie auf `main` pushen, nie Force-Push. Kurzfassung mit Befehlen: `CLAUDE.md` §5.
+
 ## Regeln
 
 1. Nie direkt auf `main` committen oder pushen, außer der Nutzer erlaubt es ausdrücklich.
@@ -40,6 +44,10 @@ Danach PR gegen `main` erstellen:
 - Nach erfolgreichem Anhängen Klon ausführen (shallow reicht, siehe `environment.md`), dann `register_repo_root` mit dem Klonpfad aufrufen, damit CLAUDE.md geladen wird.
 - Bei Ablehnung den genauen Grund aus der Antwort weitergeben. Der Hinweis für den Nutzer: GitHub unter claude.ai Settings → Connectors neu verbinden oder einen Organisations-Owner um Freigabe bitten. Nicht wiederholen.
 - Bei shallow Klonen: Push mit `git -c push.negotiate=true push -u origin <branch>`, sonst kann die Anfrage mit HTTP 413 scheitern.
+
+## PR-Zustand vor jedem Push prüfen
+
+`gh api repos/tfufuz1/acta/pulls/<n> --jq '{state,merged}'`. Wurde der PR gemergt, erreichen weitere Commits auf dem Branch `main` nicht. Für den Rest nach Rückfrage einen neuen PR öffnen (Beispiel: #3 wurde gemergt, bevor die späteren Commits kamen, Folge-PR #4).
 
 ## Ungeklärt
 

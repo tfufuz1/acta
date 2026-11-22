@@ -56,7 +56,26 @@ Ergebnisse mit `stable` (1.97) sind **nicht** gegen den Pin 1.89.0 verifiziert. 
 
 ## 5. Git und PRs
 
-Nie direkt auf `main`. Feature-Branch (`feat|fix|docs|spec/<kurz>`), kleine Conventional Commits (`feat(storage): …`), PR gegen `main` mit dem Template aus `.github/`. **Vor jedem Push `git fetch origin <branch>`**: der Eigentümer merged gelegentlich `main` in Branches (Push sonst abgelehnt, dann rebase statt Force). PR per `gh api` (REST), nicht `gh pr create` (GraphQL gesperrt). Details: `docs/dev/git-workflow.md`, Regeln für Beiträge: `CONTRIBUTING.md`.
+**Erlaubnis zuerst.** Push und PR nur mit ausdrücklicher Freigabe des Nutzers. Hat der Auftrag sie nicht schon klar erteilt („pushe“, „erstelle den PR“), vorher fragen (Branch-Name, Ziel `main`, Inhalt in einem Satz; in der App per `AskUserQuestion`, sonst im Text) und die Antwort abwarten. Eine Freigabe gilt für genau diesen Branch und PR, nicht für spätere Änderungen. Nie `main` pushen, nie Force-Push, **nie selbst mergen**: Merge, Branch-Löschung und Review macht der Nutzer.
+
+Regeln: Feature-Branch (`feat|fix|docs|spec/<kurz>`), kleine Conventional Commits (`feat(storage): …`), PR gegen `main`, Inhalt nach `.github/pull_request_template.md`. Commits enden mit den `Co-Authored-By`/`Claude-Session`-Zeilen aus dem System-Hinweis der Sitzung, PR-Texte mit der „Generated with Claude Code“-Zeile und der Session-URL.
+
+**PR direkt in Claude erstellen** (`gh pr create` scheitert: GraphQL ist gesperrt, `GH_TOKEN` ungültig; der Repo-Scope aus `add_repo` trägt Push und REST):
+
+```bash
+git switch -c docs/<kurz>                       # nie auf main arbeiten
+git add <Dateien> && git commit                 # Trailer nicht vergessen
+git fetch origin <branch> 2>/dev/null || true   # Eigentümer merged manchmal main hinein
+git -c push.negotiate=true push -u origin <branch>
+gh api repos/tfufuz1/acta/pulls -f title='…' -f head='<branch>' -f base='main' \
+  -f body='…' --jq .html_url                    # Entwurf: zusätzlich -F draft=true
+```
+
+Danach Push prüfen: `git rev-parse HEAD` gegen `git ls-remote --heads origin <branch>`. Sind beide gleich, ist alles oben (Stop-Hook-Warnung ignorieren, §8 Punkt 8). Weitere Änderungen: PR-Text per `gh api -X PATCH repos/tfufuz1/acta/pulls/<n> -f body='…'` aktualisieren.
+
+**Vor jedem weiteren Push den PR-Zustand prüfen**: `gh api repos/tfufuz1/acta/pulls/<n> --jq '{state,merged}'`. Ist der PR schon gemergt, landen neue Commits nicht in `main`. Dann für den Rest einen neuen PR öffnen (so geschehen bei #3 → #4), nach Rückfrage.
+
+Details und Fallbacks: `docs/dev/git-workflow.md`, Beitragsregeln: `CONTRIBUTING.md`.
 
 ## 6. Dokumentenvorrang und Lesepfade
 
