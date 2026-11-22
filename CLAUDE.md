@@ -1,88 +1,64 @@
-# CLAUDE.md — Einstieg für Agenten im Repo `acta`
+# CLAUDE.md – Einstieg für Claude-Sitzungen im Repo `acta`
 
-Lies zuerst diese Datei. Sie ersetzt keine Spezifikation, sie zeigt dir, wo was steht und welche Fallen es gibt.
+Lies zuerst diese Datei. Details stehen in `docs/dev/`. Lade die großen Spec-Dateien nicht vollständig, sondern gezielt nach Abschnitt.
 
-## 1. Dokumenthierarchie
+## Projekt in 3 Sätzen
 
-1. `SPEC.md`: normativ (Formate, Protokolle, Invarianten INV-*, Fehlerklassen F-*, Entscheidungen SD-*). Bei Widerspruch gilt sie.
-2. `IMPLEMENTATION_SPEC.md`: operativ (Status je Arbeitspaket, Blocker BL-*, kritische Befunde S-*, Gates). Der Abschnitt „Kritische Befunde“ (§4) und „Restumfang“ (§5) sind die Arbeitsliste.
-3. `REPORT.md`: **keine Messquelle**. Die Werte sind nicht reproduziert (IMPL S-10).
-4. `legacy/`: **keine Quelle für Anforderungen** (SPEC §1.3). Nicht im Workspace-Build. Nicht durchsuchen, außer du arbeitest explizit am Altstand. `.ignore` schließt es für die Suche aus.
+`acta` ist das Repo des Neubaus von `contextra-storage`: ein eingebetteter, synchroner, crash-sicherer Key-Value-Store mit atomaren Multi-Space-Änderungen, MVCC-Views, Holds, Consumern, kontrollierter Löschung und Wertetrennung (Header im LSM, Körper in Blob-Dateien). Er ist Fundament für RAG- und Agenten-Gedächtnisschichten, enthält aber bewusst keinen Tokenizer, keine Embeddings und keine Mandanten. Durability (Redo-Log, Catalog, Gruppen-Fsync), Nebenläufigkeit und Löschung sind die Kernthemen.
 
-Änderungen an SPEC-Abschnitten 6–9, 13, 14, 18 brauchen zwei Reviewer, einen Referenzvektor und eine Prüfung der Freeze-Liste (SPEC §1.5). Ändere die SPEC nicht still; lege einen Änderungsantrag (CR-*) an.
+## Workspace
 
-## 2. Workspace-Karte
+- `crates/contextra-storage-ports` – stabile Ports und Werttypen, keine Laufzeit-Abhängigkeiten
+- `crates/contextra-storage` – Kern (Engine, Run, Redo, Catalog, Blob, Erase, Keys, Codec), `#![forbid(unsafe_code)]`
+- `crates/contextra-crypto-ref` – Referenzimplementierung Cipher/Mac/Kdf
+- `fuzz/` – eigenständiges Cargo-Projekt (nicht Workspace-Mitglied), Targets `run_block`, `run_footer`, `run_directory`
+- `tools/reference/` – Python-Referenzcodierer `generator.py` und Golden-Vektoren `golden/*.hex`
+- `legacy/` – Altbestand, nicht im Workspace, nicht baubar. Nicht ändern, außer die Aufgabe verlangt es ausdrücklich.
 
-| Crate | Zweck | Stand |
-|---|---|---|
-| `crates/contextra-storage-ports` | Traits und Wertetypen, keine Logik | weitgehend konform |
-| `crates/contextra-storage` | Kern, nur `std` plus Port-Crate | im Aufbau, siehe unten |
-| `crates/contextra-crypto-ref` | Dev-Referenz für Goldens | grün |
+## Dokumentenvorrang
 
-Modulstand im Kern (nur was `engine/mod.rs` tatsächlich deklariert):
+1. `SPEC.md` (R2) ist normativ und maßgeblich.
+2. `IMPLEMENTATION_SPEC.md` (Rev. 3) ist operativ: Ist-Stand, Befunde, Arbeitspakete, Gates.
+3. `REPORT.md` ist **keine verlässliche Messquelle** (siehe `docs/dev/open-items.md`).
+4. Änderungen an der SPEC laufen als Anträge (IMPL §10), nicht still.
 
-- Übersetzt: `api` (nur Listener), `codec`, `keys`, `env`, `redo`, `run`, `blob`, `catalog`, `engine` (`committer`, `memtable`, `registry`, `retention`, `version`, `views`), `testing` (Feature), `sync`.
-- **Nicht übersetzt, aber im Baum:** `engine/recovery.rs`, `engine/flush.rs`, `engine/compaction/*`. Sie werden nicht kompiliert. Behandle sie als Entwurf.
-- `erase/`: nur Doku, kein Code.
-- Es gibt **keine öffentliche Storage-Facade** (`Storage::open`, `apply`, `view`).
+Gezielte Lesepfade: SPEC §1, §3, §6.1 (Vokabular), §7.1 (API), §9.4 (Redo), §10 (Schreibpfad), §13 (Recovery), §16.1 (Sperrränge), §18 (Invarianten); IMPL §0, §4, §5 des betroffenen Arbeitspakets.
 
-## 3. Befehle
+## Befehle
 
-Alle Befehle laufen über das Makefile. Es setzt `RUSTUP_TOOLCHAIN=stable`, weil der Pin `1.89.0` in der Umgebung nicht lädt (IMPL BL-7).
+Voraussetzung und Umgebung: siehe `docs/dev/environment.md`.
 
-```
-make check            # cargo check, alle Targets
-make clippy           # clippy, Kurzausgabe (zeigt Deny-Fehler, siehe Befunde)
-make test             # alle Tests, Zusammenfassung; Compilerfehler bleiben sichtbar
-make test-target T=redo   # ein Integrationstest-Target
-make layering         # Schichtregel-Test
-make loom             # Loom-Modelle mit eigenem Target-Verzeichnis
-make doc              # rustdoc mit -D warnings
-make metrics          # Messwerte aus IMPL Anhang A (Skript scripts/metrics.sh)
+```bash
+export RUSTUP_TOOLCHAIN=stable   # nur nötig, wenn der Pin 1.89.0 nicht ladbar ist
+cargo check --workspace --all-targets
+cargo test --workspace --no-fail-fast
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all -- --check
+cargo doc -p contextra-storage --no-deps
+python3 -I tools/reference/generator.py   # vor Änderungen an Golden-Dateien
 ```
 
-Ausgaben sind lang. Nutze `make test-target T=…` statt des vollen Laufs, wenn du nur ein Gebiet prüfst.
+Ergebnisse mit `RUSTUP_TOOLCHAIN=stable` sind **nicht** gegen 1.89.0 verifiziert. Das ist in den Ergebnissen zu vermerken.
 
-## 4. Sofortregeln für Produktionscode
+## Harte Regeln
 
-Diese Regeln stehen in SPEC §3.5. Hier die Kurzfassung, damit du sie beim Schreiben im Kopf hast.
+- Kein `unsafe`. `unwrap`, `expect`, `panic`, `todo`, `unreachable`, `indexing_slicing` sind per Workspace-Lint verboten.
+- Kein `std::fs` außerhalb von `env/real_fs.rs`.
+- Keine Laufzeit-Abhängigkeiten im Kern-Crate ohne Entscheidung.
+- Längen aus Dateien erst nach Plausibilitätsprüfung allozieren (P-4).
+- Jeder Invarianten-Test zitiert seine `INV-*`-ID.
+- Auf MemFs-Tests allein darf kein Durabilitätsnachweis gestützt werden.
+- Nie Secrets, Tokens oder Credentials in Dateien, Commits oder Ausgaben schreiben.
 
-- **Keine** `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `unreachable!` in Produktion (P-13). Neue `#![allow(clippy::…)]` in Produktion sind verboten, auch um einen Fehler zu umgehen.
-- **Keine** Ganzzahl-`as`-Casts zwischen Breiten; `try_from`, `checked_*` (P-14).
-- Längen aus Dateien **vor** jeder Allokation gegen die Restlänge und SPEC §6.7 prüfen (P-4).
-- Keine globalen veränderlichen Variablen; Testhaken über `Env::hooks()` (P-5).
-- Datei maximal 400 Zeilen, Funktion typisch maximal 60 Zeilen (P-6). Aktuell verletzt: `engine/committer.rs` (1 103 Zeilen).
-- Rustdoc auf Deutsch, Bezeichner auf Englisch (P-7).
-- Kein `unsafe` (`forbid(unsafe_code)`).
-- Keine Stubs und leeren Dateien im Baum. Wenn ein Modul nicht fertig ist, nicht deklarieren und in `IMPLEMENTATION_SPEC.md` vermerken.
+## Git und PRs
 
-## 5. Tests
+Nie direkt auf `main` arbeiten. Feature-Branch, kleine thematische Commits, PR gegen `main`. Details: `docs/dev/git-workflow.md`.
 
-- Jeder Test, der eine Invariante prüft, zitiert die ID **im Namen oder Kommentar** (`// Zitiert INV-LOG-6`). Ein Doc-Kommentar zählt nicht als Test.
-- Testdateien: `tests/<bereich>/…`. Testhilfen in `src/testing/` (Feature `testing`).
-- Fehlerinjektion über `FaultFs`. Fehlerschalter nach jedem Szenario zurücksetzen, sonst ist der Folgetest unbrauchbar (IMPL S-6).
-- Ein grüner `MemFs`-Test beweist keine Durabilität. Persistenz nur mit Wiederöffnung nach Neustart prüfen (IMPL R-14).
+## Bekannte Blocker (Stand 2026-11-22)
 
-## 6. Bekannte Fallen (Stand `main`)
+- Redo-Pfad nicht verdrahtet (IMPL S-1): Der Committer schreibt nur einen Stamp. Vor Arbeiten an API oder WP-4 zuerst BL-8 klären.
+- Recovery, Flush und Compaction nicht im Modulbaum deklariert (S-2).
+- Keine öffentliche Facade (S-3).
+- Lint-Verstöße in Produktionscode laut Plan: 8 `unwrap`, `#![allow(clippy::panic)]` in `sync.rs`.
 
-- `tests/engine` kompiliert nicht (21 Fehler). Deshalb liefert `cargo test --workspace` keinen vollständigen Lauf.
-- `cargo clippy` bricht bei den Deny-Lints ab, bis S-8 behoben ist.
-- `redo`: 4 Tests rot. Drei sind Testfehler (Offset `48+31`, Fehlerschalter zurücksetzen), einer ist ein Implementierungsfehler (INV-LOG-6).
-- Loom mit `RUSTFLAGS="--cfg loom"` baut alles neu. Dafür das eigene Target-Verzeichnis nutzen (`make loom`).
-- `default = ["testing"]` in `Cargo.toml` zieht Testcode in jeden Build (IMPL S-9).
-- Der Repo-Eintrag `RunBuilder` im Wurzelverzeichnis ist eine leere, nicht zugehörige Datei.
-
-## 7. Commits und Pull Requests
-
-- Betreff kurz, Typ-Präfix (`docs:`, `fix:`, `feat:`, `test:`, `chore:`). Der Rumpf erklärt das Warum.
-- Befunde-IDs aus IMPL (S-*, BL-*) im Rumpf nennen, wenn der Commit sie behebt.
-- Vor dem Commit: `make check` und `make test-target` für das berührte Gebiet müssen grün sein. Statusänderungen in `IMPLEMENTATION_SPEC.md` nur mit Testnachweis.
-- Pull Requests: Vorlage in `.github/pull_request_template.md` ausfüllen.
-- Offen (Entscheidung des Projekts): Sprache der Betreffzeilen. Bisher gemischt.
-
-## 8. Was du nicht tust
-
-- Keine Lint-Ausnahmen, um Clippy grün zu bekommen.
-- Keine Änderung am Toolchain-Pin ohne Entscheidung zu BL-7.
-- Keine Änderung an `legacy/`.
-- Keine Dateien ohne Inhalt committen.
+Vollständige Liste und offene Entscheidungen: `docs/dev/open-items.md`.
