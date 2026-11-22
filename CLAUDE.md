@@ -124,3 +124,6 @@ Repo-Zustand
 21. `make metrics` gemessen am 2026-11-22: M-01 1 Datei > 400 Zeilen, M-08 113 `unwrap/expect/panic` (grob, inkl. Tests), M-09 30 von 43 INV-IDs zitiert, M-15 3 Fuzz-Ziele (Soll ≥ 8), M-17 3 nicht deklarierte Engine-Module (Soll 0).
 22. Ob `tests/format`, `tests/keys`, `tests/redo`, `tests/run` Verzeichnisse oder Symlinks sind: im aktuellen Stand Verzeichnisse (kein Symlink gefunden).
 23. Keine CI. Die Gates (IMPL §6) sind nur lokal prüfbar.
+
+
+Purer Fokus auf Storage Crate
