@@ -24,4 +24,4 @@ pub use memtable::{Memtable, Slot, MEMTABLE_SUBBATCH_LIMIT};
 pub use registry::{Claim, Consumer, Hold, Registry, RegistryError};
 pub use retention::{retain, RetainItem};
 pub use version::{BlobHandle, FileHandle, SpaceState, Version, VersionState};
-pub use views::{create_view, create_view_inverted_order_buggy, View};
+pub use views::{create_view, View};

@@ -10,7 +10,8 @@ description = "Embedded, crash-safe key-value core for contextra"
 workspace = true
 
 [features]
-default = ["testing"]
+# Kein Standard-Feature: Testhaken gehören nicht in die Release-API (S-9, SPEC §3.4).
+# Tests aktivieren `testing` über die Dev-Abhängigkeit auf sich selbst.
 testing = []
 
 [dependencies]
@@ -20,6 +21,7 @@ contextra-storage-ports = { path = "../contextra-storage-ports" }
 loom = "0.7"
 
 [dev-dependencies]
+contextra-storage = { path = ".", features = ["testing"] }
 proptest = "1.4"
 loom = "0.7"
 contextra-crypto-ref = { path = "../contextra-crypto-ref" }

@@ -28,7 +28,7 @@ use contextra_storage::engine::memtable::{Memtable, Slot, MEMTABLE_SUBBATCH_LIMI
 use contextra_storage::engine::registry::{Registry, RegistryError};
 use contextra_storage::engine::retention::{retain, RetainItem};
 use contextra_storage::engine::version::{FileHandle, Version, VersionState};
-use contextra_storage::engine::views::{create_view, create_view_inverted_order_buggy};
+use contextra_storage::engine::views::{create_view, View};
 
 /// Dummy Redo-Writer für Tests.
 struct MockRedoWriter {
@@ -314,11 +314,24 @@ fn test_invariants_vis1_vis2_vis3() {
     assert_eq!(sp.active.entry_count(), 0, "INV-VIS-1: Keine Daten in Memtable nach Sync-Fehler!");
 
     // INV-VIS-3 Gegenbeispiel-Test:
-    // create_view_inverted_order_buggy liest erst Version, dann visible_stamp.
+    // Die Gegenbeispiel-Reihenfolge liest erst Version, dann visible_stamp.
     // create_view liest erst visible_stamp, dann Version.
     let normal_view = create_view(&visible_stamp, &state);
     let buggy_view = create_view_inverted_order_buggy(&visible_stamp, &state);
     assert_eq!(normal_view.stamp, buggy_view.stamp);
+}
+
+/// Gegenbeispiel-Implementierung mit vertauschter Reihenfolge (nur Testhilfe, nicht Produktion).
+///
+/// Liest ZUERST Version, DANN visible_stamp. Warum dies fehlerhaft ist (SPEC §16.3 Gegenbeispiel):
+/// Liest ein Leser zuerst V0 (aktive Memtable M), rotiert der Leiter dann M und setzt M2 als aktiv,
+/// fügt Einträge mit Stamp s in M2 ein und veröffentlicht s, lädt der Leser danach v = s:
+/// V0 kennt M2 nicht, die View verliert Einträge <= v!
+fn create_view_inverted_order_buggy(visible_stamp: &AtomicU64, state: &VersionState) -> View {
+    // FEHLER: Vertauschte Reihenfolge!
+    let version = Arc::clone(&*state.read());
+    let stamp = visible_stamp.load(Ordering::Acquire);
+    View::new(version, stamp)
 }
 
 #[test]
