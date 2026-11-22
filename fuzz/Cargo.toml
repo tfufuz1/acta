@@ -1,0 +1,33 @@
+[package]
+name = "acta-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+contextra-storage = { path = "../crates/contextra-storage" }
+contextra-storage-ports = { path = "../crates/contextra-storage-ports" }
+
+[[bin]]
+name = "run_block"
+path = "fuzz_targets/run_block.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "run_footer"
+path = "fuzz_targets/run_footer.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "run_directory"
+path = "fuzz_targets/run_directory.rs"
+test = false
+doc = false

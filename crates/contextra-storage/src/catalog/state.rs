@@ -83,7 +83,7 @@ pub fn apply_edit(state: &CatalogState, edit: &CatalogEdit) -> Result<CatalogSta
         let current = next.blob_live_bytes.get(blob_no).copied().unwrap_or(0);
         let updated = if *delta >= 0 {
             let d_u64 = u64::try_from(*delta).unwrap_or(0);
-            current.checked_add(d_u64).unwrap_or(u64::MAX)
+            current.saturating_add(d_u64)
         } else {
             let abs_d = delta.checked_abs().and_then(|v| u64::try_from(v).ok()).unwrap_or(0);
             current.saturating_sub(abs_d)

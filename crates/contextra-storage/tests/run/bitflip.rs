@@ -96,4 +96,5 @@ fn test_bitflip_all_bytes() {
     }
 
     assert!(detected_errors > 0, "Bitflips müssen detektiert werden");
+    assert!(clean_reads > 0, "Einige unkritische Bits erlauben noch sauberes Lesen");
 }

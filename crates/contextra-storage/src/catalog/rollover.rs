@@ -9,7 +9,7 @@
 
 use crate::catalog::current::write_current;
 use crate::catalog::log::{
-    catalog_file_name, fold_u64_to_u32, CatalogHeader, CATALOG_HEADER_LEN, RECORD_TAG_SNAPSHOT,
+    catalog_file_name, fold_u64_to_u32, CatalogHeader, CATALOG_HEADER_LEN_U64, RECORD_TAG_SNAPSHOT,
 };
 use crate::catalog::state::CatalogState;
 use crate::catalog::types::CatalogError;
@@ -22,6 +22,7 @@ use std::path::Path;
 pub use rollover as rollover_catalog;
 
 /// Führt einen Rollover zu einer neuen Katalog-Datei durch.
+#[allow(clippy::too_many_arguments)]
 pub fn rollover(
     fs: &dyn Fs,
     root: &Path,
@@ -48,8 +49,7 @@ pub fn rollover(
     let header_buf = header.encode();
     new_file.write_all_at(&header_buf, 0).map_err(CatalogError::from)?;
 
-    let offset =
-        u64::try_from(CATALOG_HEADER_LEN).map_err(|_| CatalogError::InvalidFormat("Überlauf"))?;
+    let offset = CATALOG_HEADER_LEN_U64;
     let snapshot_edit = state.to_snapshot_edit();
     let payload = snapshot_edit.encode();
 

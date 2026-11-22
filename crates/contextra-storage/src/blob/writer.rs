@@ -79,6 +79,7 @@ impl BlobWriter {
     }
 
     /// Hängt einen Record an die Blob-Datei an und liefert die eindeutige BlobRef.
+    #[allow(clippy::too_many_arguments)]
     pub fn append(
         &mut self,
         file: &dyn File,

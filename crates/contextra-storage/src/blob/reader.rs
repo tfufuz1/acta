@@ -93,6 +93,7 @@ impl BlobReader {
     ///
     /// INV-BLOB-1: Jeder BlobRef löst auf genau einen Record gleichen Schlüssels/Stamps auf.
     /// INV-BLOB-3: Ein BlobRef auf ein Hole liefert HoleRef.
+    #[allow(clippy::too_many_arguments)]
     pub fn read(
         &self,
         file: &dyn File,

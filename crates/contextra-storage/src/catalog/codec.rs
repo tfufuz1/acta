@@ -2,7 +2,6 @@
 //!
 //! Hilfsfunktionen zur Kodierung und Dekodierung von primitiven Datentypen.
 
-pub(crate) use crate::catalog::field_decode::*;
 use crate::catalog::types::{CatalogError, CatalogKeyRange};
 use crate::codec::varint::{decode_u64, encode_u64};
 
@@ -23,7 +22,7 @@ pub(crate) fn put_bytes(buf: &mut Vec<u8>, b: &[u8]) {
     buf.extend_from_slice(b);
 }
 
-pub(crate) fn get_bytes<'a>(buf: &'a [u8]) -> Result<(&'a [u8], usize), CatalogError> {
+pub(crate) fn get_bytes(buf: &[u8]) -> Result<(&[u8], usize), CatalogError> {
     let (len_u64, c1) = get_varint(buf)?;
     let len = usize::try_from(len_u64).map_err(|_| CatalogError::InvalidFormat("Längenüberlauf"))?;
     let (_, rest) = buf.split_at(c1);

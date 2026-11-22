@@ -29,6 +29,27 @@ fn file_exists(fs: &dyn Fs, path: &Path) -> bool {
     fs.open(path, OpenMode::Read).is_ok()
 }
 
+fn dummy_blob_meta(id: u64, generation: u32, stamp: u64) -> FileMeta {
+    FileMeta {
+        kind: CatalogFileKind::Blob,
+        id,
+        space: 1,
+        level: 0,
+        tier: 0,
+        flags: 0,
+        min_stamp: stamp,
+        max_stamp: stamp,
+        bytes: 200,
+        entries: 1,
+        generation,
+        segment_kind: 0,
+        blob_no_min: id,
+        blob_no_max: id,
+        min_key: Vec::new(),
+        max_key: Vec::new(),
+    }
+}
+
 #[test]
 fn test_crash_matrix_id_reserve_crash_before_edit() {
     // Zeile: "ID-Reservierung: Absturz vor Edit | keine Datei mit ungesicherter ID | IDs wurden nie benutzt"
@@ -71,7 +92,7 @@ fn test_crash_matrix_id_used_file_created_crash_before_flush_edit() {
     write_current(&fs, root, 1).unwrap();
     let cat_file = fs.open(&root.join(catalog_file_name(1)), OpenMode::CreateNew(Perm::Private)).unwrap();
     cat_file.write_all_at(&CatalogHeader::new(1).encode(), 0).unwrap();
-    let mut log = CatalogLog::read_and_recover(&*cat_file, 1, 0, None, None, None, None).unwrap().1;
+    let _log = CatalogLog::read_and_recover(&*cat_file, 1, 0, None, None, None, None).unwrap().1;
 
     let mut reserve = IdReserve::recover(0, 0, 0, 0, 0);
     let run_id = reserve.ensure_run_id().unwrap();
@@ -136,24 +157,7 @@ fn test_crash_matrix_blob_sweep_crash_before_edit() {
     cat_file.write_all_at(&CatalogHeader::new(1).encode(), 0).unwrap();
     let mut log = CatalogLog::read_and_recover(&*cat_file, 1, 0, None, None, None, None).unwrap().1;
     let mut e1 = CatalogEdit::default();
-    e1.add_files.push(FileMeta {
-        kind: CatalogFileKind::Blob,
-        id: 1,
-        space: 1,
-        level: 0,
-        tier: 0,
-        flags: 0,
-        min_stamp: 10,
-        max_stamp: 10,
-        bytes: 200,
-        entries: 1,
-        generation: 1,
-        segment_kind: 0,
-        blob_no_min: 1,
-        blob_no_max: 1,
-        min_key: Vec::new(),
-        max_key: Vec::new(),
-    });
+    e1.add_files.push(dummy_blob_meta(1, 1, 10));
     let synced_e1 = sync_existing(&fs, &*cat_file, root, e1).unwrap();
     log.commit(&*cat_file, synced_e1, None, None, None, None).unwrap();
     cat_file.sync_all().unwrap();
@@ -234,24 +238,7 @@ fn test_crash_matrix_blob_sweep_crash_after_edit_before_unlink() {
     let mut log = CatalogLog::read_and_recover(&*cat_f, 1, 0, None, None, None, None).unwrap().1;
 
     let mut e1 = CatalogEdit::default();
-    e1.add_files.push(FileMeta {
-        kind: CatalogFileKind::Blob,
-        id: 1,
-        space: 1,
-        level: 0,
-        tier: 0,
-        flags: 0,
-        min_stamp: 20,
-        max_stamp: 20,
-        bytes: 200,
-        entries: 1,
-        generation: 1,
-        segment_kind: 0,
-        blob_no_min: 1,
-        blob_no_max: 1,
-        min_key: Vec::new(),
-        max_key: Vec::new(),
-    });
+    e1.add_files.push(dummy_blob_meta(1, 1, 20));
     e1.blob_replace.push((1, 1, 2)); // blob 1, alt gen 1, neu gen 2
     let synced = sync_existing(&fs, &*cat_f, root, e1).unwrap();
     log.commit(&*cat_f, synced, None, None, None, None).unwrap();

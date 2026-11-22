@@ -16,6 +16,8 @@ pub const CATALOG_MAGIC: &[u8; 4] = b"CTXC";
 
 /// Länge des 20-Byte-Headers einer Katalog-Datei.
 pub const CATALOG_HEADER_LEN: usize = 20;
+/// Länge des 20-Byte-Headers einer Katalog-Datei als u64.
+pub const CATALOG_HEADER_LEN_U64: u64 = 20;
 
 /// Tag für Snapshot-Record (1).
 pub const RECORD_TAG_SNAPSHOT: u8 = 1;
@@ -37,11 +39,7 @@ pub struct CatalogHeader {
 impl CatalogHeader {
     /// Erstellt einen neuen Katalog-Header.
     pub fn new(catalog_no: u64) -> Self {
-        Self {
-            version: 1,
-            flags: 0,
-            catalog_no,
-        }
+        Self { version: 1, flags: 0, catalog_no }
     }
 
     /// Kodiert den Header in ein 20-Byte-Array.
@@ -78,27 +76,18 @@ impl CatalogHeader {
         }
 
         let (ver_slot, rest) = rest.split_at(2);
-        let mut ver_b = [0u8; 2];
-        ver_b.copy_from_slice(ver_slot);
-        let version = u16::from_le_bytes(ver_b);
+        let version = u16::from_le_bytes(ver_slot.try_into().map_err(|_| CatalogError::UnexpectedEof)?);
         if version != 1 {
             return Err(CatalogError::Corrupt("Nicht unterstützte Katalog-Version"));
         }
 
         let (flags_slot, rest) = rest.split_at(2);
-        let mut flags_b = [0u8; 2];
-        flags_b.copy_from_slice(flags_slot);
-        let flags = u16::from_le_bytes(flags_b);
+        let flags = u16::from_le_bytes(flags_slot.try_into().map_err(|_| CatalogError::UnexpectedEof)?);
 
         let (no_slot, crc_slot) = rest.split_at(8);
-        let mut no_b = [0u8; 8];
-        no_b.copy_from_slice(no_slot);
-        let catalog_no = u64::from_le_bytes(no_b);
+        let catalog_no = u64::from_le_bytes(no_slot.try_into().map_err(|_| CatalogError::UnexpectedEof)?);
 
-        let mut crc_b = [0u8; 4];
-        crc_b.copy_from_slice(crc_slot);
-        let expected_chk = u32::from_le_bytes(crc_b);
-
+        let expected_chk = u32::from_le_bytes(crc_slot.try_into().map_err(|_| CatalogError::UnexpectedEof)?);
         let (data, _) = slice.split_at(16);
         let actual_chk = crc32c(0, data);
         if actual_chk != expected_chk {
@@ -122,6 +111,7 @@ pub fn catalog_file_name(catalog_no: u64) -> String {
 }
 
 /// Verwalter für das Lesen und Schreiben von Katalog-Records.
+#[derive(Debug)]
 pub struct CatalogLog {
     catalog_no: u64,
     integrity_mode: u8,
@@ -137,7 +127,7 @@ impl CatalogLog {
         Self {
             catalog_no,
             integrity_mode: 0,
-            offset: CATALOG_HEADER_LEN as u64,
+            offset: CATALOG_HEADER_LEN_U64,
             record_index: 0,
             chk_vorher: fold_u64_to_u32(catalog_no),
             head_mac: [0u8; 16],
@@ -148,6 +138,7 @@ impl CatalogLog {
     ///
     /// INV-CAT-3: Nur der letzte Record darf Torn Write sein und wird verworfen.
     /// Jeder frühere Defekt führt zu CatalogError::Corrupt.
+    #[allow(clippy::too_many_arguments)]
     pub fn read_and_recover(
         file: &dyn File,
         catalog_no: u64,
@@ -167,7 +158,7 @@ impl CatalogLog {
         }
 
         let mut state = CatalogState::default();
-        let mut offset = u64::try_from(CATALOG_HEADER_LEN).map_err(|_| CatalogError::InvalidFormat("Überlauf"))?;
+        let mut offset = CATALOG_HEADER_LEN_U64;
         let mut record_index = 0u64;
         let mut chk_vorher = fold_u64_to_u32(catalog_no);
         let mut head_mac = [0u8; 16];
@@ -275,7 +266,7 @@ impl CatalogLog {
                             .map_err(|_| CatalogError::Corrupt("Catalog-Record-Entschlüsselung fehlgeschlagen"))?;
                         CatalogEdit::decode(&plain)
                     }
-                    _ => return Err(CatalogError::Corrupt("Ungültiger Integritätsmodus")),
+                    _ => Err(CatalogError::Corrupt("Ungültiger Integritätsmodus")),
                 }
             })();
 
@@ -313,6 +304,7 @@ impl CatalogLog {
     /// Schreibt einen neuen atomaren Edit in die Katalog-Datei (M-5).
     ///
     /// M-5: Der Katalog-Commit nimmt ausschließlich Synced entgegen.
+    #[allow(clippy::too_many_arguments)]
     pub fn commit(
         &mut self,
         file: &dyn File,

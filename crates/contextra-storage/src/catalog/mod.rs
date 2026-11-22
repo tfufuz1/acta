@@ -8,6 +8,7 @@ pub mod current;
 pub mod durable;
 pub mod edit;
 pub mod field_decode;
+pub mod field_encode;
 pub mod format;
 pub mod log;
 pub mod reserve;
