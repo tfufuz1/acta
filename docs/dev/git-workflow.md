@@ -11,7 +11,7 @@ Stand: 2026-11-22.
 
 ## Erlaubnis
 
-Push und PR-Erstellung nur mit ausdrücklicher Freigabe des Nutzers; fehlt sie im Auftrag, vorher fragen und die Antwort abwarten. Die Freigabe gilt nur für den genannten Branch und PR. Nie selbst mergen, nie auf `main` pushen, nie Force-Push. Kurzfassung mit Befehlen: `CLAUDE.md` §5.
+Dauerhafte Freigabe des Nutzers (2026-11-22): Claude pusht Feature-Branches und öffnet danach immer selbst einen PR gegen `main`, ohne vorher zu fragen. Ist der bisherige PR schon gemergt, kommt ein neuer PR. Weiterhin verboten ohne neue Anweisung: auf `main` pushen, Force-Push, selbst mergen, fremde Branches oder PRs löschen oder schließen. Kurzfassung mit Befehlen: `CLAUDE.md` §5.
 
 ## Regeln
 

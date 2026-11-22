@@ -56,7 +56,9 @@ Ergebnisse mit `stable` (1.97) sind **nicht** gegen den Pin 1.89.0 verifiziert. 
 
 ## 5. Git und PRs
 
-**Erlaubnis zuerst.** Push und PR nur mit ausdrücklicher Freigabe des Nutzers. Hat der Auftrag sie nicht schon klar erteilt („pushe“, „erstelle den PR“), vorher fragen (Branch-Name, Ziel `main`, Inhalt in einem Satz; in der App per `AskUserQuestion`, sonst im Text) und die Antwort abwarten. Eine Freigabe gilt für genau diesen Branch und PR, nicht für spätere Änderungen. Nie `main` pushen, nie Force-Push, **nie selbst mergen**: Merge, Branch-Löschung und Review macht der Nutzer.
+**Dauerhafte Freigabe des Nutzers (2026-11-22):** Claude pusht Feature-Branches und **öffnet danach immer selbst einen PR gegen `main`**, ohne vorher zu fragen. Jede Änderung im Repo läuft über einen PR, auch kleine Doku-Änderungen. Ist der bisherige PR schon gemergt, öffnet Claude für die neuen Commits einen neuen PR (so bei #3 → #4 → #5) und nennt dem Nutzer die URL.
+
+**Grenzen, die ohne ausdrückliche neue Anweisung nicht fallen:** nie auf `main` pushen, nie Force-Push, **nie selbst mergen**, keine Branches oder PRs anderer löschen oder schließen. Merge und Review macht der Nutzer. Bei allem, was darüber hinausgeht (z. B. Löschen von Branches, Änderungen an `legacy/` oder an SPEC-Abschnitten mit Änderungsantrag), vorher fragen.
 
 Regeln: Feature-Branch (`feat|fix|docs|spec/<kurz>`), kleine Conventional Commits (`feat(storage): …`), PR gegen `main`, Inhalt nach `.github/pull_request_template.md`. Commits enden mit den `Co-Authored-By`/`Claude-Session`-Zeilen aus dem System-Hinweis der Sitzung, PR-Texte mit der „Generated with Claude Code“-Zeile und der Session-URL.
 
