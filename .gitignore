@@ -1,6 +1,8 @@
 # Build
 target/
 **/target/
+target_local/
+**/target_local
 
 # Editor / OS
 .idea/
