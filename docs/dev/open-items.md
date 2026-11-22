@@ -24,10 +24,13 @@ Stand: 2026-11-22. Diese Liste sammelt, was in der Inspektion aufgefallen ist un
 - Fuzz-Projekt nutzt edition 2021, Workspace 2024. Bewusst, aber nicht dokumentiert.
 - Keine CI (BL-9). `.github/` fehlt. Gates sind damit nicht erzwungen.
 
-## Fehlende Dokumente (Vorschlag, nicht angelegt)
+## Dokumente
 
-- `README.md` im Root (Zweck, Status, Befehle, Doku-Index)
-- `ARCHITECTURE.md` (Crate-Schnitt, Dateiarten, Schreib- und Lesepfad, Kennungen-Schema)
-- `CONTRIBUTING.md` und PR-Template unter `.github/`
-- Fuzz-README und Crate-README für `contextra-storage`
-- ADRs für die Entscheidungen SD-01 bis SD-64
+Angelegt: `README.md`, `ARCHITECTURE.md`, `CONTRIBUTING.md`, `fuzz/README.md`, `crates/contextra-storage/README.md`, `legacy/README.md`. PR-Template, `Makefile`, `scripts/metrics.sh` und `.ignore` stammen vom Eigentümer (PR #2).
+
+Noch offen:
+
+- `CODEOWNERS` (Eigentümer nennen)
+- CI unter `.github/workflows/` (BL-9)
+- ADRs für SD-01 bis SD-64 (bisher nur Tabelle in SPEC §21)
+- `CHANGELOG.md` (erst bei Releases)
