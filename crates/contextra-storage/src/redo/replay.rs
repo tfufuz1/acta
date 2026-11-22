@@ -126,6 +126,13 @@ pub fn recover_redo<F: Fs>(
                         defect_good_offset = rsm.current_offset;
                         defect_cause = cause;
                     }
+                    ReplayEffect::CorruptChecksum { offset, cause } => {
+                        // INV-LOG-6: Prüfsummenfehler mit Folgedaten liegt mitten im Log.
+                        // Er wird nie als Torn Tail abgeschnitten, auch nicht im letzten Segment.
+                        return Err(RedoError::Corrupt(format!(
+                            "INV-LOG-6: Defekt mitten in Segment {seg_id} bei Offset {offset}: {cause}"
+                        )));
+                    }
                     _ => {}
                 }
             }
@@ -167,7 +174,8 @@ pub fn recover_redo<F: Fs>(
             }
 
             if is_last_segment {
-                // Letztes ungesiegeltes Segment: Auf letztes gültiges Frame abschneiden und siegeln (SPEC §13.1 Schritt 6)
+                // Letztes ungesiegeltes Segment: Auf letztes gültiges Frame abschneiden und siegeln (SPEC §13.1 Schritt 6).
+                // Ein Torn Tail ist hier nur möglich, weil nach einem offenen Prüfsummenfehler nur Nullen folgten (INV-LOG-6).
                 let trunc_offset = if has_defect {
                     defect_good_offset
                 } else {
@@ -188,10 +196,11 @@ pub fn recover_redo<F: Fs>(
                 let seal_bytes = seal_frame.to_bytes();
                 file.write_all_at(&seal_bytes, trunc_offset)?;
                 file.sync_data()?;
-            } else if !seg_frames.is_empty() {
-                // Ein früheres Segment mit Frames ist nicht gesiegelt => Corrupt (INV-LOG-6)
+            } else {
+                // INV-LOG-6: Jedes Segment außer dem neuesten ist gesiegelt. Ein früheres ungesiegeltes
+                // Segment (mit Frames oder mit Defekt) wird nicht abgeschnitten, sondern ist Corrupt.
                 return Err(RedoError::Corrupt(format!(
-                    "INV-LOG-6: Früheres Segment {seg_id} mit Frames ist nicht gesiegelt"
+                    "INV-LOG-6: Früheres Segment {seg_id} ist nicht gesiegelt"
                 )));
             }
         }

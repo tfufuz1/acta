@@ -202,6 +202,46 @@ fn test_inv_log_6_corrupt_in_sealed_segment() {
 }
 
 #[test]
+fn test_inv_log_6_checksum_error_classified_by_trailing_bytes() {
+    // // INV-LOG-6: Prüfsummenfehler ist nur dann Torn Tail, wenn bis EOF nur Nullbytes folgen.
+    // Folgen Nicht-Null-Bytes, auch erst in einem späteren Chunk, ist es ein Defekt mitten im Log.
+    let chain_seed = 0x0BAD_C0DEu32;
+    let header = RedoHeader::new(1, 1, chain_seed, 1024 * 1024);
+    let mut data = Vec::new();
+    data.extend_from_slice(&header.to_bytes());
+
+    let op1 = RedoOp::new_put(1, None, b"k1".to_vec(), b"v1".to_vec());
+    let (f1, chk1) = RedoFrame::encode_plain(1, Durability::Always, &[op1], chain_seed).unwrap();
+    data.extend_from_slice(&f1.to_bytes());
+
+    // Zweites Frame mit gekipptem Stamp-Byte: Prüfsumme passt nicht mehr
+    let op2 = RedoOp::new_put(1, None, b"k2".to_vec(), b"v2".to_vec());
+    let (f2, _) = RedoFrame::encode_plain(2, Durability::Always, &[op2], chk1).unwrap();
+    let mut f2_bytes = f2.to_bytes();
+    f2_bytes[4] ^= 0xFF;
+    data.extend_from_slice(&f2_bytes);
+
+    // Fall 1: Nicht-Null-Bytes folgen in einem späteren Chunk => CorruptChecksum (kein Abschneiden)
+    let mut rsm = ReplayStateMachine::new();
+    let _ = rsm.step(ReplayEvent::Chunk(&data));
+    let effects = rsm.step(ReplayEvent::Chunk(&[0x42u8; 4]));
+    assert!(
+        effects.iter().any(|e| matches!(e, ReplayEffect::CorruptChecksum { .. })),
+        "Prüfsummenfehler mit Folgebytes muss CorruptChecksum sein"
+    );
+
+    // Fall 2: Nur Nullbytes bis EOF => TornTail
+    let mut rsm2 = ReplayStateMachine::new();
+    let _ = rsm2.step(ReplayEvent::Chunk(&data));
+    let _ = rsm2.step(ReplayEvent::Chunk(&[0u8; 8]));
+    let effects2 = rsm2.step(ReplayEvent::Eof);
+    assert!(
+        effects2.iter().any(|e| matches!(e, ReplayEffect::TornTail { .. })),
+        "Prüfsummenfehler gefolgt nur von Nullen muss TornTail sein"
+    );
+}
+
+#[test]
 fn test_inv_log_7_reserve_segment_alive() {
     // // INV-LOG-7: Ein Segment ohne Frames mit gültigem Header und id >= redo_floor ist lebendig (Reserve).
     let mem = Arc::new(MemFs::new());

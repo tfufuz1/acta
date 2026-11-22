@@ -62,6 +62,29 @@ pub enum ReplayEffect {
         /// Fehlerursache.
         cause: String,
     },
+    /// Prüfsummenfehler, dem Nicht-Null-Bytes folgen (INV-LOG-6).
+    ///
+    /// Ein solcher Fehler liegt mitten im Log und darf nicht als Torn Tail abgeschnitten werden.
+    CorruptChecksum {
+        /// Dateioffset des fehlerhaften Frames.
+        offset: u64,
+        /// Fehlerursache.
+        cause: String,
+    },
+}
+
+/// Prüfsummenfehler, dessen Klassifikation noch offen ist.
+///
+/// Ob es ein Torn Tail oder ein Defekt mitten im Log ist, entscheiden erst die Bytes
+/// hinter dem fehlerhaften Frame (INV-LOG-6): nur Nullbytes bis EOF ergeben einen Torn Tail.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PendingChecksum {
+    /// Offset des fehlerhaften Frames (letzter guter Offset).
+    good_offset: u64,
+    /// Länge des fehlerhaften Frames im Puffer (Header + Frame), ab Pufferbeginn.
+    extent: usize,
+    /// Fehlerursache.
+    cause: String,
 }
 
 /// Replay-Zustandsmaschine über gelesene Bytes eines Segments.
@@ -82,6 +105,8 @@ pub struct ReplayStateMachine {
     pub is_sealed: bool,
     /// Ob das Segment beendet ist (Nullen oder Siegel).
     pub is_terminated: bool,
+    /// Prüfsummenfehler, der auf die Folgebytes wartet (INV-LOG-6).
+    pending_checksum: Option<PendingChecksum>,
 }
 
 impl ReplayStateMachine {
@@ -96,6 +121,7 @@ impl ReplayStateMachine {
             header_parsed: false,
             is_sealed: false,
             is_terminated: false,
+            pending_checksum: None,
         }
     }
 
@@ -110,7 +136,11 @@ impl ReplayStateMachine {
         match event {
             ReplayEvent::Chunk(bytes) => {
                 self.buffer.extend_from_slice(bytes);
-                self.parse_available(&mut effects);
+                if self.pending_checksum.is_some() {
+                    self.resolve_pending_checksum(&mut effects);
+                } else {
+                    self.parse_available(&mut effects);
+                }
             }
             ReplayEvent::Eof => {
                 self.handle_eof(&mut effects);
@@ -221,11 +251,14 @@ impl ReplayStateMachine {
             let stored_chk = u32::from_le_bytes(chk_bytes);
 
             if stored_chk != expected_chk {
-                self.is_terminated = true;
-                effects.push(ReplayEffect::TornTail {
+                // INV-LOG-6: Ein Prüfsummenfehler ist nur dann ein Torn Tail, wenn bis EOF nur
+                // Nullbytes folgen. Die Klassifikation hängt an den Folgebytes, die evtl. noch fehlen.
+                self.pending_checksum = Some(PendingChecksum {
                     good_offset: self.current_offset,
+                    extent: total_frame_bytes,
                     cause: format!("Prüfsummenfehler im Frame bei Offset {}", self.current_offset),
                 });
+                self.resolve_pending_checksum(effects);
                 return;
             }
 
@@ -378,8 +411,40 @@ impl ReplayStateMachine {
         }
     }
 
+    /// Entscheidet einen offenen Prüfsummenfehler anhand der Bytes hinter dem Frame (INV-LOG-6).
+    ///
+    /// Nicht-Null-Bytes hinter dem Frame ergeben `CorruptChecksum` (fail-closed, kein Abschneiden).
+    /// Bleibt der Rest bisher null, bleibt der Fehler offen, bis weitere Bytes oder EOF kommen.
+    fn resolve_pending_checksum(&mut self, effects: &mut Vec<ReplayEffect>) {
+        let pending = match self.pending_checksum.take() {
+            Some(p) => p,
+            None => return,
+        };
+
+        let trailing = self.buffer.get(pending.extent..).unwrap_or(&[]);
+        if trailing.iter().any(|&b| b != 0) {
+            self.is_terminated = true;
+            effects.push(ReplayEffect::CorruptChecksum {
+                offset: pending.good_offset,
+                cause: format!("INV-LOG-6: {} mit folgenden Nicht-Null-Bytes", pending.cause),
+            });
+        } else {
+            self.pending_checksum = Some(pending);
+        }
+    }
+
     fn handle_eof(&mut self, effects: &mut Vec<ReplayEffect>) {
         if self.is_terminated {
+            return;
+        }
+
+        // Offener Prüfsummenfehler ohne Nicht-Null-Folgebytes bis EOF: Torn Tail
+        if let Some(pending) = self.pending_checksum.take() {
+            self.is_terminated = true;
+            effects.push(ReplayEffect::TornTail {
+                good_offset: pending.good_offset,
+                cause: pending.cause,
+            });
             return;
         }
 
