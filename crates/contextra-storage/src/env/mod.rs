@@ -51,7 +51,10 @@ pub struct Env {
 
 impl Env {
     /// Erstellt eine Produktivumgebung mit realem Dateisystem und Ports.
-    pub fn real(root_fs: Arc<dyn Fs>) -> Self {
+    ///
+    /// Öffnet nur, wenn `root_fs` die Anforderungen von `policy` erfüllt; sonst `Unsupported` (INV-FS-1).
+    pub fn real(root_fs: Arc<dyn Fs>, policy: FsPolicy) -> std::io::Result<Self> {
+        check_fs_policy(policy, &root_fs.caps())?;
         let clock = Arc::new(RealClock::new());
         let entropy = Arc::new(RealEntropy);
         let runtime = Arc::new(Runtime::new(4));
@@ -65,7 +68,7 @@ impl Env {
         ));
         let metrics = Arc::new(MetricsAdapter::noop());
 
-        Self {
+        Ok(Self {
             fs: root_fs,
             clock,
             entropy,
@@ -73,6 +76,6 @@ impl Env {
             governor,
             metrics,
             pressure: None,
-        }
+        })
     }
 }
