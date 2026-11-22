@@ -450,13 +450,13 @@ Das bisherige Messskript `measure_baseline.py` in Rev. 2 bezog sich auf `crates/
 | Prüfung | Ergebnis |
 |---|---|
 | `cargo check --workspace --all-targets` | grün; 3 Warnungen |
-| `cargo test --workspace --no-fail-fast` | grün außer `redo`: 20 von 24 bestanden, 4 fehlgeschlagen |
+| `cargo test --workspace --no-fail-fast` | `tests/engine` kompiliert nicht (21 Fehler, fehlende Module `engine::compaction`, `engine::recovery`, `engine::flush`, `KeyProvider`-Methoden); `redo`: 20 von 24 bestanden, 4 fehlgeschlagen. Der Lauf endet mit Compilerfehlern. |
 | `contextra-crypto-ref` | 2 Unit- und 4 Golden-Tests grün |
 | `contextra-storage` Unit-Tests | 25 grün |
 | `tests/blob` | 11 grün |
 | `tests/catalog` | 21 grün |
 | `tests/codec_property` | 6 grün |
-| `tests/engine` | 7 grün |
+| `tests/engine` | nicht kompilierbar (Stand `af80842`; im älteren Stand `c09c5c0` liefen 7 Tests) |
 | `tests/format` | 8 grün |
 | `tests/golden_anhang_a` | 7 grün |
 | `tests/invariants` | 1 grün (formal, S-13) |
