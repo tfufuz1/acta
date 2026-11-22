@@ -1,0 +1,13 @@
+[package]
+name = "contextra-storage-ports"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Semver-stable ports and fundamental value types for contextra-storage"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Keine Laufzeit-Abhängigkeiten!

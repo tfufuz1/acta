@@ -1,0 +1,21 @@
+[package]
+name = "contextra-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Embedded, crash-safe key-value core for contextra"
+
+[lints]
+workspace = true
+
+[features]
+default = []
+testing = []
+
+[dependencies]
+contextra-storage-ports = { path = "../contextra-storage-ports" }
+
+[dev-dependencies]
+proptest = "1.4"
+loom = "0.7"
