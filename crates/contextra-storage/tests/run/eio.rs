@@ -39,7 +39,7 @@ fn test_eio_reported_as_error_never_empty() {
     let run_bytes = builder.finish().unwrap();
 
     // In Datei schreiben
-    let mut file = fault_fs.open(run_path, OpenMode::CreateNew(Perm::Private)).unwrap();
+    let file = fault_fs.open(run_path, OpenMode::CreateNew(Perm::Private)).unwrap();
     file.write_all_at(&run_bytes, 0).unwrap();
     file.sync_all().unwrap();
     drop(file);

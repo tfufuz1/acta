@@ -10,7 +10,7 @@ description = "Embedded, crash-safe key-value core for contextra"
 workspace = true
 
 [features]
-default = []
+default = ["testing"]
 testing = []
 
 [dependencies]
@@ -19,3 +19,4 @@ contextra-storage-ports = { path = "../contextra-storage-ports" }
 [dev-dependencies]
 proptest = "1.4"
 loom = "0.7"
+contextra-crypto-ref = { path = "../contextra-crypto-ref" }

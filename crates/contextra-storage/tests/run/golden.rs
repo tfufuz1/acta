@@ -6,7 +6,7 @@
 
 use contextra_storage::codec::tag::{Tag, TagKind};
 use contextra_storage::run::blob_ref::BlobRef;
-use contextra_storage::run::block::{block_kind, BlockSecurity};
+use contextra_storage::run::block::BlockSecurity;
 use contextra_storage::run::builder::{RunBuilder, RunBuilderOptions};
 use contextra_storage::run::footer::RUN_MAGIC;
 use contextra_storage::run::reader::RunReader;

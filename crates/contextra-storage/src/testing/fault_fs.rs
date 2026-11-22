@@ -70,6 +70,12 @@ struct FaultFile {
 
 impl File for FaultFile {
     fn read_at(&self, buf: &mut [u8], off: u64) -> io::Result<usize> {
+        if self.config.fail_io.load(Ordering::Relaxed) {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Injected EIO",
+            ));
+        }
         self.inner.read_at(buf, off)
     }
 
@@ -78,6 +84,12 @@ impl File for FaultFile {
             return Err(io::Error::new(
                 io::ErrorKind::StorageFull,
                 "Injected ENOSPC",
+            ));
+        }
+        if self.config.fail_io.load(Ordering::Relaxed) {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Injected EIO",
             ));
         }
         self.inner.write_all_at(buf, off)

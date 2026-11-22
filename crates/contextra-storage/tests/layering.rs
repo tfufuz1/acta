@@ -26,6 +26,11 @@ fn check_file(path: &Path, rel_module: &str) {
         let import_path = trimmed.trim_start_matches("use crate::");
         let target_module = import_path.split("::").next().unwrap_or("").trim_end_matches(';');
 
+        // Eigenes Modul darf sich selbst referenzieren
+        if target_module == rel_module {
+            continue;
+        }
+
         // Prüfe Schichtregeln:
         match rel_module {
             "keys" => {

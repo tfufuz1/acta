@@ -89,33 +89,86 @@ impl<T, const RANK: u8> RankedMutex<T, RANK> {
         };
 
         RankedMutexGuard {
-            _guard: guard,
+            _guard: Some(guard),
         }
+    }
+
+    /// Wartet atomar auf einer Condvar unter Beachtung des Rangstacks.
+    pub fn wait<'a>(
+        &self,
+        cond: &Condvar,
+        mut guard: RankedMutexGuard<'a, T, RANK>,
+    ) -> RankedMutexGuard<'a, T, RANK> {
+        let inner = guard._guard.take().unwrap();
+        #[cfg(debug_assertions)]
+        pop_rank(RANK);
+
+        let next_inner = match cond.wait(inner) {
+            Ok(g) => g,
+            Err(e) => panic!("Condvar wait poisoned: {:?}", e),
+        };
+
+        #[cfg(debug_assertions)]
+        push_rank(RANK);
+
+        RankedMutexGuard {
+            _guard: Some(next_inner),
+        }
+    }
+
+    /// Wartet mit Zeitüberschreitung atomar auf einer Condvar.
+    #[cfg(not(loom))]
+    pub fn wait_timeout<'a>(
+        &self,
+        cond: &Condvar,
+        mut guard: RankedMutexGuard<'a, T, RANK>,
+        dur: std::time::Duration,
+    ) -> (RankedMutexGuard<'a, T, RANK>, std::sync::WaitTimeoutResult) {
+        let inner = guard._guard.take().unwrap();
+        #[cfg(debug_assertions)]
+        pop_rank(RANK);
+
+        let (next_inner, res) = match cond.wait_timeout(inner, dur) {
+            Ok(pair) => pair,
+            Err(e) => panic!("Condvar wait_timeout poisoned: {:?}", e),
+        };
+
+        #[cfg(debug_assertions)]
+        push_rank(RANK);
+
+        (
+            RankedMutexGuard {
+                _guard: Some(next_inner),
+            },
+            res,
+        )
     }
 }
 
 /// Guard für einen `RankedMutex`.
 pub struct RankedMutexGuard<'a, T, const RANK: u8> {
-    _guard: MutexGuard<'a, T>,
+    _guard: Option<MutexGuard<'a, T>>,
 }
 
 impl<T, const RANK: u8> std::ops::Deref for RankedMutexGuard<'_, T, RANK> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
-        &self._guard
+        self._guard.as_ref().unwrap()
     }
 }
 
 impl<T, const RANK: u8> std::ops::DerefMut for RankedMutexGuard<'_, T, RANK> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self._guard
+        self._guard.as_mut().unwrap()
     }
 }
 
 impl<T, const RANK: u8> Drop for RankedMutexGuard<'_, T, RANK> {
     fn drop(&mut self) {
-        #[cfg(debug_assertions)]
-        pop_rank(RANK);
+        if self._guard.is_some() {
+            #[cfg(debug_assertions)]
+            pop_rank(RANK);
+        }
     }
 }
 

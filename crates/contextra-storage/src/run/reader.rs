@@ -280,7 +280,8 @@ impl<'a> RunReader<'a> {
         }
     }
 
-    fn load_data_block(&self, block_idx: usize) -> Result<Arc<Vec<u8>>, RunError> {
+    /// Lädt einen Datenblock anhand seines Index.
+    pub fn load_data_block(&self, block_idx: usize) -> Result<Arc<Vec<u8>>, RunError> {
         let block_no = u32::try_from(block_idx).unwrap_or(0);
         if let Some(cache) = &self.block_cache {
             if let Some(data) = cache.get(self.meta.run_id, block_no) {
