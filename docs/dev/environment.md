@@ -44,6 +44,10 @@ Folgen: `rust-version = "1.89"` und Edition 2024 sind erfüllt. Die Lints von cl
 - Scratchpad für temporäre Dateien: `/tmp/claude-0/-home-claude/<session-id>/scratchpad` (Modus 700). Nicht im Repo ablegen.
 - Speicher: rund 30 GB frei auf `/`.
 
+## Makefile
+
+`make` setzt `RUSTUP_TOOLCHAIN=stable` selbst (`?=`, überschreibbar). Zielübersicht: `CLAUDE.md` §3. Stolperfallen: `CLAUDE.md` §8.
+
 ## Erst-Checkliste
 
 ```bash

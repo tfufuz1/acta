@@ -28,7 +28,9 @@ git push -u origin feat/<name>
 
 Danach PR gegen `main` erstellen:
 
-- Mit GitHub-Konnektor oder `gh pr create --base main --head feat/<name>`, sobald `gh auth status` grün ist.
+- Per REST (funktioniert in Claude-Code-Sitzungen, geprüft): `gh api repos/tfufuz1/acta/pulls -f title='…' -f head='feat/<name>' -f base='main' -f body='…' --jq .html_url` (Entwurf: zusätzlich `-F draft=true`).
+- `gh pr create` und andere GraphQL-Befehle scheitern in Sessions mit HTTP 403 („GitHub GraphQL is not available“). Nicht wiederholen, REST nutzen.
+- PR-Text endet mit `🤖 Generated with [Claude Code](https://claude.com/claude-code)` und der Session-URL, Commits mit den vorgegebenen `Co-Authored-By`- und `Claude-Session`-Zeilen.
 - Fallback ohne `gh`: Compare-URL `https://github.com/tfufuz1/acta/compare/main...feat/<name>` öffnen und dort den PR anlegen.
 - Fallback ohne Push-Zugriff: `git format-patch main..feat/<name>` erzeugen und dem Nutzer übergeben.
 
