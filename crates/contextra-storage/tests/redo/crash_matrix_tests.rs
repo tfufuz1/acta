@@ -45,8 +45,9 @@ fn test_crash_row_mid_write_torn_tail_healed() {
     // Mitten im zweiten Schreibvorgang bricht das System ab: Halber Frame im Segment
     let seg_path = base.join(segment_file_name(1));
     let file = mem.open(&seg_path, OpenMode::ReadWrite).unwrap();
+    // Der erste Frame belegt Bytes 48..=78 (31 Byte); der halbe Frame beginnt direkt danach.
     let half_frame = [0x15, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00]; // Unvollständig
-    file.write_all_at(&half_frame, 48 + 29).unwrap();
+    file.write_all_at(&half_frame, 48 + 31).unwrap();
 
     // Recovery schneidet torn tail ab und siegelt
     let rep = recover_redo(Arc::clone(&mem), base, 1, 0, 0).expect("Recovery succeeds");
@@ -93,6 +94,9 @@ fn test_crash_row_enospc_truncate_succeeded() {
     assert_eq!(res, Err(RedoError::BusyStorageFull));
     assert!(!writer.is_poisoned(), "Erfolgreiches Abschneiden darf nicht vergiften");
 
+    // ENOSPC-Fehlerinjektion für die Recovery aufheben (Recovery schreibt das Siegel)
+    fault_cfg.fail_enospc.store(false, Ordering::Relaxed);
+
     // Neustart ist unauffällig
     let rep = recover_redo(Arc::clone(&fault_fs), base, 1, 0, 0).expect("Recovery unauffällig");
     assert_eq!(rep.committed_frames.len(), 1);
@@ -112,8 +116,9 @@ fn test_crash_row_enospc_truncate_failed_poisons() {
     // Torn-Tail im letzten Segment nach Absturz
     let seg_path = base.join(segment_file_name(1));
     let file = mem.open(&seg_path, OpenMode::ReadWrite).unwrap();
+    // Der erste Frame belegt Bytes 48..=78 (31 Byte); die Störung beginnt direkt danach.
     let corrupt_bytes = [0x55u8; 16];
-    file.write_all_at(&corrupt_bytes, 48 + 29).unwrap();
+    file.write_all_at(&corrupt_bytes, 48 + 31).unwrap();
 
     // Heilen + Siegeln in Recovery
     let rep = recover_redo(Arc::clone(&mem), base, 1, 0, 0).expect("Recovery heilt und siegelt");
