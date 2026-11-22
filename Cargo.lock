@@ -191,6 +191,7 @@ name = "contextra-storage"
 version = "0.1.0"
 dependencies = [
  "contextra-crypto-ref",
+ "contextra-storage",
  "contextra-storage-ports",
  "loom",
  "proptest",
