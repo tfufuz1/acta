@@ -5,13 +5,16 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
-use contextra_storage::env::{check_fs_policy, FsPolicy, RealClock, RealEntropy, RealFs};
+use contextra_storage::env::{Env, FsPolicy, RealClock, RealEntropy, RealFs, check_fs_policy};
 use contextra_storage::testing::conformance::run_fs_conformance_suite;
-use contextra_storage_ports::{Clock, Entropy, Fs, FsCaps, LockMode, OpenMode, Perm};
+use contextra_storage_ports::{
+    Clock, DirEntry, Entropy, File, Fs, FsCaps, LockGuard, LockMode, OpenMode, Perm,
+};
 use std::fs;
 use std::io;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Arc;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -77,6 +80,82 @@ fn test_inv_fs_1_strict_unsupported() {
     assert!(check_fs_policy(FsPolicy::Relaxed, &caps_no_dir_sync).is_ok());
     assert!(check_fs_policy(FsPolicy::Relaxed, &caps_no_rename).is_ok());
     assert!(check_fs_policy(FsPolicy::Relaxed, &caps_no_perm).is_ok());
+}
+
+/// Test-Dateisystem: delegiert an `RealFs`, meldet aber frei wählbare `FsCaps`.
+struct WeakCapsFs {
+    inner: RealFs,
+    caps: FsCaps,
+}
+
+impl Fs for WeakCapsFs {
+    fn create_dir_all(&self, p: &std::path::Path, perm: Perm) -> io::Result<()> {
+        self.inner.create_dir_all(p, perm)
+    }
+    fn open(&self, p: &std::path::Path, mode: OpenMode) -> io::Result<Box<dyn File>> {
+        self.inner.open(p, mode)
+    }
+    fn rename(&self, from: &std::path::Path, to: &std::path::Path) -> io::Result<()> {
+        self.inner.rename(from, to)
+    }
+    fn remove_file(&self, p: &std::path::Path) -> io::Result<()> {
+        self.inner.remove_file(p)
+    }
+    fn remove_dir(&self, p: &std::path::Path) -> io::Result<()> {
+        self.inner.remove_dir(p)
+    }
+    fn list_dir(&self, p: &std::path::Path) -> io::Result<Vec<DirEntry>> {
+        self.inner.list_dir(p)
+    }
+    fn sync_dir(&self, p: &std::path::Path) -> io::Result<()> {
+        self.inner.sync_dir(p)
+    }
+    fn lock(&self, p: &std::path::Path, mode: LockMode) -> io::Result<Box<dyn LockGuard>> {
+        self.inner.lock(p, mode)
+    }
+    fn caps(&self) -> FsCaps {
+        self.caps
+    }
+    fn hard_link(&self, from: &std::path::Path, to: &std::path::Path) -> io::Result<()> {
+        self.inner.hard_link(from, to)
+    }
+}
+
+/// Abnahme INV-FS-1: `Env::real` mit `Strict` verweigert ein Dateisystem mit schwachen
+/// Eigenschaften beim Öffnen (Unsupported); ein zulässiges Profil wird akzeptiert.
+#[test]
+fn test_inv_fs_1_env_open_enforces_strict_policy() {
+    let base = FsCaps {
+        durable_file_sync: true,
+        durable_dir_sync: true,
+        atomic_rename: true,
+        private_perm: true,
+        no_follow_root: true,
+    };
+    let weak = FsCaps {
+        durable_dir_sync: false,
+        ..base
+    };
+
+    // Zulässiges Profil: Strict öffnet.
+    let ok_fs: Arc<dyn Fs> = Arc::new(WeakCapsFs {
+        inner: RealFs::new(),
+        caps: base,
+    });
+    assert!(Env::real(ok_fs, FsPolicy::Strict).is_ok());
+
+    // Schwaches Profil: Strict verweigert das Öffnen.
+    let weak_fs: Arc<dyn Fs> = Arc::new(WeakCapsFs {
+        inner: RealFs::new(),
+        caps: weak,
+    });
+    let err = Env::real(Arc::clone(&weak_fs), FsPolicy::Strict)
+        .err()
+        .expect("weak caps must be rejected under Strict (INV-FS-1)");
+    assert_eq!(err.kind(), io::ErrorKind::Unsupported);
+
+    // Relaxed (Tests, flüchtige Instanzen) akzeptiert dasselbe Profil.
+    assert!(Env::real(weak_fs, FsPolicy::Relaxed).is_ok());
 }
 
 /// Worker-Test für die umask-Prüfung. Wird im Subprozess unter verschiedener umask aufgerufen.
