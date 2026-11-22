@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| Status | **Final, normativ.** Löst `REFACTORING_PLAN.md` (v1), `REFACTORING_PLAN_v2.md` (bricht in §16 ab) und `REVIEW_contextra-storage_vs_mnemos.md` als Spezifikation ab. Das *Wie und Wann* der Umsetzung steht in `REFACTORING_PLAN_FINAL.md`. |
+| Status | **Final, normativ, Revision R2** (Änderungsliste: §22.4).  Löst `REFACTORING_PLAN.md` (v1), `REFACTORING_PLAN_v2.md` (bricht in §16 ab) und `REVIEW_contextra-storage_vs_mnemos.md` als Spezifikation ab. Das *Wie und Wann* der Umsetzung steht in `IMPLEMENTATION_SPEC.md`. |
 | Gegenstand | Neuer Kern `contextra-storage` samt `contextra-ports`. Ersetzt `crates/contextra-store` (Repository `tfufuz1/acta`, Stand `b001610`; Quelltext unverändert seit `47c9865`). |
 | Sprache | Prosa und Rustdoc deutsch, Bezeichner englisch (P-7). |
 | Geltung | Wer von dieser Datei abweicht, ändert zuerst diese Datei (§1.5). Jede Invariante (`INV-*`) wird in mindestens einem Test per ID zitiert (§18, §19). |
-| Verifikation | Die Spezifikation wurde durch Lesen von Konzepten und Altcode erstellt. **Es wurde nichts kompiliert oder gemessen** (kein Rust-Toolchain in der Erstellungsumgebung). Alle Leistungsangaben sind Hypothesen (`H-S*`, §20). Die Referenzvektoren in Anhang A wurden mit einem unabhängigen Python-Referenzcodierer aus dieser Spezifikation berechnet (CRC32C und XXH64 gegen bekannte Prüfwerte validiert), nicht aus Rust-Code. |
+| Verifikation | Die Spezifikation wurde durch Lesen von Konzepten und Altcode erstellt. **Es wurde nichts kompiliert oder gemessen** (kein Rust-Toolchain in der Erstellungsumgebung). Alle Leistungsangaben sind Hypothesen (`H-S*`, §20). Auch Revision R2 wurde weder kompiliert noch gemessen; neu eingeführte Formatfelder sind vor **G-F** durch Goldens zu belegen (Anhang A.8). Die Referenzvektoren in Anhang A wurden mit einem unabhängigen Python-Referenzcodierer aus dieser Spezifikation berechnet (CRC32C und XXH64 gegen bekannte Prüfwerte validiert), nicht aus Rust-Code. |
 
 ---
 
@@ -14,7 +14,7 @@
 
 ### 1.1 Zweck
 
-`contextra-storage` ist ein **eingebetteter, synchroner, crash-sicherer Schlüssel-Wert-Kern** mit atomaren Mehr-Space-Änderungen, MVCC-Sichten, kontrollierter physischer Löschung und einer Wert-Trennung (Header im LSM, große Körper in Blob-Dateien). Er ist das Fundament für Speicher- und Retrieval-Schichten von Sprachmodell-Agenten (RAG-Speicherkerne), kennt aber **weder Tokenizer noch Embeddings, Hashes von Nutzdaten, Mandanten noch Branches**. Er liefert Primitive, aus denen diese Schichten korrekt gebaut werden (§7.6, Anhang C).
+`contextra-storage` ist ein **eingebetteter, synchroner, crash-sicherer Schlüssel-Wert-Kern** mit atomaren Mehr-Space-Änderungen, MVCC-Sichten, kontrollierter physischer Löschung und einer Wert-Trennung (Header im LSM, große Körper in Blob-Dateien). Er ist das Fundament für Speicher- und Retrieval-Schichten von Sprachmodell-Agenten (RAG-Speicherkerne), kennt aber **weder Tokenizer noch Embeddings, Hashes von Nutzdaten, Mandanten noch Branches**. Er liefert Primitive, aus denen diese Schichten korrekt gebaut werden (§7.6, Anhang C). Was er bewusst **nicht** baut und welche stabilen Flächen er aufsetzenden Schichten bereitstellt, regeln §2.3 und §7.8.
 
 ### 1.2 Normsprache
 
@@ -23,7 +23,7 @@
 ### 1.3 Dokumentenhierarchie
 
 1. `SPEC.md` (diese Datei): normativ — Formate, Protokolle, Invarianten, API-Vertrag.
-2. `REFACTORING_PLAN_FINAL.md`: operativ — Phasen, Gates, Migration, Risiken. Widerspruch ⇒ SPEC gilt.
+2. `IMPLEMENTATION_SPEC.md`: operativ — Phasen, Gates, Migration, Risiken. Widerspruch ⇒ SPEC gilt.
 3. Alte Dokumente (`docs/archive/`): nur Herkunft. Sie sind **keine** Quelle für Anforderungen.
 
 ### 1.4 Kennungen
@@ -69,10 +69,34 @@
 | NZ-6 | Windows mit voller Durability in Version 1 (A-02) | Port `Fs::sync_dir` für Windows |
 | NZ-7 | `mmap` im Leseweg | Leseweg über `read_at` |
 | NZ-8 | Inhaltsadressierung, Hashing von Nutzdaten, Dedup | obere Schicht |
-| NZ-9 | Tokenizer, Embeddings, ANN, Volltext-Algorithmen | `contextra-text`, `-vector` über `Extension`/`Segment` |
+| NZ-9 | Tokenizer, Embeddings, ANN, Volltext- und Graph-Algorithmen | obere Schicht, über `Extension`/`Segment` |
 | NZ-10 | `O_DIRECT`, `io_uring`, Thread-per-Core im Kern | alternative `Fs`-Implementierung (SD-31) |
 | NZ-11 | Kompression in Version 1 (`codec`-Byte reserviert, SD-13) | spätere Formatentscheidung |
 | NZ-12 | Prolly-Tree/Merkle-DAG, Commit-DAG (Branches Stufe B) | obere Schicht; Stufe A (Overlay) siehe Anhang C |
+| NZ-13 | Transaktionspuffer, Lesemengen-Verwaltung, SSI-Validierung, Sequenzprotokoll je Dokument, Snapshot-Register (Verschärfung von NZ-3) | obere Schicht, gebaut aus `Guard`/`View`/`Hold` (§7.8.1) |
+| NZ-14 | Lösch-**Orchestrierung**: Saga über mehrere Schichten, anwendungsweite Lesesperre, Journal, Ledger, signierte Berichte, Restmessung mit Positivkontrolle | obere Schicht; der Kern liefert `Erase`, `ErasureReceipt`, `erase_status`, `scan_physical` (§7.8.4) |
+| NZ-15 | Schlüsselverwaltung: Tresor, Slot-Tabellen, Passphrase-Ableitung, Beschaffung der KEK, gesperrter Speicher | `KeyProvider`, `SecretAlloc` (§4, §7.8.5) |
+| NZ-16 | Kryptografische Primitive, SIMD, `unsafe`, `mlock`, `mmap`, Plattformhärtung (`F_FULLFSYNC`, ACL, Windows) | Ports und alternative `Fs`-Implementierungen mit `FsCaps` (§4) |
+| NZ-17 | Benannte Checkpoints über mehrere Komponenten, Wiederherstellungs-Koordination, Checkpoint-Registry | obere Schicht; der Kern liefert dauerhafte `Hold`s und `checkpoint(dest)` (§7.8.2) |
+| NZ-18 | Schlüsselcodierung für Mandanten, Kollektionen, Dokumente; Zugriffs-, Lizenz- und Richtlinienprüfung | obere Schicht (Anhang D) |
+| NZ-19 | Vergessens-, Zerfalls- und Konsolidierungs**politik**, Bewertungsmodelle | obere Schicht; der Kern liefert den Mechanismus `CompactionFilter` (§12.2) |
+| NZ-20 | `async`/`await`-Fassaden, Executor-Wahl | obere Schicht; der Kern liefert `submit` mit Fertigmeldung (§7.8.6) |
+
+### 2.3 Verantwortungsgrenze: Kern, Ports, aufsetzende Schichten
+
+Der Kern löst Speicherung, Dauerhaftigkeit, Nebenläufigkeit und Löschung **vollständig** und liefert für alles darüber **Mechanismus statt Politik**. Was außerhalb liegt, baut der Kern **nicht**, auch nicht vorsorglich: aufsetzende Schichten existieren teils bereits, teils entstehen sie später. Der Kern kennt sie nicht und richtet sich nicht nach ihnen; er stellt die stabilen Flächen aus §7.8 bereit (SD-51, SD-52).
+
+| Bereich | Im Kern (MUSS) | Über Port hereingereicht | Außerhalb (Kern baut es nicht) | Fläche |
+|---|---|---|---|---|
+| Transaktionen | `Change`, `Guard`, `Stamp`, `View`, `Hold` | – | Puffer, Lesemengen, SSI, Sequenzprotokoll, Snapshot-Register | §7.6, §7.8.1 |
+| Löschung | `Erase` (E0–E7), Marker, Blob-Sweep, `ErasureReceipt`, `verify_erasure`, `scan_physical` | `ColdTier::delete`, `KeyProvider` | Saga, Lesesperre der Anwendung, Journal, Ledger, Berichte, Restmessung | §14, §7.8.4 |
+| Schlüssel | Hierarchie in `KEYS`, Nonce-Protokoll, Epochen, Domänen-Versiegelung | `Cipher`, `Mac`, `Kdf`, `KeyProvider`, `Entropy`, `SecretAlloc` | Tresor, Slots, Passphrase, KEK-Beschaffung | §15, §7.8.5 |
+| Prüfsummen, Plattform | portables CRC32C und XXH64, `RealFs` (nur `std`) | beschleunigte `Checksum`, gehärtete `Fs` | SIMD, `unsafe`, `mlock`, `mmap` | §4 |
+| Index-Strukturen | `Extension`-Blöcke, Segment-Lebenszyklus, -Rahmen und -Siegel, `Consumer`, `history` | Segment-Inhaltsformate | Tokenizer, Postings-Format, Vektor- und Graphstrukturen | §12.4, §12.5, §7.8.3 |
+| Vergessen | `CompactionFilter`-Mechanismus | Entscheidungsfunktion | Zerfallsmodelle, Konsolidierung | §12.2 |
+| Zeitreise | `View`, `Hold` (flüchtig, dauerhaft), `checkpoint(dest)` | – | benannte Checkpoints über Komponenten, Registry | §7.8.2 |
+| Schlüsselcodierung | Bytes, Ordnung, Präfixfilter | – | Mandanten-/Kollektions-/Dokumentcodierung, Richtlinien | Anhang D |
+| Asynchronität | synchrone API, `submit` | – | Executor, `async`-Fassade | §7.8.6 |
 
 ---
 
@@ -84,14 +108,14 @@
 acta/                              Repository-Wurzel
   Cargo.toml                       Workspace, resolver 3, MSRV in A-05 festgelegt
   rust-toolchain.toml  rustfmt.toml  clippy.toml  deny.toml
-  SPEC.md  REFACTORING_PLAN_FINAL.md
+  SPEC.md  IMPLEMENTATION_SPEC.md
   crates/contextra-ports/          Traits und kleine Wertetypen, KEINE Logik, keine Abhängigkeiten
   crates/contextra-storage/        dieser Kern, nur std
   legacy/contextra-store/          eingefrorener Altstand (nicht im Workspace-Build, nur Referenz)
   docs/archive/                    alte Konzept- und Plandokumente
 ```
 
-`contextra-ports` ist ein eigenes, winziges Crate, damit künftige Crates (`simd`, `crypto`, `cell`, `text`, `vector`, …) `Checksum`, `Cipher`, `Mac`, `Kdf`, `Weigher`, `Filter`, `Extension` implementieren können, ohne vom Kern abzuhängen. Der Kern hängt an `ports`, nie umgekehrt.
+`contextra-ports` ist ein eigenes, winziges Crate, damit beliebige Implementierer (Prüfsummen, Kryptografie, Plattform-`Fs`, Indexbau, Telemetrie) `Checksum`, `Cipher`, `Mac`, `Kdf`, `Weigher`, `Filter`, `Extension` implementieren können, ohne vom Kern abzuhängen. Der Kern hängt an `ports`, nie umgekehrt.
 
 ### 3.2 Modulschnitt von `contextra-storage`
 
@@ -99,10 +123,10 @@ acta/                              Repository-Wurzel
 src/lib.rs            Re-Exports der öffentlichen API
 src/sync.rs           Fassade über std::sync (unter cfg(loom): loom::sync) — einzige Stelle mit cfg(loom)
 src/api/              storage.rs space.rs change.rs view.rs cursor.rs page.rs hold.rs consumer.rs
-                      listener.rs config.rs error.rs
+                      listener.rs config.rs error.rs submit.rs inspect.rs segment.rs
 src/env/              env.rs real_fs.rs clock.rs entropy.rs runtime.rs governor.rs metrics.rs hooks.rs
 src/codec/            varint.rs crc32c.rs xxh64.rs bloom.rs tag.rs keyrange.rs bytes.rs limits.rs
-src/keys/             hierarchy.rs keyfile.rs domains.rs nonce.rs secret.rs      (Protokoll; Primitive über Ports)
+src/keys/             hierarchy.rs keyfile.rs domains.rs nonce.rs epoch.rs secret.rs      (Protokoll; Primitive über Ports)
 src/redo/             frame.rs segment.rs seal.rs writer.rs reader.rs recover.rs prealloc.rs
 src/run/              builder.rs reader.rs block.rs footer.rs filter.rs rangedel.rs extension.rs
                       table_cache.rs block_cache.rs
@@ -111,9 +135,9 @@ src/catalog/          edit.rs log.rs state.rs current.rs format.rs reserve.rs
 src/engine/           version.rs memtable.rs committer.rs flush.rs views.rs retention.rs registry.rs
                       compaction/{plan.rs,retain.rs,exec.rs,blobgc.rs}
                       maintenance.rs (Lanes, Claims) recovery.rs graveyard.rs
-src/erase/            plan.rs exec.rs registry.rs verify.rs
+src/erase/            plan.rs exec.rs registry.rs verify.rs physical_scan.rs
 src/testing/          (Feature `testing`) mem_fs.rs fault_fs.rs manual_runtime.rs hooks.rs
-                      model.rs oracle.rs linearize.rs
+                      model.rs oracle.rs linearize.rs conformance.rs
 ```
 
 ### 3.3 Schichtregeln (per Test erzwungen)
@@ -171,6 +195,7 @@ pub trait Fs: Send + Sync + 'static {
     fn list_dir(&self, p: &Path) -> io::Result<Vec<DirEntry>>;                // Name + Länge
     fn sync_dir(&self, p: &Path) -> io::Result<()>;
     fn lock(&self, p: &Path, mode: LockMode) -> io::Result<Box<dyn LockGuard>>;
+    fn caps(&self) -> FsCaps;                                                  // zugesicherte Eigenschaften (SD-57)
     fn hard_link(&self, from: &Path, to: &Path) -> io::Result<()>;            // nur Checkpoint (Opt-in)
 }
 pub trait File: Send + Sync {
@@ -183,6 +208,8 @@ pub trait File: Send + Sync {
     fn sync_data(&self) -> io::Result<()>;
     fn sync_all(&self) -> io::Result<()>;
 }
+pub struct FsCaps { pub durable_file_sync: bool, pub durable_dir_sync: bool, pub atomic_rename: bool,
+                    pub private_perm: bool, pub no_follow_root: bool }
 pub trait Clock:   Send + Sync { fn now_ms(&self) -> u64; fn monotonic_ns(&self) -> u64; }
 pub trait Entropy: Send + Sync { fn fill(&self, dst: &mut [u8]) -> io::Result<()>; }
 pub trait Checksum: Send + Sync { fn crc32c(&self, seed: u32, data: &[u8]) -> u32; }     // Standard: portabel, safe
@@ -203,8 +230,12 @@ pub trait Mac: Send + Sync { fn mac16(&self, key: &[u8; 32], parts: &[&[u8]]) ->
 pub trait Kdf: Send + Sync { fn derive(&self, key: &[u8; 32], context: &[&[u8]]) -> [u8; 32]; }
 pub trait KeyProvider: Send + Sync {
     fn kek(&self) -> io::Result<Secret32>;                                   // Schlüsselverschlüsselungsschlüssel
-    fn domain_key(&self, d: KeyDomain) -> io::Result<Option<Secret32>>;      // None = vernichtet
+    fn domain_key(&self, d: KeyDomain) -> io::Result<Option<Secret32>>;      // legt NIE an; None = dauerhaft vernichtet; nie angelegt ⇒ Err(NotFound)
+    fn domain_key_create(&self, d: KeyDomain) -> io::Result<Option<Secret32>>; // legt bei Bedarf an; None = vernichtet (SD-55)
+    fn make_durable(&self) -> io::Result<()>;                                // Barriere: alle bisher angelegten Schlüssel sind dauerhaft (INV-KEYP-1)
 }
+pub trait SecretAlloc: Send + Sync { fn alloc(&self, bytes: [u8; 32]) -> io::Result<Box<dyn SecretCell>>; }   // optional: geschützter Speicher (SD-56)
+pub trait SecretCell: Send + Sync { fn expose(&self) -> &[u8; 32]; }                                        // Drop nullt
 pub trait RollbackAnchor: Send + Sync {                                      // optional (F10, §15.5)
     fn record(&self, catalog_generation: u64, head_mac: [u8; 32]) -> io::Result<()>;
     fn latest(&self) -> io::Result<Option<(u64, [u8; 32])>>;
@@ -227,11 +258,14 @@ pub trait Extension: Send + Sync { fn id(&self) -> u16; fn build(..); fn merge(.
 - `Fs`-Verzeichnisoperationen (Anlegen, `rename`, `remove`) sind erst nach `sync_dir` dauerhaft. `write_atomic(path, bytes)` (Temp `.building` → `sync_all` → `rename` → `sync_dir`) ist eine **Hilfsfunktion über `Fs`**, kein Trait-Mitglied, damit `FaultFs` sie mitprüft.
 - `Perm::Private` MUSS unabhängig von der `umask` gelten (§15.6).
 - `RealFs` nutzt ausschließlich `std` (`FileExt::read_at/write_at`, `File::lock/try_lock`).
-- `Checksum::crc32c(seed, data)` setzt einen CRC-32C-Strom fort: Ergebnis = `!update(!seed, data)`; `seed = 0` liefert den üblichen CRC-32C (`"123456789"` → `0xE3069283`). Beschleunigte Varianten (`unsafe`) liegen in `contextra-simd`.
+- `Checksum::crc32c(seed, data)` setzt einen CRC-32C-Strom fort: Ergebnis = `!update(!seed, data)`; `seed = 0` liefert den üblichen CRC-32C (`"123456789"` → `0xE3069283`). Der Kern liefert eine **portable, sichere** Implementierung; beschleunigte Varianten (`unsafe`) kommen über denselben Port von außen und MÜSSEN die Goldens aus Anhang A.1 bestehen (SD-64).
 - `Mac::mac16` und `Cipher` hängen **keine** Länge an; der Kern kodiert Längen selbst (§9.1).
 - `Weigher::version()` ändert sich, wenn sich das Zählverfahren ändert (z. B. anderer Tokenizer); der Kern speichert sie je Run (§9.5).
-- `Env` bündelt alle Ports: `fs, clock, entropy, runtime, governor, metrics, hooks, access_sink, checksum` immer (mit Standardimplementierungen); `cipher, mac, kdf, key_provider, rollback_anchor, cold_tier, pressure` optional. `Env::real(root)` liefert die Standardbelegung.
+- `Env` bündelt alle Ports: `fs, clock, entropy, runtime, governor, metrics, hooks, access_sink, checksum` immer (mit Standardimplementierungen); `cipher, mac, kdf, key_provider, secret_alloc, rollback_anchor, cold_tier, pressure` optional. `Env::real(root)` liefert die Standardbelegung.
 - `Runtime` ist ein kleiner, **teilbarer** Thread-Pool (`spawn(Box<dyn FnOnce + Send>)`); `Runtime::manual()` führt Jobs nur auf `run_pending()` aus und macht jede Verschränkung in Tests deterministisch.
+- **`FsCaps` und Fail-Closed (SD-57, `INV-FS-1`).** Jede `Fs`-Implementierung erklärt ihre Zusicherungen. `Config::fs_policy` ist `Strict` (Standard) oder `Relaxed`. Unter `Strict` öffnet der Kern nur, wenn `durable_file_sync`, `durable_dir_sync`, `atomic_rename` und `private_perm` wahr sind, sonst `Err(Unsupported{fs_caps})`. `Relaxed` ist für Tests und Wegwerf-Instanzen und setzt `Receipt.durable = false`. Eine schwächere Plattform wird nie stillschweigend akzeptiert. Neue `Fs`-Implementierungen bestehen `testing::conformance::fs_suite` (§19.1).
+- **`KeyProvider`-Vertrag (SD-55, `INV-KEYP-1`).** (1) `domain_key_create` legt einen Schlüssel an, sobald er gebraucht wird. (2) `make_durable` kehrt erst zurück, wenn **alle** bis dahin angelegten Schlüssel dauerhaft sind; der Kern ruft es auf, **bevor** ein Frame mit einem so versiegelten Körper dauerhaft werden darf (§10.2 Schritt 1b). (3) `None` darf nur zurückkommen, wenn die Vernichtung dauerhaft und geprüft ist. (4) Aufrufe können blockieren und laufen ohne gehaltene Sperre (P-10). (5) Der Kern hält Domänenschlüssel nur im begrenzten Cache (§15.3).
+- **`Secret32`/`SecretAlloc` (SD-56).** `Secret32` ist ein undurchsichtiges Handle (`expose() -> &[u8; 32]`), ohne `Debug`/`Clone`/`Serialize`. Standard: Heap, beim `Drop` `fill(0)` + `black_box` (best-effort). `Env.secret_alloc` ersetzt den Speicher durch geschützten Speicher der Anwendung, ohne dass der Kern `unsafe` braucht.
 - `OpenMode::Direct` und `io_uring` sind **nicht** Teil des Ports in Version 1 (SD-31); der Port bleibt durch neue Enum-Varianten mit unverändertem Standardverhalten erweiterbar.
 
 ---
@@ -303,7 +337,7 @@ Im Crate kommen weder Produkt- noch Fremdsystemnamen vor.
 | **Claim** | Reservierung von Dateien durch einen laufenden Wartungsjob | – |
 | **Catalog** | Einzige Wahrheit über lebendige Dateien und Zustand | Manifest |
 | **Erase / ErasureReceipt** | Löschauftrag mit physischer Garantie / Nachweis | Purger |
-| **Env** | Bündel der Ports (§4) | `contextra-env`, `Vfs` |
+| **Env** | Bündel der Ports (§4) | `Vfs`, verstreute Umgebungstypen |
 | **Graveyard** | Warteschlange für zu löschende, noch referenzierte Dateien | – |
 | **Page / ResumeToken** | Budgetierte Ergebnisseite und Fortsetzungsmarke | `LIMIT/OFFSET` |
 
@@ -333,7 +367,9 @@ Hat der Space `separate_body(t)` und gilt `body.len() ≥ t` (bzw. immer bei `do
 | `prefix_filter(n)` | Bloom-Filter über die ersten `n` Schlüsselbytes je Run. | `1 ≤ n ≤ 64`. **Standard für Haupt-Spaces**, weil Präfix-Scans Punktlesen im Verhältnis ≈ 5 : 1 überwiegen (Anhang B.3). |
 | `locality_prefix(n)` | Compaction teilt Ausgaben bevorzugt an Präfixgrenzen (±25 % der Zielgröße). | `1 ≤ n ≤ 64` |
 | `append_only()` | `Put` nur auf Schlüssel ohne lebende Version (sonst `Forbidden{PutExisting}`); `Delete`/`RangeDelete` verboten; `Erase` nur mit `Erase::admin()`. | – |
+| `forgetting()` | Erlaubt einen `CompactionFilter` (§12.2); Vergessen ist eine sichtbare Zustandsänderung (SD-48). | unvereinbar mit `append_only()` (Flag `16`, E-1). |
 | `ephemeral()` | Nur Memtable: kein Redo, keine Runs, verfällt beim Schließen. Ein `Change` darf **nicht** dauerhafte und flüchtige Spaces mischen (`Forbidden{MixedDurability}`). | unvereinbar mit `separate_body`, `domain_sealed`, `prefix_filter`, `locality_prefix`, `weights(k>1)`; begrenzt durch `Config::ephemeral_max_bytes` (darüber `Busy`). |
+| `merge()` (**reserviert**, SD-60) | In Version 1 **nicht erzeugbar**. Flag `32` in `spaces_add`, Pflicht-Bit `MERGE` und `kind = 6` sind reserviert, damit ein späterer Merge-Operator (assoziative, kommutative Deltas für Zähler und Kantengewichte) ohne neue Formatversion einführbar ist. | Ein Decoder, der Flag `32` sieht, meldet `Unsupported`. |
 
 ### 6.5 `Change`, `Guard`, `Receipt`
 
@@ -366,10 +402,14 @@ Hat der Space `separate_body(t)` und gilt `body.len() ≥ t` (bzw. immer bei `do
 | `ephemeral_max_bytes` | 64 MiB | |
 | `listener_queue` | 10 000 Ereignisse | §7.4 |
 | `consumer_check_interval` | 30 s | |
+| `fs_policy` | `Strict` | §4, `INV-FS-1` |
+| `listener_deadline` | 100 ms | §7.4 |
+| `domain_key_cache` | 4 096 Einträge, TTL 5 min | §15.3 |
+| `erase_receipt_keep` | 10 000 | §9.7 |
 
 ### 6.7 Limits (Fehlercode `Limit`, konfigurierbar)
 
-Schlüssel ≤ 4 KiB (`max_key_bytes`), Header ≤ 255 B, Wert ≤ 1 MiB (`max_value_bytes`, konfigurierbar bis 16 MiB; größere Daten gehören in eine Objektschicht, A-03), Change ≤ 32 MiB (`= redo_segment_bytes / 2`) und ≤ 100 000 Ops, Redo-Frame ≤ 64 MiB, `weights` ≤ 4, Spaces ≤ 64 (Empfehlung ≤ 12, §7.6), Consumer ≤ 64, Holds je Instanz ≤ 10 000, Spacename ≤ 64 Byte aus `[a-z0-9._-]`, Segment-Dateien je `kind` ≤ 4 096. Alle Längenfelder in Dateien werden **vor** jeder Allokation gegen diese Grenzen und gegen die Restlänge der Datei geprüft (`INV-FMT-2`).
+Schlüssel ≤ 4 KiB (`max_key_bytes`), Header ≤ 255 B, Wert ≤ 1 MiB (`max_value_bytes`, konfigurierbar bis 16 MiB; größere Daten gehören in eine Objektschicht, A-03), Change ≤ 32 MiB (`= redo_segment_bytes / 2`) und ≤ 100 000 Ops, Redo-Frame ≤ 64 MiB, `weights` ≤ 4, Spaces ≤ 64 (Empfehlung ≤ 12, §7.6), Consumer ≤ 64, Holds je Instanz ≤ 10 000, Spacename ≤ 64 Byte aus `[a-z0-9._-]`, Segment-Dateien je `kind` ≤ 4 096, Segment-Block ≤ 16 MiB, `reference` genau 16 B, dauerhafte Holds ≤ 1 000. Alle Längenfelder in Dateien werden **vor** jeder Allokation gegen diese Grenzen und gegen die Restlänge der Datei geprüft (`INV-FMT-2`).
 
 ---
 
@@ -443,7 +483,7 @@ st.hibernate()?; st.sync()?; st.close()?;
 
 ### 7.4 Listener
 
-`subscribe(listener)` liefert `ChangeEvent { stamp, ops: [OpSummary{space, kind, key, header}] }` **nach** Durabilität und Sichtbarkeit, **in Stamp-Reihenfolge**, aus einem Dispatcher-Job ohne gehaltene Sperre (P-10). Körper werden nicht mitgeliefert (Abruf über `view_at(stamp)`). Die Warteschlange ist auf `listener_queue` Ereignisse begrenzt; läuft ein Listener über, wird er **abgemeldet** und erhält beim nächsten Aufruf `ListenerLagged{missed_from}`. Er muss über `history` und seinen `Consumer` aufholen. Ereignisse sind höchstens-einmal nach einem Absturz; die Zustellgarantie **mindestens-einmal** ergibt sich nur über `Consumer` + `history`.
+`subscribe(listener)` liefert `ChangeEvent { stamp, ops: [OpSummary{space, kind, key, header}] }` **nach** Durabilität und Sichtbarkeit, **in Stamp-Reihenfolge**, aus einem Dispatcher-Job ohne gehaltene Sperre (P-10). Körper werden nicht mitgeliefert (Abruf über `view_at(stamp)`). Die Warteschlange ist auf `listener_queue` Ereignisse begrenzt und jede Zustellung auf `listener_deadline`; läuft ein Listener über oder überschreitet er die Frist, wird er **abgemeldet** (nie blockiert der Dispatcher den Commit-Pfad; SD-62) und erhält beim nächsten Aufruf `ListenerLagged{missed_from}`. Er muss über `history` und seinen `Consumer` aufholen. Ereignisse sind höchstens-einmal nach einem Absturz; die Zustellgarantie **mindestens-einmal** ergibt sich nur über `Consumer` + `history`.
 
 ### 7.5 Aufrufer-Erweiterungen
 
@@ -505,6 +545,24 @@ Ein einziges `Error`-Enum (kein `Storage(String)`). Jeder Fehler hat `code()` (s
 | `Locked`, `Closed`, `NotFound`, `Exhausted`, `Io(kind)` | | je nach Fall |
 
 ---
+
+### 7.8 Stabile Flächen für aufsetzende Schichten (semver-stabil, SD-52)
+
+Diese Flächen sind **Vertrag**. Der Kern implementiert sie vollständig; aufsetzende Schichten bauen darauf, ohne in den Kern greifen zu müssen. Jede Fläche hat einen Konformitätstest in `testing::conformance`.
+
+**7.8.1 Transaktionsbausteine.** `view_at(stamp)` + `Guard::unchanged_since`/`range_unchanged_since` ersetzen Lesemengen und Validierung. Zusätzlich: `View::stamp()`, `Storage::visible_stamp()`, `Storage::durable_stamp()`, `Receipt{stamp, durable}`. Der Kern führt **keine** Lesemenge, keine Transaktionskennung und kein Rollback; ein verworfener Versuch ist ein nicht eingereichter `Change`. Verschachtelte Rücknahme (Teilziele) ist Sache der oberen Schicht (Overlay-Space, Anhang C).
+
+**7.8.2 Holds und Checkpoints.** `hold(stamp, owner, ttl)` ist flüchtig (Registry). `hold_durable(stamp, owner, ttl) -> HoldId` schreibt `hold_set` per Edit und überlebt Neustarts; `hold_drop(id)`, `holds(owner_prefix) -> Vec<HoldInfo>`. Dauerhafte Holds zählen in die Untergrenze (§10.3), werden bei der Recovery wiederhergestellt und von der Wartung nach Ablauf entfernt. `checkpoint(dest, mode)` (§12.8) liefert den konsistenten Stand; **benannte** Checkpoints, Verzeichnis über mehrere Komponenten und Wiederherstellung sind außerhalb (NZ-17). Wiederherstellung = Öffnen des Zielverzeichnisses als eigene Instanz (§15.2, Epoche).
+
+**7.8.3 Segmente.** `Segment` ist eine Datei der oberen Schicht mit **Kern-Rahmen** (SD-54, §12.5): `SegmentWriter` (über `Fs`, `.building`, Blöcke mit Prüfwert/AEAD je Modus, Siegel-Footer) und `SegmentReader` (`read_at`, Blockprüfung, optional `read_batch`). Der Kern kennt weder Inhalt noch Zerlegung der Blöcke; das 16-Byte-`reference` (Datenstand-Anker, z. B. Stamp-Tupel) ist opak. Besitzer können Segmentinhalte direkt aus dem Rahmen lesen, ohne `mmap` (NZ-7).
+
+**7.8.4 Lösch-Beobachtung.** `Receipt` von `erase` ist serialisierbar und stabil (`ErasureReceipt`, §14.3 E7). Zusätzlich: `erase_status(id) -> Pending | InProgress{phase} | Done{receipt} | Unknown` (Quelle: `erase_pending`/`erase_done`; `erase_done` wird `erase_receipt_keep`-begrenzt aufbewahrt) und der **rein lesende** Prüfer `scan_physical(ScanSpec{space?, range?, patterns: &[&[u8]]}) -> ScanReport` (§14.7): durchsucht Runs, Blobs aller Generationen, Redo, `.building` und Segmente nach Mustern und meldet je Datei **nur Anzahl und Dateikennung**, nie Fundstellen-Inhalt (P-12). Der Kern entscheidet nicht, was ein „Nachweis“ ist; Positivkontrolle, Signatur und Journal gehören der oberen Schicht (NZ-14).
+
+**7.8.5 Schlüssel.** Siehe §4 (`KeyProvider`, `SecretAlloc`). `Erase::domain` und `domain_retired` sind die einzigen schlüsselbezogenen Löschprimitive; ein Tresor, der Schlüssel vernichtet, steht außerhalb und ruft `Erase::domain` danach auf (`INV-ERA-3`).
+
+**7.8.6 Fertigmeldung statt `async`.** `submit(change) -> Pending`; `Pending::poll() -> Option<Result<Receipt>>`, `Pending::wait()`, `Pending::on_ready(Box<dyn FnOnce(Result<Receipt>) + Send>)`. Der Callback läuft auf der `Runtime`, ohne gehaltene Sperre (P-10). Eine obere Schicht baut daraus beliebige `Future`-Fassaden; der Kern enthält keinen Executor (NZ-20). Dasselbe gilt für `Storage::flush_async`/`sync` (SD-59).
+
+**7.8.7 Reservierungen.** `kind = 6`, Space-Flag `32`, Pflicht-Bit `MERGE`, `codec`-Byte, `BlockCodec`, optionale Feld-IDs `0x8000` (SD-12, SD-13, SD-60). Weitere Reservierungen brauchen einen Eintrag in §9.8.
 
 ## 8. Dateilayout und Dateilebenszyklus
 
@@ -707,7 +765,7 @@ Der **Snapshot** ist ein Edit, der vom leeren Zustand ausgeht (alle Listen volls
 | 0x0005 | `space_flushed` | `[(space u16, stamp u64)]`: Memtable bis `stamp` ist in Runs |
 | 0x0006 | `redo` | `redo_floor u64 \| redo_floor_stamp u64 \| redo_hwm u64` (§9.4, `INV-LOG-8`) |
 | 0x0007 | `reserve` | `run_id_hwm u64 \| blob_no_hwm u64 \| segment_id_hwm u64 \| tmp_id_hwm u64 \| keys_generation_min u64`: **Hochwassermarken, nie zurück** (siehe unten, `INV-KEY-2`) |
-| 0x0008 | `spaces_add` | `[(id u16, name, options)]`, `options = header_len u8 \| weights_k u8 \| flags u16 (1 separate_body, 2 domain_sealed, 4 append_only, 8 ephemeral) \| separate_threshold u32 \| prefix_filter u8 \| locality_prefix u8` |
+| 0x0008 | `spaces_add` | `[(id u16, name, options)]`, `options = header_len u8 \| weights_k u8 \| flags u16 (1 separate_body, 2 domain_sealed, 4 append_only, 8 ephemeral, 16 forgetting, 32 merge [reserviert]) \| separate_threshold u32 \| prefix_filter u8 \| locality_prefix u8` |
 | 0x0009 | `spaces_drop` | `[id u16]` |
 | 0x000A | `consumer_set` | `[(name, consumed_stamp u64, max_lag_bytes u64)]` |
 | 0x000B | `consumer_drop` | `[name]` |
@@ -717,6 +775,9 @@ Der **Snapshot** ist ein Edit, der vom leeren Zustand ausgeht (alle Listen volls
 | 0x000F | `erase_swept` | `[id u64]` |
 | 0x0010 | `erased_ranges_add` | `[(space u16, range, S u64)]` |
 | 0x0011 | `erased_ranges_remove` | `[(space u16, range, S u64)]` |
+| 0x0012 | `hold_set` | `[(hold_id u64, stamp u64, owner, expires_ms u64)]`: **dauerhafte** Holds (§7.8.2, SD-58) |
+| 0x0013 | `hold_drop` | `[hold_id u64]` |
+| 0x0014 | `key_epoch` | `[(space u16, epoch u32)]`: Schlüsselepoche je Space; steigt bei beschreibbaren Kopien (§15.2, SD-63) |
 
 **ID-Reservierung (`INV-KEY-2`, schließt F-14).** `run_id`, `blob_no`, `segment_id` und `tmp_id` dürfen erst benutzt werden, wenn ein **dauerhafter** Edit eine Hochwassermarke über sie hinweg gesetzt hat. Die Wartung reserviert in Blöcken zu `id_reserve_block` (256), bevor der Vorrat erschöpft ist. Nach einem Absturz beginnt die Vergabe bei der Hochwassermarke; ungenutzte IDs verfallen. Damit wird **keine ID je nach einem Absturz mit anderem Inhalt wiederverwendet**; das ist Voraussetzung für Nonce-Eindeutigkeit (§15.2). `segment_id` und `blob_no` sind unabhängig von `run_id`; alle vier sind `< 2^56` (`segment_id < 2^32`) und überlaufen mit `Exhausted`.
 
@@ -743,6 +804,7 @@ Jeder Punkt würde später eine Formatversion kosten, obwohl SD-04 genau eine je
 | 10 | `domain` in Op und Blob-Record, `opflags.SEALED`, `domain_retired` | Redo, Blob, Catalog |
 | 11 | `reserve` (ID-Hochwassermarken), `keys_generation_min` | Catalog |
 | 12 | `KEYS`-Layout mit `root_key` und Space-DEKs | KEYS |
+| 14 | Catalog `hold_set`/`hold_drop`/`key_epoch`, Segment-Rahmen (`CTXG`), Epoche in der Schlüsselableitung | Catalog, Segment, KEYS |
 | 13 | Reservierte Werte: `kind = Merge (6)`, Codec-IDs, Bit-Bereiche für Pflicht-/optionale Features, optionale Feld-ID-Hälfte `0x8000` | alle |
 ---
 
@@ -776,7 +838,9 @@ Es gibt **sieben** Sperrränge (§16.1) und genau einen Lock über E/A (`committ
 ```
 apply(change):
   1. validate: Limits, Spaces vorhanden, Rechte (Typ), Mischverbot ephemeral/dauerhaft, append-only-Regeln, Duplikate   (ohne Sperre)
-     Guard-Vorwärmung (SOLL): Blöcke für Guards (Bloom, Index, Datenblock) vorab in den BlockCache laden (ohne Sperre)
+     Guard-Vorwärmung (MUSS, SD-53; H-S2 prüft sie mit kaltem Cache und vielen Guards): Blöcke für Guards (Bloom, Index, Datenblock) vorab in den BlockCache laden (ohne Sperre)
+  1b. Schlüssel: Für jeden Change mit `domain_sealed`-Körpern `KeyProvider::domain_key_create(d)` (Cache), danach EINMAL `make_durable()`,
+      bevor das Ticket eingereiht wird (ohne Sperre, P-10). Fehler ⇒ `Err` an den Aufrufer, kein Frame (`INV-KEYP-1`).
   2. Ticket in `intake`; danach committer.lock(): wer den Committer bekommt, wird Leiter (Ticket schon erledigt ⇒ zurück)
 Leiter:
   3. Gegendruck-Prüfung (§10.4)
@@ -1120,7 +1184,7 @@ Der Catalog führt je Space `erased_ranges: [(range, S)]`. Liest eine View mit S
 
 ### 14.8 Grenzen (offen benannt)
 
-Append-only Spaces lassen `Erase` nur mit `Erase::admin()` zu; das steht im Receipt. Kalte Dateien unterliegen den Garantien des `ColdTier`-Ports. Speicherinhalt, Auslagerungsdatei, Core-Dumps werden nicht kontrolliert (A-5, §15.7). Externe Snapshots, Dateisystem-Journal und Flash-Wear-Leveling siehe §14.2. Die orchestrierende Ebene (Saga, signierte Berichte; im Altstand das Crate `contextra-erasure`) liegt **über** diesem Primitiv; `ErasureReceipt` ist dafür serialisierbar und stabil.
+Append-only Spaces lassen `Erase` nur mit `Erase::admin()` zu; das steht im Receipt. Kalte Dateien unterliegen den Garantien des `ColdTier`-Ports. Speicherinhalt, Auslagerungsdatei, Core-Dumps werden nicht kontrolliert (A-5, §15.7). Externe Snapshots, Dateisystem-Journal und Flash-Wear-Leveling siehe §14.2. Die orchestrierende Ebene (Saga, signierte Berichte) liegt **über** diesem Primitiv (NZ-14); `ErasureReceipt` ist dafür serialisierbar und stabil.
 
 ---
 
@@ -1150,12 +1214,14 @@ KEYS enthält:
  │    ├─ FORMAT-MAC-Schl.  = Kdf(root_key, "ctxs format v1")
  │    └─ Token-Schlüssel   = Kdf(root_key, "ctxs token v1")        (ResumeToken-MAC)
  └─ Space-DEK (zufällig, je Space, dek_gen)
-      ├─ Run-Schlüssel    = Kdf(DEK, "ctxs run v1"  ‖ run_id u64)
-      └─ Blob-Schlüssel   = Kdf(DEK, "ctxs blob v1" ‖ blob_no u64)
+      ├─ Run-Schlüssel    = Kdf(DEK, "ctxs run v1"  ‖ key_epoch u32 ‖ run_id u64)
+      └─ Blob-Schlüssel   = Kdf(DEK, "ctxs blob v1" ‖ key_epoch u32 ‖ blob_no u64)
+      └─ Segment-Schlüssel = Kdf(DEK, "ctxs seg v1" ‖ key_epoch u32 ‖ segment_kind u16 ‖ segment_id u64)
 Domänenschlüssel: KeyProvider::domain_key(d) → Option<Secret32>   NICHT in KEYS; None = vernichtet
 ```
 
 **KEK-Rotation ist O(1):** `KEYS` mit neuem KEK-Schlüssel und neuem `nonce` per `write_atomic` ersetzen, `keys_generation` hochzählen, `keys_generation_min` per Edit anheben. Keine Datendatei wird angefasst (SD-36).
+**Schlüsselepoche (SD-63).** Ein beschreibbarer Klon (`checkpoint`, Test-Klon) setzt Dateiname-IDs ab derselben Hochwassermarke fort; ohne Gegenmaßnahme würden Original und Klon unter gleichem DEK, gleicher `run_id` und gleichem Nonce **verschiedene** Inhalte versiegeln. Deshalb vergibt `checkpoint` dem Ziel eine neue `instance_id`, einen **neuen** zufälligen DEK je Space und `key_epoch + 1`; ältere DEKs bleiben in `KEYS`, damit übernommene Dateien lesbar bleiben. Neue Dateien nutzen stets den DEK der höchsten Epoche. Dasselbe gilt für Domänen-Körper: Nonce `0x03`/`0x05` tragen `segment_id`/`blob_no`, die im Klon aus dessen eigener Hochwassermarke stammen; der Klon erhält zusätzlich einen disjunkten ID-Bereich (`id_hwm += 2^40`).
 
 **Nonces (12 Byte, zentral in `keys/nonce.rs`; kein anderes Modul bildet Nonces):**
 
@@ -1377,6 +1443,12 @@ Jede Invariante wird in **mindestens einem** Test per ID zitiert (`// INV-LOG-6`
 |`INV-ERA-7`|Körper einer vernichteten Domäne ist weder in Redo noch Blob ohne Schlüssel lesbar; `Entry::body()` ⇒ `Shredded`, auch aus der Memtable.|Orakel|
 |`INV-POISON-1`|Ein vergiftetes Handle verweigert Schreiben und Wartung, liest weiter; `health()` nennt `durable_stamp` (E-2).|Fehlerklassen-Matrix|
 |`INV-API-1`|Fehlertexte, Metriken und Logs enthalten keine Schlüssel-/Wertbytes (P-12).|Lecks-Orakel|
+|`INV-FS-1`|Unter `FsPolicy::Strict` öffnet der Kern nur auf einer `Fs`, deren `caps()` Datei-/Verzeichnis-Sync, atomares `rename` und private Modi zusichert.|Manipulationstest, `fs_suite`|
+|`INV-KEYP-1`|Ein Frame mit domänenversiegeltem Körper wird erst dauerhaft, nachdem `KeyProvider::make_durable` nach der Schlüsselanlage zurückkehrte; `None` aus `domain_key` bedeutet dauerhaft vernichtet.|Absturzmatrix, `FaultFs`|
+|`INV-HOLD-1`|Dauerhafte Holds überleben Neustart und zählen bis Ablauf/`hold_drop` in die Untergrenze.|Absturzmatrix|
+|`INV-SEG-1`|Ein Segment wird nur mit gültigem Siegel-Footer und per Edit lebendig; Rahmenprüfung vor jeder Block-Ausgabe.|Bitflip, Absturzmatrix|
+|`INV-EPOCH-1`|Original und beschreibbarer Klon versiegeln nie unter gleichem (DEK, Nonce) verschiedene Inhalte.|Property (Klon-Divergenz)|
+|`INV-SCAN-1`|`scan_physical` ändert nichts und gibt keine Inhalte preis.|Lecks-Orakel|
 
 ---
 
@@ -1512,6 +1584,20 @@ Die Nummern 01–26 stammen aus `REFACTORING_PLAN.md` (v1), 27–48 aus v2 und d
 |SD-48|Ehrliche Semantik des Vergessens: sichtbare Zustandsänderung, kein Schutz durch `Hold` in `forgetting`-Spaces.|
 |SD-49|**Neu:** Gegendruck wartet **vor** dem Ticket, nie unter dem Committer (E-4).|
 |SD-50|**Neu:** Nonce-Präfixe sind je Verwendung disjunkt (`0x01…0x05`, E-6).|
+|SD-51|Verantwortungsgrenze (§2.3) ist bindend: Mechanismus im Kern, Politik außerhalb; nichts wird „vorsorglich“ gebaut.|
+|SD-52|Flächen aus §7.8 sind semver-stabil und konformitätsgetestet.|
+|SD-53|Guard-Vorwärmung ist Pflicht im `apply`-Pfad (E-9).|
+|SD-54|Segmente haben einen Kern-Rahmen (Block-Prüfwert/AEAD, Siegel-Footer) und ein opakes `reference`.|
+|SD-55|`KeyProvider` mit `domain_key_create` und `make_durable`; `None` = dauerhaft vernichtet.|
+|SD-56|`SecretAlloc` als optionaler Port für geschützten Speicher; Kern bleibt `forbid(unsafe_code)`.|
+|SD-57|`FsCaps` + `FsPolicy::Strict` als Standard (fail-closed auf schwächeren Plattformen).|
+|SD-58|Dauerhafte Holds im Catalog (`hold_set`/`hold_drop`).|
+|SD-59|`submit`/`Pending` mit Fertigmeldung statt `async`.|
+|SD-60|Merge-Space-Flag `32` und Pflicht-Bit `MERGE` reserviert, nicht erzeugbar.|
+|SD-61|`erase_status` und rein lesender `scan_physical` als Beobachtungsfläche.|
+|SD-62|Listener-Zustellung mit Frist; Überschreitung meldet ab, blockiert nie den Commit.|
+|SD-63|Schlüsselepoche und neuer DEK für beschreibbare Klone (Nonce-Eindeutigkeit über Instanzen).|
+|SD-64|Portables CRC32C im Kern; beschleunigte Varianten nur über Port und mit bestandenen Goldens.|
 
 ---
 
@@ -1532,7 +1618,7 @@ Die Nummern 01–26 stammen aus `REFACTORING_PLAN.md` (v1), 27–48 aus v2 und d
 |A-09|Referenzhardware (NVMe, Kerne, RAM) wird in F1 festgelegt.|Messwerte nicht vergleichbar.|
 |A-10|`Extension` bleibt bis F10 instabil.|Schnittstelle ändert sich, Format nicht.|
 |A-11|Kalter Speicher löscht zuverlässig oder wird nur verschlüsselt betrieben.|`Physical` gilt dort nicht.|
-|A-12|Der Konsument `contextra-db` kann ohne `MergeOperator` auskommen (WASM-Merge über `Guard`-Schleife).|Entscheidung SD-12 überprüfen.|
+|A-12|Aufsetzende Schichten kommen in Version 1 ohne Merge-Operator aus (Read-Modify-Write über `Guard`, Pufferung, Anhang D.2).|Entscheidung SD-12 überprüfen.|
 
 ### 22.2 Offene Entscheidungen (`O-n`, mit Empfehlung)
 
@@ -1562,6 +1648,20 @@ Beim Vervollständigen wurden folgende Stellen des ersten Teils als zu knapp ode
 |E-8|§9.5 Run-Block-Nonce|Nicht genannt.|§15.2: `0x01 ‖ block_offset u64 ‖ 0u24` unter Run-Schlüssel.|
 
 ---
+
+### 22.4 Revision R2 (Änderungsliste)
+
+|ID|Änderung|
+|---|---|
+|E-9|§10.2 Schritt 1: Guard-Vorwärmung von SOLL auf MUSS; neuer Schritt 1b (Schlüsselanlage + `make_durable`).|
+|E-10|Neue Abschnitte §2.3 (Verantwortungsgrenze) und §7.8 (stabile Flächen); NZ-13…NZ-20.|
+|E-11|§4: `FsCaps`, `KeyProvider` erweitert, `SecretAlloc`; `Config::fs_policy`.|
+|E-12|§9.7: Catalog-Felder `0x0012…0x0014`; `spaces_add`-Flags `16` (E-1) und `32` (reserviert).|
+|E-13|§15.2: Schlüsselepoche (`key_epoch`) in Run-/Blob-/Segment-Schlüsseln; Klon-Regel (SD-63).|
+|E-14|§18/§21: `INV-FS-1`, `INV-KEYP-1`, `INV-HOLD-1`, `INV-SEG-1`, `INV-EPOCH-1`, `INV-SCAN-1`; SD-51…SD-64.|
+|E-15|Namen aufsetzender Systeme aus der Spezifikation entfernt; sie bleiben außerhalb des Geltungsbereichs.|
+
+Neue Formatfelder (`0x0012…0x0014`, Segment-Rahmen, Epoche in Schlüsselableitung) stehen auf der Freeze-Liste §9.8 (Punkt 14) und brauchen Goldens vor **G-F** (A.8).
 
 ## Anhang A: Referenzvektoren (Goldens)
 
@@ -1726,3 +1826,16 @@ Aus `MNEMOS_CONCEPT.md`, `Optimal-LLM-Datenbank.md` und `REVIEW_contextra-storag
 |Merge-Operatoren|zurückgestellt (SD-12)|Formatentscheidung nötig|
 
 **Branches, Stufe A (Overlay):** Ein Branch ist ein eigener **Overlay-Space** (Schreibvorgänge landen dort), gelesen wird über `View` auf Basis-Space + Overlay (obere Schicht mischt). Der Basisstand wird durch einen `Hold` mit Eigentümer (`HoldOwner::new("branch/a1")`) gehalten; Konflikte beim Zusammenführen prüft `Guard::range_unchanged_since(base_space, range, base_stamp)`; Änderungen am Basisstand seit dem Verzweigen liefert `history`. Verwerfen = `Hold` freigeben + `drop_space(overlay)`. Stufe B (Commit-DAG, Strukturteilung) ist NZ-12 und Sache der oberen Schicht.
+---
+
+## Anhang D: Leitplanken für aufsetzende Schichten (nicht Teil des Kerns)
+
+Diese Hinweise sind **Empfehlungen** an Konsumenten des Kerns und erzeugen keine Kern-Anforderung.
+
+1. **Schlüsselcodierung.** Mandant/Kollektion/Dokument werden vom Konsumenten als Bytepräfix codiert; feste, versionierte Präfixe verhindern Kollisionen. Der Kern vergleicht nur Bytes (`prefix_filter`, `locality_prefix`).
+2. **Zähler und Gewichte.** Bis `merge()` aktiviert wird: Read-Modify-Write über `Guard::equals`; häufige Akkumulation (Kantenverstärkung, Zugriffszähler) wird in der oberen Schicht gepuffert und gebündelt in **einem** `Change` geschrieben, um `Conflict`-Wiederholungen zu vermeiden.
+3. **Flüchtig vs. dauerhaft.** Ein `Change` mischt nie flüchtige und dauerhafte Spaces (`Forbidden{MixedDurability}`); Arbeitsgedächtnis und dauerhafter Zustand werden getrennt eingereicht.
+4. **Abgeleitete Indizes** (Volltext, Vektor, Graph) tragen Löschbitmaps oder bauen über `rewrite_without` neu (O-2) und folgen dem Kern über `Consumer` + `history`; `domain_retired` ist ihr Auslöser.
+5. **Löschnachweise.** Für Nachweise zählt `ErasureReceipt` + `scan_physical`; Signatur, Journal und Ledger liegen außerhalb.
+6. **Fehlerbehandlung.** `Busy` und `Conflict` sind strukturiert; `retryable()` und `hint()` genügen für automatische Wiederholung.
+
