@@ -1,121 +1,78 @@
-//! # Katalog-Rollover
-//!
-//! SPEC §9.7 und §13.2: Führt den crash-sicheren Wechsel zu einer neuen Katalog-Datei durch.
-//!
-//! Reihenfolge aus Absturzmatrix:
-//! 1. Neue Datei CATALOG-(n+1) mit Snapshot schreiben und sync_all
-//! 2. CURRENT per write_atomic umhängen (sync_dir)
-//! 3. Alte Datei CATALOG-n löschen und sync_dir
+//! CURRENT pointer codec and atomic publication helper.
 
-use crate::catalog::current::write_current;
-use crate::catalog::log::{
-    catalog_file_name, fold_u64_to_u32, CatalogHeader, CATALOG_HEADER_LEN_U64, RECORD_TAG_SNAPSHOT,
-};
-use crate::catalog::state::CatalogState;
-use crate::catalog::types::CatalogError;
-use crate::codec::crc32c::crc32c;
-use crate::keys::nonce::catalog_record_nonce;
-use contextra_storage_ports::{Cipher, Fs, Kdf, Mac, OpenMode, Perm};
+use contextra_storage_ports::traits::{FileRole, Fs, IoCtx};
+use contextra_storage_ports::Error;
 use std::path::Path;
 
-/// Führt einen Rollover zu einer neuen Katalog-Datei durch.
-pub use rollover as rollover_catalog;
+const MAGIC: &[u8; 8] = b"CTXCUR01";
+const CURRENT_LEN: usize = 8 + 8 + 4;
+const IO: IoCtx = IoCtx { role: FileRole::Catalog, purpose: "catalog_current" };
 
-/// Führt einen Rollover zu einer neuen Katalog-Datei durch.
-#[allow(clippy::too_many_arguments)]
-pub fn rollover(
-    fs: &dyn Fs,
-    root: &Path,
-    old_catalog_no: u64,
-    state: &CatalogState,
-    integrity_mode: u8,
-    root_key: Option<&[u8; 32]>,
-    cipher: Option<&dyn Cipher>,
-    mac: Option<&dyn Mac>,
-    kdf: Option<&dyn Kdf>,
-) -> Result<u64, CatalogError> {
-    let new_catalog_no = old_catalog_no
-        .checked_add(1)
-        .ok_or(CatalogError::InvalidFormat("Catalog-Nummer-Überlauf"))?;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CurrentPointer { pub generation: u64 }
 
-    let new_file_name = catalog_file_name(new_catalog_no);
-    let new_path = root.join(&new_file_name);
-
-    let new_file = fs
-        .open(&new_path, OpenMode::CreateNew(Perm::Private))
-        .map_err(CatalogError::from)?;
-
-    let header = CatalogHeader::new(new_catalog_no);
-    let header_buf = header.encode();
-    new_file.write_all_at(&header_buf, 0).map_err(CatalogError::from)?;
-
-    let offset = CATALOG_HEADER_LEN_U64;
-    let snapshot_edit = state.to_snapshot_edit();
-    let payload = snapshot_edit.encode();
-
-    let payload_len_u32 =
-        u32::try_from(payload.len()).map_err(|_| CatalogError::InvalidFormat("Payload-Überlauf"))?;
-    let len = payload_len_u32
-        .checked_add(1)
-        .ok_or(CatalogError::InvalidFormat("Überlauf"))?;
-    let tag = RECORD_TAG_SNAPSHOT;
-
-    let mut record_bytes = Vec::new();
-    record_bytes.extend_from_slice(&len.to_le_bytes());
-    record_bytes.push(tag);
-
-    let chk_seed = fold_u64_to_u32(new_catalog_no);
-
-    match integrity_mode {
-        0 => {
-            let mut check_data = Vec::with_capacity(1 + payload.len());
-            check_data.push(tag);
-            check_data.extend_from_slice(&payload);
-            let chk = crc32c(chk_seed, &check_data);
-            record_bytes.extend_from_slice(&payload);
-            record_bytes.extend_from_slice(&chk.to_le_bytes());
-        }
-        1 => {
-            let m = mac.ok_or(CatalogError::Corrupt("Mac fehlt"))?;
-            let rk = root_key.ok_or(CatalogError::Corrupt("Root-Key fehlt"))?;
-            let cv_b = chk_seed.to_le_bytes();
-            let l_b = len.to_le_bytes();
-            let t_b = [tag];
-            let c_no_b = new_catalog_no.to_le_bytes();
-            let idx_b = 0u64.to_le_bytes();
-            let tag_out = m.mac16(rk, &[&cv_b, &l_b, &t_b, &payload, &c_no_b, &idx_b]);
-            record_bytes.extend_from_slice(&payload);
-            record_bytes.extend_from_slice(&tag_out);
-        }
-        2 => {
-            let c = cipher.ok_or(CatalogError::Corrupt("Cipher fehlt"))?;
-            let k = kdf.ok_or(CatalogError::Corrupt("Kdf fehlt"))?;
-            let rk = root_key.ok_or(CatalogError::Corrupt("Root-Key fehlt"))?;
-            let cat_key = k.derive(rk, &[b"ctxs cat v1", &new_catalog_no.to_le_bytes()]);
-            let nonce = catalog_record_nonce(0);
-            let mut aad = Vec::new();
-            aad.extend_from_slice(&chk_seed.to_le_bytes());
-            aad.extend_from_slice(&len.to_le_bytes());
-            aad.extend_from_slice(&new_catalog_no.to_le_bytes());
-            aad.extend_from_slice(&0u64.to_le_bytes());
-            let sealed = c.seal(&cat_key, &nonce, &aad, &payload);
-            record_bytes.extend_from_slice(&sealed);
-        }
-        _ => return Err(CatalogError::Corrupt("Ungültiger Integritätsmodus")),
+impl CurrentPointer {
+    pub fn encode(self) -> Result<[u8; CURRENT_LEN], Error> {
+        let mut out = [0u8; CURRENT_LEN];
+        let mut offset = 0usize;
+        put(&mut out, &mut offset, MAGIC);
+        put(&mut out, &mut offset, &self.generation.to_le_bytes());
+        let crc = {
+            let crc_input = out.get(..offset).ok_or(Error::Corrupt { place: "CURRENT encode offset" })?;
+            crate::codec::checksums::crc32c(crc_input)
+        };
+        put(&mut out, &mut offset, &crc.to_le_bytes());
+        Ok(out)
     }
 
-    new_file.write_all_at(&record_bytes, offset).map_err(CatalogError::from)?;
-    new_file.sync_all().map_err(CatalogError::from)?;
-    drop(new_file);
+    pub fn decode(bytes: &[u8]) -> Result<Self, Error> {
+        if bytes.len() != CURRENT_LEN { return Err(Error::Corrupt { place: "CURRENT length" }); }
+        if bytes.get(..8) != Some(MAGIC.as_slice()) { return Err(Error::Unsupported { what: "CURRENT magic" }); }
+        let generation = u64::from_le_bytes(bytes.get(8..16).ok_or(Error::Corrupt { place: "CURRENT generation" })?
+            .try_into().map_err(|_| Error::Corrupt { place: "CURRENT generation" })?);
+        let crc = u32::from_le_bytes(bytes.get(16..20).ok_or(Error::Corrupt { place: "CURRENT CRC" })?
+            .try_into().map_err(|_| Error::Corrupt { place: "CURRENT CRC" })?);
+        if crate::codec::checksums::crc32c(bytes.get(..16).ok_or(Error::Corrupt { place: "CURRENT CRC input" })?) != crc {
+            return Err(Error::Corrupt { place: "CURRENT CRC" });
+        }
+        Ok(Self { generation })
+    }
+}
 
-    // Absturzmatrix Schritt 2: CURRENT atomar umhängen
-    write_current(fs, root, new_catalog_no).map_err(CatalogError::from)?;
+pub fn publish_current(fs: &dyn Fs, root: &Path, pointer: CurrentPointer) -> Result<(), Error> {
+    let temp = root.join("CURRENT.building");
+    let current = root.join("CURRENT");
+    match fs.unlink(&temp, IO) {
+        Ok(()) => {}
+        Err(Error::Io { kind: std::io::ErrorKind::NotFound, .. }) => {}
+        Err(error) => return Err(error),
+    }
+    let file = fs.create_new(&temp, IO)?;
+    let bytes = pointer.encode()?;
+    file.preallocate(bytes.len() as u64, IO)?;
+    file.append_prealloc(&bytes, IO)?;
+    file.sync_all(IO)?;
+    fs.rename(&temp, &current, IO)?;
+    fs.sync_dir(root, IO)?;
+    Ok(())
+}
 
-    // Absturzmatrix Schritt 3: Alte Datei löschen und sync_dir
-    let old_file_name = catalog_file_name(old_catalog_no);
-    let old_path = root.join(&old_file_name);
-    let _ = fs.remove_file(&old_path);
-    let _ = fs.sync_dir(root);
+fn put(out: &mut [u8], offset: &mut usize, bytes: &[u8]) {
+    for (target, byte) in out.iter_mut().skip(*offset).zip(bytes.iter().copied()) { *target = byte; }
+    *offset = offset.saturating_add(bytes.len());
+}
 
-    Ok(new_catalog_no)
+pub fn read_current(fs: &dyn Fs, root: &Path) -> Result<CurrentPointer, Error> {
+    let file = fs.open(&root.join("CURRENT"), IO)?;
+    if file.size()? != CURRENT_LEN as u64 { return Err(Error::Corrupt { place: "CURRENT file length" }); }
+    let mut bytes = [0u8; CURRENT_LEN];
+    let mut read = 0usize;
+    while read < bytes.len() {
+        let offset = read as u64;
+        let target = bytes.get_mut(read..).ok_or(Error::Corrupt { place: "CURRENT buffer" })?;
+        let count = file.read_at(offset, target, IO)?;
+        if count == 0 { return Err(Error::Corrupt { place: "CURRENT short read" }); }
+        read = read.checked_add(count).ok_or(Error::Corrupt { place: "CURRENT read length" })?;
+    }
+    CurrentPointer::decode(&bytes)
 }

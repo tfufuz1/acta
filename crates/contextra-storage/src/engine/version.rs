@@ -1,186 +1,187 @@
-//! # Versionsverwaltung und unveränderliche Zustandsstrukturen
-//!
-//! Normative Referenzen: SPEC §10.1, §16.1 (INV-LOCK-1), §16.5 (INV-CLAIM-1).
-//! Keine Integer-Casts (M-02 = 0).
+//! Immutable read root (SP-MEMVER). Payload/run roots are added by flush phases.
 
-use std::collections::BTreeMap;
-use crate::engine::memtable::Memtable;
-use crate::run::rangedel::RangeMarker;
-use crate::sync::{Arc, AtomicBool, Ordering, RankedRwLock};
+use super::memtable::DetachedPartition;
+use contextra_storage_ports::ClusterId;
+use contextra_storage_ports::BranchId;
+use contextra_storage_ports::{Error, Stamp};
+use std::sync::Arc;
+use zeroize::Zeroizing;
 
-/// Handle für einen unveränderlichen Run (SSTable) nach P09 und SPEC §16.5.
-#[derive(Debug)]
-pub struct FileHandle {
-    /// Numerische Datei-ID.
-    pub id: u64,
-    /// Space-ID.
-    pub space: u16,
-    /// LSM-Level.
-    pub level: u8,
-    /// Pfad zur Datei auf dem Dateisystem.
-    pub path: String,
-    /// Minimaler enthaltener Stamp.
-    pub min_stamp: u64,
-    /// Maximaler enthaltener Stamp.
-    pub max_stamp: u64,
-    /// Veraltet-Flag für die Claim-Tabelle und Graveyard (§16.5, INV-CLAIM-1).
-    pub obsolete: AtomicBool,
-}
-
-impl FileHandle {
-    /// Erstellt ein neues FileHandle.
-    pub fn new(
-        id: u64,
-        space: u16,
-        level: u8,
-        path: String,
-        min_stamp: u64,
-        max_stamp: u64,
-    ) -> Self {
-        Self {
-            id,
-            space,
-            level,
-            path,
-            min_stamp,
-            max_stamp,
-            obsolete: AtomicBool::new(false),
-        }
-    }
-
-    /// Prüft, ob die Datei als veraltet markiert wurde (§16.5).
-    pub fn is_obsolete(&self) -> bool {
-        self.obsolete.load(Ordering::Acquire)
-    }
-
-    /// Markiert die Datei als veraltet.
-    pub fn mark_obsolete(&self) {
-        self.obsolete.store(true, Ordering::Release);
-    }
-}
-
-/// Handle für eine Blob-Datei nach P10 und SPEC §9.6.
-#[derive(Debug)]
-pub struct BlobHandle {
-    /// Blob-Nummer (`blob_no`).
-    pub blob_no: u64,
-    /// Space-ID.
-    pub space: u16,
-    /// Generationsnummer.
-    pub generation: u32,
-    /// Pfad zur Blob-Datei.
-    pub path: String,
-    /// Veraltet-Flag.
-    pub obsolete: AtomicBool,
-}
-
-impl BlobHandle {
-    /// Erstellt ein neues BlobHandle.
-    pub fn new(blob_no: u64, space: u16, generation: u32, path: String) -> Self {
-        Self {
-            blob_no,
-            space,
-            generation,
-            path,
-            obsolete: AtomicBool::new(false),
-        }
-    }
-
-    /// Prüft, ob die Blob-Datei als veraltet markiert wurde.
-    pub fn is_obsolete(&self) -> bool {
-        self.obsolete.load(Ordering::Acquire)
-    }
-
-    /// Markiert die Blob-Datei als veraltet.
-    pub fn mark_obsolete(&self) {
-        self.obsolete.store(true, Ordering::Release);
-    }
-}
-
-/// Zustand eines einzelnen Space in einer Version.
 #[derive(Clone)]
-pub struct SpaceState {
-    /// Aktive Memtable.
-    pub active: Arc<Memtable>,
-    /// Eingefrorene Memtables (von alt nach neu).
-    pub frozen: Vec<Arc<Memtable>>,
-    /// Runs geordnet nach Levels: Level 0 (überlappend), Level 1..N (überlappungsfrei).
-    pub levels: Vec<Vec<Arc<FileHandle>>>,
-    /// Blob-Dateien nach Blob-Nummer geordnet.
-    pub blobs: BTreeMap<u64, Arc<BlobHandle>>,
-    /// Höchster per Flush gesicherter Stamp.
-    pub flushed_stamp: u64,
-    /// Aktive physische Bereichslöschungen.
-    pub erased_ranges: Vec<RangeMarker>,
+pub struct VersionEntry {
+    pub cluster: ClusterId,
+    pub branch: BranchId,
+    pub key: Zeroizing<Vec<u8>>,
+    pub stamp: Stamp,
+    pub kind: u8,
+    pub payload: Zeroizing<Vec<u8>>,
 }
 
-impl Default for SpaceState {
-    fn default() -> Self {
-        Self::new()
+impl VersionEntry {
+    pub fn new(cluster: ClusterId, branch: BranchId, key: Vec<u8>, stamp: Stamp, kind: u8, payload: Vec<u8>) -> Self {
+        Self { cluster, branch, key: Zeroizing::new(key), stamp, kind, payload: Zeroizing::new(payload) }
     }
 }
 
-impl SpaceState {
-    /// Erstellt einen initialen SpaceState mit einer neuen aktiven Memtable.
-    pub fn new() -> Self {
-        Self {
-            active: Arc::new(Memtable::new()),
-            frozen: Vec::new(),
-            levels: Vec::new(),
-            blobs: BTreeMap::new(),
-            flushed_stamp: 0,
-            erased_ranges: Vec::new(),
-        }
-    }
-
-    /// Rotiert die aktive Memtable in die frozen-Liste und erzeugt eine frische aktive Memtable.
-    pub fn rotate(&mut self) -> Arc<Memtable> {
-        let old_active = Arc::clone(&self.active);
-        self.frozen.push(old_active);
-        let new_active = Arc::new(Memtable::new());
-        self.active = Arc::clone(&new_active);
-        new_active
-    }
-}
-
-/// Unveränderlicher Gesamtzustand aller Spaces (SPEC §10.1).
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Version {
-    /// Zustände je Space.
-    pub spaces: BTreeMap<u16, SpaceState>,
-}
-
-impl Default for Version {
-    fn default() -> Self {
-        Self::new()
-    }
+    visible_stamp: Stamp,
+    durable_stamp: Stamp,
+    partitions: Arc<[Arc<DetachedPartition>]>,
+    durable_partitions: Arc<[Arc<DetachedPartition>]>,
+    gc_floor: Stamp,
+    parent: Option<Arc<Version>>,
+    changes: Arc<[VersionEntry]>,
 }
 
 impl Version {
-    /// Erstellt eine leere Version.
-    pub fn new() -> Self {
-        Self {
-            spaces: BTreeMap::new(),
+    pub fn empty() -> Self { Self::default() }
+
+    pub fn new(
+        visible_stamp: Stamp,
+        durable_stamp: Stamp,
+        gc_floor: Stamp,
+        partitions: Vec<Arc<DetachedPartition>>,
+        durable_partitions: Vec<Arc<DetachedPartition>>,
+    ) -> Result<Self, Error> {
+        if durable_stamp > visible_stamp || gc_floor > visible_stamp {
+            return Err(Error::Limit { limit: "version stamp ordering" });
         }
+        Ok(Self { visible_stamp, durable_stamp, partitions: partitions.into(), durable_partitions: durable_partitions.into(), gc_floor, parent: None, changes: Arc::from([]) })
     }
 
-    /// Erstellt eine Version mit gegebenen Spaces.
-    pub fn with_spaces(spaces: BTreeMap<u16, SpaceState>) -> Self {
-        Self { spaces }
+    pub fn commit(
+        parent: Arc<Version>,
+        visible_stamp: Stamp,
+        durable_stamp: Stamp,
+        changes: Vec<VersionEntry>,
+    ) -> Result<Self, Error> {
+        if visible_stamp <= parent.visible_stamp || durable_stamp < parent.durable_stamp || durable_stamp > visible_stamp {
+            return Err(Error::Limit { limit: "version commit stamp ordering" });
+        }
+        if changes.iter().any(|entry| entry.stamp != visible_stamp) {
+            return Err(Error::Limit { limit: "version delta stamp mismatch" });
+        }
+        Ok(Self {
+            visible_stamp,
+            durable_stamp,
+            gc_floor: parent.gc_floor,
+            partitions: Arc::clone(&parent.partitions),
+            durable_partitions: Arc::clone(&parent.durable_partitions),
+            parent: Some(parent),
+            changes: changes.into(),
+        })
     }
 
-    /// Liefert den Zustand eines Space, falls vorhanden.
-    pub fn get_space(&self, space_id: u16) -> Option<&SpaceState> {
-        self.spaces.get(&space_id)
+    pub fn visible_stamp(&self) -> Stamp { self.visible_stamp }
+    pub fn durable_stamp(&self) -> Stamp { self.durable_stamp }
+    pub fn gc_floor(&self) -> Stamp { self.gc_floor }
+    pub fn partitions(&self) -> &[Arc<DetachedPartition>] { &self.partitions }
+    pub fn durable_partitions(&self) -> &[Arc<DetachedPartition>] { &self.durable_partitions }
+    pub fn changes(&self) -> &[VersionEntry] { &self.changes }
+
+    /// Returns the newest point mutation at or below `cap`. Tombstone kinds
+    /// are returned to the read layer for visibility resolution.
+    pub fn get(&self, cluster: ClusterId, branch: BranchId, key: &[u8], cap: Stamp) -> Option<&VersionEntry> {
+        if cap < self.gc_floor { return None; }
+        let mut current = Some(self);
+        while let Some(version) = current {
+            if let Some(entry) = version.changes.iter().rev().find(|entry| {
+                entry.stamp <= cap && entry.cluster == cluster && entry.branch == branch && entry.key.as_slice() == key
+            }) { return Some(entry); }
+            current = version.parent.as_deref();
+        }
+        None
     }
 
-    /// Fügt einen neuen Space hinzu oder initialisiert ihn.
-    pub fn add_space(&mut self, space_id: u16) {
-        self.spaces.entry(space_id).or_default();
+    /// Resolves point mutations through a cluster-local branch ancestry.
+    /// The first branch in the chain wins even when the entry is a tombstone;
+    /// callers must apply tombstone, range-delete, and erase-mask semantics
+    /// before returning a value. This keeps a child delete from revealing its
+    /// parent's older value.
+    pub fn get_on_branch<'a>(
+        &'a self,
+        branches: &super::branches::BranchTable,
+        cluster: ClusterId,
+        branch: BranchId,
+        key: &[u8],
+        view_stamp: Stamp,
+    ) -> Result<Option<&'a VersionEntry>, Error> {
+        for (branch_id, cap) in branches.visibility_chain(branch, view_stamp)? {
+            if let Some(entry) = self.get(cluster, branch_id, key, cap) {
+                return Ok(Some(entry));
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn at_stamp(&self, stamp: Stamp) -> Result<Self, Error> {
+        if stamp < self.gc_floor {
+            return Err(Error::Limit { limit: "view stamp outside version bounds" });
+        }
+        Ok(Self {
+            visible_stamp: stamp,
+            durable_stamp: self.durable_stamp.min(stamp),
+            partitions: Arc::clone(&self.partitions),
+            durable_partitions: Arc::clone(&self.durable_partitions),
+            gc_floor: self.gc_floor,
+            parent: self.parent.as_ref().map(Arc::clone),
+            changes: Arc::clone(&self.changes),
+        })
+    }
+
+    pub fn with_gc_floor(&self, gc_floor: Stamp) -> Result<Self, Error> {
+        if gc_floor < self.gc_floor || gc_floor > self.visible_stamp {
+            return Err(Error::Limit { limit: "version gc floor" });
+        }
+        Ok(Self {
+            visible_stamp: self.visible_stamp,
+            durable_stamp: self.durable_stamp,
+            partitions: Arc::clone(&self.partitions),
+            durable_partitions: Arc::clone(&self.durable_partitions),
+            gc_floor,
+            parent: self.parent.as_ref().map(Arc::clone),
+            changes: Arc::clone(&self.changes),
+        })
+    }
+
+    /// Rebuilds a bounded immutable delta chain. The newest value at or below
+    /// the floor is retained per key, along with every later mutation.
+    pub fn compact_history(&self, gc_floor: Stamp) -> Result<Self, Error> {
+        if gc_floor < self.gc_floor || gc_floor > self.visible_stamp {
+            return Err(Error::Limit { limit: "version compact floor" });
+        }
+        let mut all = Vec::new();
+        let mut current = Some(self);
+        while let Some(version) = current {
+            all.extend(version.changes.iter().cloned());
+            current = version.parent.as_deref();
+        }
+        all.sort_by_key(|entry| entry.stamp);
+        let mut baseline = Vec::<VersionEntry>::new();
+        let mut later = Vec::<VersionEntry>::new();
+        for entry in all {
+            if entry.stamp > gc_floor {
+                later.push(entry);
+                continue;
+            }
+            if let Some(previous) = baseline.iter_mut().find(|candidate|
+                candidate.cluster == entry.cluster && candidate.branch == entry.branch && candidate.key == entry.key
+            ) {
+                *previous = entry;
+            } else {
+                baseline.push(entry);
+            }
+        }
+        baseline.extend(later);
+        Ok(Self {
+            visible_stamp: self.visible_stamp,
+            durable_stamp: self.durable_stamp,
+            partitions: Arc::clone(&self.partitions),
+            durable_partitions: Arc::clone(&self.durable_partitions),
+            gc_floor,
+            parent: None,
+            changes: baseline.into(),
+        })
     }
 }
-
-/// Thread-sicherer Halter für die aktuelle Version (Rang 3 Sperre).
-///
-/// INV-LOCK-1: Rang 3 Sperre (`state`). Klon-und-Austausch erfolgt in Nanosekunden.
-pub type VersionState = RankedRwLock<Arc<Version>, 3>;

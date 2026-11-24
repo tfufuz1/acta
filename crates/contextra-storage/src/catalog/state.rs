@@ -1,297 +1,214 @@
-//! # Katalog-Zustand und Übergangsfunktion
-//!
-//! SPEC §9.7: Der Zustand ist eine reine Reduktion (SD-05) über das Edit-Log.
-//! apply_edit(state, edit) -> state ist eine reine Funktion (P-2, INV-CAT-2).
-//! Metadaten ermöglichen Auswahl ohne Dateizugriff (H-S5).
+//! Deterministische Catalog-Faltung für die P1-Op-Teilmenge.
 
-use crate::catalog::edit::CatalogEdit;
-use crate::catalog::types::{
-    CatalogError, CatalogFileKind, CatalogSpaceOptions, ErasePendingMeta, ErasedRangeMeta,
-    FileMeta, HoldMeta,
-};
-use std::collections::{HashMap, HashSet};
+use super::ops::{CatalogOp, FileEntry};
+use super::record::CatalogRecord;
+use contextra_storage_ports::{ClusterId, ClusterLifecycle, Error, Protection, SpaceId, Stamp, SYSTEM_SPACE_ID_MAX};
+use std::collections::BTreeMap;
 
-/// Aktueller Zustand aller aktiven Dateien und Metadaten des Speicherkerns.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct CatalogState {
-    /// Aktive Dateien indiziert nach (FileKind, id).
-    pub files: HashMap<(CatalogFileKind, u64), FileMeta>,
-    /// Lebendbytes je Blob-Nummer für GC-Planung ohne Datei-Öffnung (§9.6).
-    pub blob_live_bytes: HashMap<u64, u64>,
-    /// Geflushter Stamp je Space.
-    pub space_flushed: HashMap<u16, u64>,
-    /// Untere Grenze für aktive Redo-Segmente.
-    pub redo_floor: u64,
-    /// Commit-Stamp der unteren Redo-Grenze.
-    pub redo_floor_stamp: u64,
-    /// Höchste gesehene Redo-Segment-ID (INV-LOG-8).
-    pub redo_hwm: u64,
-    /// ID-Hochwassermarke für run_id (INV-KEY-2).
-    pub run_id_hwm: u64,
-    /// ID-Hochwassermarke für blob_no (INV-KEY-2).
-    pub blob_no_hwm: u64,
-    /// ID-Hochwassermarke für segment_id (INV-KEY-2).
-    pub segment_id_hwm: u64,
-    /// ID-Hochwassermarke für tmp_id (INV-KEY-2).
-    pub tmp_id_hwm: u64,
-    /// Minimale Schlüsselgeneration nach KEK-Rotation.
-    pub keys_generation_min: u64,
-    /// Registrierte Spaces.
-    pub spaces: HashMap<u16, (Vec<u8>, CatalogSpaceOptions)>,
-    /// Persistente Consumer-Cursor: name -> (consumed_stamp, max_lag_bytes).
-    pub consumers: HashMap<Vec<u8>, (u64, u64)>,
-    /// Nachweis vernichteter Domänenschlüssel (§15.3).
-    pub domain_retired: HashMap<u32, u64>,
-    /// Ausstehende physische Löschaufträge.
-    pub erase_pending: Vec<ErasePendingMeta>,
-    /// Abgeschlossene Löschaufträge.
-    pub erase_done: HashSet<u64>,
-    /// Im Blob-Sweep abgearbeitete Löschaufträge.
-    pub erase_swept: HashSet<u64>,
-    /// Gelöschte Bereiche zur Filterung.
-    pub erased_ranges: Vec<ErasedRangeMeta>,
-    /// Dauerhafte Holds nach §7.8.2.
-    pub holds: HashMap<u64, HoldMeta>,
-    /// Schlüsselepoch je Space.
-    pub key_epochs: HashMap<u16, u32>,
+pub type FileMeta = FileEntry;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CatalogCluster {
+    pub protection: Protection,
+    pub lifecycle: ClusterLifecycle,
 }
 
-/// Reine Zustandsübergangsfunktion nach SPEC §9.7 (P-2).
-///
-/// INV-CAT-2: Ein Edit ist ein Record; er wird ganz oder gar nicht angewendet.
-pub fn apply_edit(state: &CatalogState, edit: &CatalogEdit) -> Result<CatalogState, CatalogError> {
-    let mut next = state.clone();
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GraveyardEntry {
+    pub ticket: [u8; 16],
+    pub file: FileMeta,
+}
 
-    // 1. Dateien hinzufügen
-    for file in &edit.add_files {
-        next.files.insert((file.kind, file.id), file.clone());
-        if file.kind == CatalogFileKind::Blob {
-            next.blob_live_bytes.insert(file.id, file.bytes);
-        }
-    }
+#[derive(Debug, Clone)]
+pub struct CatalogState {
+    spaces: BTreeMap<SpaceId, Protection>,
+    clusters: BTreeMap<ClusterId, CatalogCluster>,
+    files: BTreeMap<u64, FileMeta>,
+    graveyard: BTreeMap<([u8; 16], u64), GraveyardEntry>,
+    unlink_acks: std::collections::BTreeSet<([u8; 16], u64)>,
+    purge_complete: std::collections::BTreeSet<[u8; 16]>,
+    replay_floor: (u64, u64),
+    redo_mark: (u64, u64, Stamp),
+    stamp_limit: Stamp,
+    id_limit: u64,
+    space_id_limit: u64,
+    epoch: u64,
+}
 
-    // 2. Dateien entfernen
-    for (kind, id) in &edit.remove_files {
-        next.files.remove(&(*kind, *id));
-        if *kind == CatalogFileKind::Blob {
-            next.blob_live_bytes.remove(id);
-        }
+impl Default for CatalogState {
+    fn default() -> Self {
+        Self { spaces: BTreeMap::new(), clusters: BTreeMap::new(), files: BTreeMap::new(),
+            graveyard: BTreeMap::new(), unlink_acks: std::collections::BTreeSet::new(),
+            purge_complete: std::collections::BTreeSet::new(), replay_floor: (0, 0),
+            redo_mark: (0, 0, 0), stamp_limit: 0, id_limit: 0,
+            space_id_limit: SYSTEM_SPACE_ID_MAX, epoch: 0 }
     }
-
-    // 3. Blob Live Delta anwenden
-    for (blob_no, delta) in &edit.blob_live_delta {
-        let current = next.blob_live_bytes.get(blob_no).copied().unwrap_or(0);
-        let updated = if *delta >= 0 {
-            let d_u64 = u64::try_from(*delta).unwrap_or(0);
-            current.saturating_add(d_u64)
-        } else {
-            let abs_d = delta.checked_abs().and_then(|v| u64::try_from(v).ok()).unwrap_or(0);
-            current.saturating_sub(abs_d)
-        };
-
-        if updated == 0 {
-            // SPEC §9.7: live_bytes == 0 => Blob im selben Edit entfernt
-            next.blob_live_bytes.remove(blob_no);
-            next.files.remove(&(CatalogFileKind::Blob, *blob_no));
-        } else {
-            next.blob_live_bytes.insert(*blob_no, updated);
-        }
-    }
-
-    // 4. Blob Replace (Sweep g -> g+1)
-    for (blob_no, _old_gen, new_gen) in &edit.blob_replace {
-        if let Some(f) = next.files.get_mut(&(CatalogFileKind::Blob, *blob_no)) {
-            f.generation = *new_gen;
-        }
-    }
-
-    // 5. Space flushed
-    for (space, stamp) in &edit.space_flushed {
-        next.space_flushed.insert(*space, *stamp);
-    }
-
-    // 6. Redo Grenzen
-    if let Some((floor, floor_st, hwm)) = edit.redo {
-        next.redo_floor = floor;
-        next.redo_floor_stamp = floor_st;
-        next.redo_hwm = hwm;
-    }
-
-    // 7. Reserve (INV-KEY-2: Hochwassermarken steigen streng monoton, nie zurück)
-    if let Some((r_hwm, b_hwm, s_hwm, t_hwm, k_gen)) = edit.reserve {
-        next.run_id_hwm = next.run_id_hwm.max(r_hwm);
-        next.blob_no_hwm = next.blob_no_hwm.max(b_hwm);
-        next.segment_id_hwm = next.segment_id_hwm.max(s_hwm);
-        next.tmp_id_hwm = next.tmp_id_hwm.max(t_hwm);
-        next.keys_generation_min = next.keys_generation_min.max(k_gen);
-    }
-
-    // 8. Spaces
-    for (id, name, opts) in &edit.spaces_add {
-        next.spaces.insert(*id, (name.clone(), opts.clone()));
-    }
-    for id in &edit.spaces_drop {
-        next.spaces.remove(id);
-    }
-
-    // 9. Consumer
-    for (name, stamp, max_lag) in &edit.consumer_set {
-        next.consumers.insert(name.clone(), (*stamp, *max_lag));
-    }
-    for name in &edit.consumer_drop {
-        next.consumers.remove(name);
-    }
-
-    // 10. Domain retired
-    for (dom, stamp) in &edit.domain_retired {
-        next.domain_retired.insert(*dom, *stamp);
-    }
-
-    // 11. Erase pending, done, swept
-    for ep in &edit.erase_pending_add {
-        next.erase_pending.push(ep.clone());
-    }
-    for id in &edit.erase_done {
-        next.erase_done.insert(*id);
-    }
-    for id in &edit.erase_swept {
-        next.erase_swept.insert(*id);
-    }
-
-    // 12. Erased ranges
-    for er in &edit.erased_ranges_add {
-        next.erased_ranges.push(er.clone());
-    }
-    for rem in &edit.erased_ranges_remove {
-        next.erased_ranges.retain(|e| e != rem);
-    }
-
-    // 13. Holds
-    for h in &edit.hold_set {
-        next.holds.insert(h.hold_id, h.clone());
-    }
-    for id in &edit.hold_drop {
-        next.holds.remove(id);
-    }
-
-    // 14. Key epoch
-    for (space, ep) in &edit.key_epoch {
-        next.key_epochs.insert(*space, *ep);
-    }
-
-    Ok(next)
 }
 
 impl CatalogState {
-    /// Erstellt einen vollständigen Snapshot-Edit, der den gesamten Zustand abbildet.
-    pub fn to_snapshot_edit(&self) -> CatalogEdit {
-        let mut add_files: Vec<FileMeta> = self.files.values().cloned().collect();
-        add_files.sort_by_key(|f| (f.kind, f.id));
+    pub fn fold(records: &[CatalogRecord]) -> Result<Self, Error> {
+        let mut state = Self::default();
+        for record in records {
+            state.apply_record(record)?;
+        }
+        Ok(state)
+    }
 
-        let mut space_flushed: Vec<(u16, u64)> = self.space_flushed.iter().map(|(&s, &st)| (s, st)).collect();
-        space_flushed.sort_by_key(|&(s, _)| s);
+    pub(crate) fn apply_record(&mut self, record: &CatalogRecord) -> Result<(), Error> {
+        for op in &record.ops { self.apply(op)?; }
+        self.epoch = self.epoch.checked_add(1).ok_or(Error::Limit { limit: "catalog epoch" })?;
+        Ok(())
+    }
 
-        let mut spaces_add: Vec<(u16, Vec<u8>, CatalogSpaceOptions)> = self
-            .spaces
-            .iter()
-            .map(|(&id, (name, opts))| (id, name.clone(), opts.clone()))
-            .collect();
-        spaces_add.sort_by_key(|&(id, _, _)| id);
-
-        let mut consumer_set: Vec<(Vec<u8>, u64, u64)> = self
-            .consumers
-            .iter()
-            .map(|(name, &(st, lag))| (name.clone(), st, lag))
-            .collect();
-        consumer_set.sort_by(|a, b| a.0.cmp(&b.0));
-
-        let mut domain_retired: Vec<(u32, u64)> = self.domain_retired.iter().map(|(&d, &st)| (d, st)).collect();
-        domain_retired.sort_by_key(|&(d, _)| d);
-
-        let mut hold_set: Vec<HoldMeta> = self.holds.values().cloned().collect();
-        hold_set.sort_by_key(|h| h.hold_id);
-
-        let mut key_epoch: Vec<(u16, u32)> = self.key_epochs.iter().map(|(&s, &e)| (s, e)).collect();
-        key_epoch.sort_by_key(|&(s, _)| s);
-
-        CatalogEdit {
-            add_files,
-            remove_files: Vec::new(),
-            blob_live_delta: Vec::new(),
-            blob_replace: Vec::new(),
-            space_flushed,
-            redo: Some((self.redo_floor, self.redo_floor_stamp, self.redo_hwm)),
-            reserve: Some((
-                self.run_id_hwm,
-                self.blob_no_hwm,
-                self.segment_id_hwm,
-                self.tmp_id_hwm,
-                self.keys_generation_min,
-            )),
-            spaces_add,
-            spaces_drop: Vec::new(),
-            consumer_set,
-            consumer_drop: Vec::new(),
-            domain_retired,
-            erase_pending_add: self.erase_pending.clone(),
-            erase_done: self.erase_done.iter().copied().collect(),
-            erase_swept: self.erase_swept.iter().copied().collect(),
-            erased_ranges_add: self.erased_ranges.clone(),
-            erased_ranges_remove: Vec::new(),
-            hold_set,
-            hold_drop: Vec::new(),
-            key_epoch,
+    pub fn apply(&mut self, op: &CatalogOp) -> Result<(), Error> {
+        match op {
+            CatalogOp::SpaceAdd { space, protection } => match self.spaces.get(space) {
+                _ if space.0 > self.space_id_limit => Err(Error::Corrupt { place: "catalog space id not reserved" }),
+                Some(existing) if existing == protection => Ok(()),
+                Some(_) => Err(Error::Corrupt { place: "catalog conflicting space registration" }),
+                None => { self.spaces.insert(*space, *protection); Ok(()) }
+            },
+            CatalogOp::ClusterRegister { cluster, protection } => match self.clusters.get(cluster) {
+                Some(existing) if existing.protection == *protection => Ok(()),
+                Some(_) => Err(Error::Corrupt { place: "catalog conflicting cluster registration" }),
+                None => { self.clusters.insert(*cluster, CatalogCluster { protection: *protection, lifecycle: ClusterLifecycle::Live }); Ok(()) }
+            },
+            CatalogOp::ClusterState { cluster, state } => {
+                let entry = self.clusters.get_mut(cluster).ok_or(Error::Corrupt { place: "catalog state for unknown cluster" })?;
+                if !valid_cluster_transition(entry.protection, entry.lifecycle, *state) {
+                    return Err(Error::Corrupt { place: "catalog cluster lifecycle regression" });
+                }
+                entry.lifecycle = *state;
+                Ok(())
+            }
+            CatalogOp::FilesAdd { file_id, space, cluster, kind, level, bytes, min_stamp, max_stamp } => {
+                if !self.spaces.contains_key(space) { return Err(Error::Corrupt { place: "catalog file references unknown space" }); }
+                if let Some(cluster) = cluster {
+                    if !self.clusters.contains_key(cluster) { return Err(Error::Corrupt { place: "catalog file references unknown cluster" }); }
+                }
+                let file = FileMeta { file_id: *file_id, space: *space, cluster: *cluster, kind: *kind,
+                    level: *level, bytes: *bytes, min_stamp: *min_stamp, max_stamp: *max_stamp };
+                match self.files.get(file_id) {
+                    Some(existing) if existing == &file => Ok(()),
+                    Some(_) => Err(Error::Corrupt { place: "catalog duplicate file id" }),
+                    None => {
+                        if cluster.is_some_and(|cluster| {
+                            self.clusters.get(&cluster).is_some_and(|entry| entry.lifecycle != ClusterLifecycle::Live)
+                        }) {
+                            return Err(Error::Corrupt { place: "catalog adds file for retired cluster" });
+                        }
+                        self.files.insert(*file_id, file);
+                        Ok(())
+                    }
+                }
+            }
+            CatalogOp::FilesRemove { file_id } => {
+                let ticket = [0; 16];
+                let key = (ticket, *file_id);
+                if self.graveyard.contains_key(&key) { return Ok(()); }
+                let file = self.files.remove(file_id).ok_or(Error::Corrupt { place: "catalog removes non-live file" })?;
+                self.graveyard.insert(key, GraveyardEntry { ticket, file });
+                Ok(())
+            }
+            CatalogOp::ReplayFloor { segment, offset } => {
+                if (*segment, *offset) < self.replay_floor { return Err(Error::Corrupt { place: "catalog replay floor regressed" }); }
+                self.replay_floor = (*segment, *offset);
+                Ok(())
+            }
+            CatalogOp::RedoMark { segment, offset, stamp } => {
+                if (*segment, *offset, *stamp) < self.redo_mark { return Err(Error::Corrupt { place: "catalog redo mark regressed" }); }
+                self.redo_mark = (*segment, *offset, *stamp);
+                Ok(())
+            }
+            CatalogOp::ReserveStamps { through } => {
+                if *through < self.stamp_limit { return Err(Error::Corrupt { place: "catalog stamp reserve regressed" }); }
+                self.stamp_limit = *through;
+                Ok(())
+            }
+            CatalogOp::ReserveIds { through } => {
+                if *through < self.id_limit { return Err(Error::Corrupt { place: "catalog id reserve regressed" }); }
+                self.id_limit = *through;
+                Ok(())
+            }
+            CatalogOp::ReserveSpaceIds { through } => {
+                if *through < self.space_id_limit { return Err(Error::Corrupt { place: "catalog space id reserve regressed" }); }
+                self.space_id_limit = *through;
+                Ok(())
+            }
+            CatalogOp::PurgeBatch { ticket, remove_file_id, replacement } => {
+                if self.purge_complete.contains(ticket) { return Err(Error::Corrupt { place: "purge batch after completion" }); }
+                let key = (*ticket, *remove_file_id);
+                if let Some(existing) = self.graveyard.get(&key) {
+                    if replacement.as_ref().is_some_and(|new| self.files.get(&new.file_id) != Some(new)) {
+                        return Err(Error::Corrupt { place: "purge batch replay mismatch" });
+                    }
+                    return if existing.file.file_id == *remove_file_id { Ok(()) } else { Err(Error::Corrupt { place: "purge graveyard identity" }) };
+                }
+                let old = self.files.get(remove_file_id).cloned().ok_or(Error::Corrupt { place: "purge batch removes non-live file" })?;
+                if let Some(new) = replacement {
+                    validate_file_refs(&self.spaces, &self.clusters, new)?;
+                    if new.file_id == *remove_file_id || self.files.contains_key(&new.file_id) {
+                        return Err(Error::Corrupt { place: "purge replacement file id" });
+                    }
+                }
+                self.files.remove(remove_file_id);
+                if let Some(new) = replacement { self.files.insert(new.file_id, new.clone()); }
+                self.graveyard.insert(key, GraveyardEntry { ticket: *ticket, file: old });
+                Ok(())
+            }
+            CatalogOp::UnlinkAck { ticket, file_id } => {
+                let key = (*ticket, *file_id);
+                if self.unlink_acks.contains(&key) { return Ok(()); }
+                self.graveyard.remove(&key).ok_or(Error::Corrupt { place: "unlink ack without graveyard entry" })?;
+                self.unlink_acks.insert(key);
+                Ok(())
+            }
+            CatalogOp::PurgeComplete { ticket } => {
+                if self.purge_complete.contains(ticket) { return Ok(()); }
+                if self.graveyard.keys().any(|(owner, _)| owner == ticket) {
+                    return Err(Error::Corrupt { place: "purge complete with pending graveyard" });
+                }
+                self.purge_complete.insert(*ticket);
+                Ok(())
+            }
         }
     }
 
-    /// Sucht alle aktiven Runs eines Space, die sich mit [min_key, max_key] überschneiden.
-    ///
-    /// Funktioniert rein im Speicher ohne jeglichen Dateizugriff (H-S5).
-    pub fn runs_in_range(&self, space: u16, min_key: &[u8], max_key: &[u8]) -> Vec<&FileMeta> {
-        self.files
-            .values()
-            .filter(|f| f.kind == CatalogFileKind::Run && f.space == space)
-            .filter(|f| {
-                if !f.max_key.is_empty() && f.max_key.as_slice() < min_key {
-                    return false;
-                }
-                if !f.min_key.is_empty() && f.min_key.as_slice() > max_key {
-                    return false;
-                }
-                true
-            })
-            .collect()
-    }
+    pub fn spaces(&self) -> &BTreeMap<SpaceId, Protection> { &self.spaces }
+    pub fn clusters(&self) -> &BTreeMap<ClusterId, CatalogCluster> { &self.clusters }
+    pub fn files(&self) -> &BTreeMap<u64, FileMeta> { &self.files }
+    pub fn graveyard(&self) -> &BTreeMap<([u8; 16], u64), GraveyardEntry> { &self.graveyard }
+    pub fn purge_is_complete(&self, ticket: &[u8; 16]) -> bool { self.purge_complete.contains(ticket) }
+    pub fn replay_floor(&self) -> (u64, u64) { self.replay_floor }
+    pub fn redo_mark(&self) -> (u64, u64, Stamp) { self.redo_mark }
+    pub fn stamp_limit(&self) -> Stamp { self.stamp_limit }
+    pub fn id_limit(&self) -> u64 { self.id_limit }
+    pub fn space_id_limit(&self) -> u64 { self.space_id_limit }
+    pub fn epoch(&self) -> u64 { self.epoch }
+}
 
-    /// Liefert alle aktiven Runs eines Space in einem Stamp-Bereich.
-    pub fn runs_by_stamp_range(&self, space: u16, min_stamp: u64, max_stamp: u64) -> Vec<&FileMeta> {
-        self.files
-            .values()
-            .filter(|f| f.kind == CatalogFileKind::Run && f.space == space)
-            .filter(|f| f.max_stamp >= min_stamp && f.min_stamp <= max_stamp)
-            .collect()
+fn valid_cluster_transition(protection: Protection, from: ClusterLifecycle, to: ClusterLifecycle) -> bool {
+    if from == to { return true; }
+    match (from, to) {
+        (ClusterLifecycle::Live, ClusterLifecycle::Retired { at }) => at > 0,
+        (ClusterLifecycle::Retired { at: retired }, ClusterLifecycle::Shredded { at }) => {
+            protection == Protection::Sealed && at == retired
+        }
+        (ClusterLifecycle::Retired { at: retired }, ClusterLifecycle::Purged { at }) => at == retired,
+        (ClusterLifecycle::Shredded { at: shredded }, ClusterLifecycle::Purged { at }) => at == shredded,
+        _ => false,
     }
+}
 
-    /// Liefert alle lebendigen Blob-Dateien.
-    pub fn live_blobs(&self) -> Vec<&FileMeta> {
-        self.files
-            .values()
-            .filter(|f| f.kind == CatalogFileKind::Blob)
-            .collect()
+fn validate_file_refs(
+    spaces: &BTreeMap<SpaceId, Protection>,
+    clusters: &BTreeMap<ClusterId, CatalogCluster>,
+    file: &FileMeta,
+) -> Result<(), Error> {
+    if !spaces.contains_key(&file.space) { return Err(Error::Corrupt { place: "catalog file references unknown space" }); }
+    if file.cluster.is_some_and(|cluster| !clusters.contains_key(&cluster)) {
+        return Err(Error::Corrupt { place: "catalog file references unknown cluster" });
     }
-
-    /// Liefert die Lebendbytes für eine gegebene Blob-Nummer.
-    pub fn blob_live_bytes_for(&self, blob_no: u64) -> Option<u64> {
-        self.blob_live_bytes.get(&blob_no).copied()
-    }
-
-    /// Berechnet die Gesamtbytes aller aktiven Dateien.
-    pub fn total_bytes(&self) -> u64 {
-        self.files.values().map(|f| f.bytes).fold(0u64, |acc, b| acc.saturating_add(b))
-    }
-
-    /// Prüft, ob eine Datei laut Katalog lebendig ist (INV-CAT-1).
-    pub fn is_file_live(&self, kind: CatalogFileKind, id: u64) -> bool {
-        self.files.contains_key(&(kind, id))
-    }
+    if file.min_stamp > file.max_stamp { return Err(Error::Corrupt { place: "catalog file stamp range" }); }
+    Ok(())
 }

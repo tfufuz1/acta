@@ -2,18 +2,20 @@
 name = "contextra-crypto-ref"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+publish.workspace = true
 rust-version.workspace = true
-description = "Reference implementation of Cipher, Mac and Kdf ports"
 
-[lints]
-workspace = true
+[features]
+testing = []
 
 [dependencies]
 contextra-storage-ports = { path = "../contextra-storage-ports" }
-blake3 = "1.5"
-chacha20poly1305 = { version = "0.10", features = ["alloc"] }
-subtle = "2.5"
+chacha20poly1305 = { workspace = true }
+hkdf = { workspace = true }
+hmac = "0.12"
+sha2 = { workspace = true }
+subtle = "2"
+zeroize = { workspace = true }
 
-[dev-dependencies]
-contextra-storage = { path = "../contextra-storage" }
+[lints]
+workspace = true
